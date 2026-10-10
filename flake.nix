@@ -27,6 +27,11 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # Only for the rpi-image app. Deliberately not following this flake's
+    # nixpkgs, so its vendor kernel matches its binary cache; fetched only
+    # when the app runs.
+    nixos-raspberrypi.url = "github:nvmd/nixos-raspberrypi";
+
     caelestia-shell = {
       url = "github:caelestia-dots/shell";
       inputs.nixpkgs.follows = "nixpkgs";

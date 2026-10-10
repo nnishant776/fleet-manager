@@ -13,7 +13,7 @@ a common configuration module rather than being per host.
 ```
 ├── flake.nix                        # entry point; discovers hosts/
 ├── lib/
-│   ├── apps/                        # os-install, system-switch, home-switch, check-purity
+│   ├── apps/                        # os-install, system-switch, home-switch, check-purity, rpi-image
 │   ├── mkHost.nix                   # host factory (NixOS / nix-darwin)
 │   ├── buildUser.nix                # assembles a user's Home Manager modules
 │   ├── mkUser.nix                   # standalone Home Manager builder
@@ -159,6 +159,37 @@ unusable value by the first-boot clone and re-applied on every sync, so a `git p
 fleet machine fails. That is hygiene; the control is the credential: a public
 repository needs none, and a private one gets a deploy key with read access
 only, through `fleet.repo.deployKeySecret`.
+
+### Building a Raspberry Pi image
+
+A utility, run by hand when needed; nothing in a rebuild or the sync uses it.
+
+```bash
+nix run .#rpi-image                     # writes ./nixos-rpi5.img.zst
+nix run .#rpi-image -- -o pi.img.zst
+```
+
+It builds one generic Raspberry Pi 5 SD image from the installer in
+`nixos-raspberrypi`, plus a first-boot step. Build it once, flash it to as many
+cards as needed, then give each card its own settings by creating files in
+`firstboot/` on its FAT partition, which any computer can write:
+
+| File | Effect on first boot |
+|---|---|
+| `hostname` | the Pi's hostname (default: `rpi-` and the last four characters of the board serial) |
+| `authorized_keys` | SSH keys for `root` and the `nixos` user |
+| `wifi` | `SSID=` and `PSK=` lines; deleted once applied |
+
+A `README.txt` on the card repeats this. After the first boot, log in over SSH
+and switch the Pi to its host configuration; from then on it updates from this
+flake like any other host and the image is not needed again.
+
+Building needs `aarch64-linux`: natively, through emulation
+(`boot.binfmt.emulatedSystems = [ "aarch64-linux" ];` on a NixOS host), or with
+a remote builder. The vendor kernel comes prebuilt from the nixos-raspberrypi
+binary cache, which Nix only uses for trusted users, so run it with `sudo`
+unless your user is in `nix.settings.trusted-users`; otherwise the kernel is
+compiled, which under emulation takes hours.
 
 ### Signing commits for a fleet
 
