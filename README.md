@@ -206,7 +206,11 @@ git config --global commit.gpgsign true
 The signers file lists one `<principal> <key-type> <key>` per line, with the
 public keys only, and is committed to the repository so every machine carries
 it. Rotating a key means adding the new one, waiting for the fleet to converge,
-then removing the old one.
+then removing the old one. A lost or stolen key is removed the same way, in a
+commit signed by a key still trusted. Do not rely on `valid-before` for that:
+Git checks it against the commit's own date, which the signer chooses, so a
+stolen key can still sign backdated commits; the option only suits retiring a
+key on a planned date.
 
 ### Checking the flake
 

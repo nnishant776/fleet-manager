@@ -1,7 +1,7 @@
 # Disk encryption follows from the host's disko layout (templates/disko-luks.nix
 # is the starting point); this file only adds how the volumes are unlocked.
 # With tpm2Unlock, systemd-cryptsetup tries the TPM first and falls back to the
-# passphrase; os-install does the enrolment once the system is installed.
+# passphrase; os-install does the enrollment once the system is installed.
 { config, lib, ... }:
 let
   cfg = config.conf.hardware.boot;
