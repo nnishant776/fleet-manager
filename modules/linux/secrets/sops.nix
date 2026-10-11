@@ -1,15 +1,20 @@
-# sops-nix wiring. Each machine holds its own age key, generated on first
-# activation; the public half goes into .sops.yaml so secrets can be encrypted
-# to it. Nothing here is active until the host names a secrets file.
+# sops-nix wiring. The host's age identity and its snapshot of the secrets
+# repository live under conf.secrets.statePath; fleet-identity and the sync
+# service own them, so sops-nix must neither generate a key nor look for the
+# encrypted files while the configuration is evaluated.
 { config, lib, ... }:
 let
   cfg = config.conf.secrets;
+  host = config.conf.host.name;
 in {
-  # Active for a host file or for any secret declared elsewhere, such as the
-  # per-user password files in secrets/users.nix.
-  config = lib.mkIf (cfg.file != null || config.sops.secrets != { }) {
-    sops.defaultSopsFile = lib.mkIf (cfg.file != null) cfg.file;
-    sops.age.keyFile = lib.mkDefault "/var/lib/sops-nix/key.txt";
-    sops.age.generateKey = lib.mkDefault true;
+  config = lib.mkIf (cfg.repo.url != null) {
+    # A string, not a path: the file exists only on the host, so nothing enters
+    # the store.
+    sops.defaultSopsFile = "${cfg.statePath}/secrets/hosts/${host}.yaml";
+    # The file is not available at evaluation time.
+    sops.validateSopsFiles = false;
+    sops.age.keyFile = "${cfg.statePath}/age.key";
+    # os-install and fleet-bootstrap own the identity.
+    sops.age.generateKey = false;
   };
 }

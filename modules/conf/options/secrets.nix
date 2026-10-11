@@ -1,14 +1,32 @@
 { lib, ... }: {
-  options.conf.secrets.file = lib.mkOption {
-    type = lib.types.nullOr lib.types.path;
-    default = null;
-    example = lib.literalExpression "./secrets.yaml";
-    description = ''
-      sops-encrypted file holding this host's secrets, committed to the
-      repository. The machine decrypts it with the age key sops-nix keeps at
-      `/var/lib/sops-nix/key.txt`, generated on first activation; its public
-      half is what goes into `.sops.yaml`. `null` means the host has no
-      secrets and the sops machinery stays off.
-    '';
+  options.conf.secrets = {
+    repo = {
+      url = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "git@github.com:org/fleet-secrets.git";
+        description = ''
+          The private secrets repository this host fetches its secrets from.
+          `null` opts the host out entirely: no secrets sync, no host
+          identity, sops off, and `conf.users.accounts.<name>.secrets.*` are
+          ignored.
+        '';
+      };
+      ref = lib.mkOption {
+        type = lib.types.str;
+        default = "main";
+        description = "Branch of the secrets repository to track.";
+      };
+    };
+
+    statePath = lib.mkOption {
+      type = lib.types.str;
+      default = "/var/lib/fleet";
+      description = ''
+        Where the host's identity, enrollment file and secrets snapshot live,
+        including the deploy key at `deploy_ed25519`. Expected to be its own
+        volume. Unused when `repo.url` is `null`.
+      '';
+    };
   };
 }

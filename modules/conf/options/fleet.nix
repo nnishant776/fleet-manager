@@ -25,10 +25,11 @@
         default = null;
         example = "deploy-key";
         description = ''
-          Key in `conf.secrets.file` holding a read-only SSH deploy key for a
-          private `repo.url`. The sync uses it for every fetch. Give the key
-          read access only on the hosting side; the machine's own push URL is
-          disabled regardless. Requires `conf.secrets.file`.
+          Key in the host's secrets file (`hosts/<host>.yaml` in the secrets
+          repository) holding a read-only SSH deploy key for a private
+          `repo.url`. The sync uses it for every fetch. Give the key read
+          access only on the hosting side; the machine's own push URL is
+          disabled regardless. Requires `conf.secrets.repo.url`.
         '';
       };
     };
@@ -57,6 +58,45 @@
         anything is built, so a compromised remote cannot push configuration
         to the fleet. Public keys only; the file is copied into the store.
       '';
+    };
+
+    support = {
+      enable = lib.mkOption {
+        type = lib.types.nullOr lib.types.bool;
+        default = null;
+        description = ''
+          Create an account for the maintainer to reach this host with, so no
+          per-host secret is needed for support.
+
+          `null` means on when `conf.secrets.repo.url` is set and off when it
+          is not. Set `true` to create the account on a host that has not opted
+          in to secrets. On Darwin the account is created only where
+          `manageAccount` is possible, so an MDM-managed Mac never gets one.
+        '';
+      };
+      user = lib.mkOption {
+        type = lib.types.str;
+        default = "support";
+        description = "Name of the support account.";
+      };
+      sshKeys = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = ''
+          The maintainer's public SSH keys, ideally a hardware-backed
+          `sk-ssh-ed25519` key. Required when the account is enabled. The
+          account is privileged and has a sudo rule without a password, since
+          its password is locked and the key is the authentication factor.
+        '';
+      };
+      consolePassword = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          Also take a password hash for the account from `hosts/<host>.yaml`
+          (`support_password`), for console login when there is no network.
+        '';
+      };
     };
 
     autoUpdate = {

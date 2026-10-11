@@ -21,7 +21,7 @@
     # A fleet host's accounts are exactly what the configuration declares:
     # activation rewrites /etc/passwd and /etc/shadow, so a locally added user
     # or a changed password does not survive the next sync. Passwords then come
-    # from conf.users.accounts.<name>.passwordSecret.
+    # from the secrets repository (conf.users.accounts.<name>.secrets.password).
     users.mutableUsers = lib.mkDefault (config.conf.fleet.repo.url == null);
   };
 }

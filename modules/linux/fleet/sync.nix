@@ -166,10 +166,10 @@ in
             + " is null: a fleet host must verify what it fetches before building it.";
         }
         {
-          assertion = cfg.repo.deployKeySecret == null || config.conf.secrets.file != null;
+          assertion = cfg.repo.deployKeySecret == null || config.conf.secrets.repo.url != null;
           message =
-            "conf.fleet.repo.deployKeySecret is set but conf.secrets.file is null;"
-            + " the key has to come from the host's secrets file.";
+            "conf.fleet.repo.deployKeySecret is set but conf.secrets.repo.url is null;"
+            + " the key has to come from the host's file in the secrets repository.";
         }
         {
           assertion = cfg.repo.url == null || !(lib.hasPrefix "http://" cfg.repo.url);

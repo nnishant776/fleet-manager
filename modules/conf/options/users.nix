@@ -45,13 +45,26 @@ let
           Password hash applied when the account is first created, in
           `mkpasswd -m yescrypt` format. `null` creates the account locked, so
           it is reached with an SSH key or by an administrator setting a
-          password. Secrets management will replace this with a file.
+          password. On a host with `conf.secrets.repo.url` the hash comes
+          from the secrets repository instead, and setting both is an error.
         '';
       };
       sshKeys = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [ ];
         description = "SSH public keys accepted for this account.";
+      };
+      secrets = {
+        password = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Take this account's password hash from users/<name>/<host>.yaml in the secrets repository. Ignored on a host without `conf.secrets.repo.url`.";
+        };
+        sshKey = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Deploy a per-host SSH key from users/<name>/<host>.yaml to /run/secrets/users/<name>/ssh_key. Can be turned on any time after the account exists. Ignored on a host without `conf.secrets.repo.url`.";
+        };
       };
       manageAccount = lib.mkOption {
         type = lib.types.nullOr lib.types.bool;
@@ -142,8 +155,9 @@ in {
         system accounts do not belong here; they are created by the modules
         that need them.
 
-        A sops-encrypted `users/<name>/secrets.yaml` with a `password` key
-        supplies the account's password hash on every activation; see
+        On a host that opted into secrets (`conf.secrets.repo.url`), each
+        account's `secrets.*` flags say what the host takes from its
+        `users/<name>/<host>.yaml` in the secrets repository; see
         `conf.secrets`.
       '';
     };
