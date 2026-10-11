@@ -85,7 +85,14 @@
     systems = lib.unique (lib.attrValues (lib.attrsets.unionOfDisjoint linuxHosts darwinHosts));
     apps = lib.genAttrs systems (system:
       import ./lib/apps { inherit self; pkgs = nixpkgs.legacyPackages.${system}; });
+
+    checks = {
+      x86_64-linux.secrets-sync = import ./tests/secrets/vm-test.nix {
+        inherit inputs self;
+        pkgs = nixpkgs.legacyPackages.x86_64-linux;
+      };
+    };
   in {
-    inherit nixosConfigurations darwinConfigurations homeConfigurations apps;
+    inherit nixosConfigurations darwinConfigurations homeConfigurations apps checks;
   };
 }

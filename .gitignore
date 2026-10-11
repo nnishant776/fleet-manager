@@ -1,0 +1,3 @@
+# Written by secrets-harness for this machine (tests/secrets/README.md)
+hosts/scratch-secrets/harness.nix
+hosts/scratch-secrets/allowed_signers
