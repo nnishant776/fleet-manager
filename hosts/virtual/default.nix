@@ -18,6 +18,12 @@
     hardware = {
       graphics.vendor = "intel";
       boot.mode = "uefi";
+      disk = {
+        enable = true;
+        device = "/dev/vda";
+        encrypt = false;
+        volumes.swap.size = "4G";
+      };
     };
 
     desktop = {
