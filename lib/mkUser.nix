@@ -17,10 +17,14 @@ let
       # machine; buildUser defaults this off so a future system-level caller
       # has to opt in deliberately.
     , allowLocalOverride ? true
+      # The host's evaluated configuration, handed to Home Manager modules as
+      # `osConfig` just as the NixOS integration does, so a self-managed home
+      # reaches the same answers as an organisation-managed one.
+    , osConfig ? null
     }:
     inputs.home-manager.lib.homeManagerConfiguration {
       inherit pkgs;
-      extraSpecialArgs = { inherit inputs flakeLib; };
+      extraSpecialArgs = { inherit inputs flakeLib osConfig; };
       modules = [
         (buildUser {
           inherit pkgs lib username extraModules usersDir allowLocalOverride;
@@ -44,13 +48,14 @@ let
           inherit username dirName;
           userCfg = u;
           pkgs = hostCfg.pkgs;
+          osConfig = hostCfg.config;
         }) enabledUsers
     ) hostConfigs);
 
   entryToUser = usersDir: e:
     mkUser {
       inherit usersDir;
-      inherit (e) username pkgs;
+      inherit (e) username pkgs osConfig;
       extraModules = [ e.userCfg.homeConfig ];
     };
 
