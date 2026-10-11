@@ -9,11 +9,44 @@ let
   # revision anything could be checked out to.
   revision = inputs.self.rev or null;
 
+  # Present only on a host that opted in to secrets; see fleet/secrets-sync.nix.
+  secretsOn = config.conf.secrets.repo.url != null;
+  secretsSync = import ../../../lib/secrets-sync.nix {
+    inherit pkgs;
+    nix = config.nix.package;
+  };
+  secretsArgs = lib.escapeShellArgs [
+    "--state" config.conf.secrets.statePath
+    "--host" config.conf.host.name
+  ];
+  # Same file the configuration sync verifies against (see fleet/sync.nix).
+  signers =
+    if cfg.signing.allowedSignersFile != null
+    then "${cfg.signing.allowedSignersFile}"
+    else "/dev/null";
+
   bootstrap = pkgs.writeShellApplication {
     name = "fleet-bootstrap";
     runtimeInputs = [ pkgs.git pkgs.openssh pkgs.coreutils ];
     text = ''
-      repo=${lib.escapeShellArg cfg.localPath}
+      repo=${lib.escapeShellArg cfg.localPath}${lib.optionalString secretsOn ''
+
+        # Secrets before the configuration: accounts and passwords come from
+        # the snapshot, so nothing is cloned until it exists. Exiting here
+        # leaves the unit's condition true and the restart policy retrying.
+        rc=0
+        ${lib.getExe secretsSync.sync} init ${secretsArgs} || rc=$?
+        if [ "$rc" -eq 0 ]; then
+          ${lib.getExe secretsSync.sync} sync ${secretsArgs} \
+            --repo ${lib.escapeShellArg config.conf.secrets.repo.url} \
+            --ref ${lib.escapeShellArg config.conf.secrets.repo.ref} \
+            --signers ${signers} || rc=$?
+        fi
+        if [ "$rc" -ne 0 ]; then
+          echo "fleet-bootstrap: secrets sync failed with code $rc; retrying"
+          exit 1
+        fi
+      ''}
       ${lib.optionalString (cfg.repo.deployKeySecret != null) ''
         export GIT_SSH_COMMAND="ssh -i ${config.sops.secrets.${cfg.repo.deployKeySecret}.path} -o IdentitiesOnly=yes"
       ''}

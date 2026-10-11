@@ -17,6 +17,17 @@ let
     then "${cfg.signing.allowedSignersFile}"
     else "/dev/null";
 
+  # Present only on a host that opted in to secrets; see fleet/secrets-sync.nix.
+  secretsOn = config.conf.secrets.repo.url != null;
+  secretsSync = import ../../../lib/secrets-sync.nix {
+    inherit pkgs;
+    nix = config.nix.package;
+  };
+  secretsArgs = lib.escapeShellArgs [
+    "--state" config.conf.secrets.statePath
+    "--host" config.conf.host.name
+  ];
+
   syncScript = pkgs.writeShellApplication {
     name = "config-auto-update";
     runtimeInputs = [
@@ -32,7 +43,20 @@ let
       ref=${lib.escapeShellArg cfg.repo.ref}
       host=${lib.escapeShellArg config.conf.host.name}
 
-      log() { echo "config-auto-update: $*"; }
+      log() { echo "config-auto-update: $*"; }${lib.optionalString secretsOn ''
+
+        # Secrets first: a host whose snapshot cannot be refreshed or verified
+        # must not go on to build and activate against a stale one.
+        rc=0
+        ${lib.getExe secretsSync.sync} sync ${secretsArgs} \
+          --repo ${lib.escapeShellArg config.conf.secrets.repo.url} \
+          --ref ${lib.escapeShellArg config.conf.secrets.repo.ref} \
+          --signers ${signers} || rc=$?
+        if [ "$rc" -ne 0 ]; then
+          log "secrets sync failed with code $rc"
+          exit 1
+        fi
+      ''}
 
       if [ ! -d "$repo/.git" ]; then
         log "no git checkout at $repo — refusing to sync"
@@ -88,7 +112,17 @@ let
       ''}
 
       after="$(git -C "$repo" rev-parse HEAD)"
-      log "revision $before -> $after (tracking $ref)"
+      log "revision $before -> $after (tracking $ref)"${lib.optionalString secretsOn ''
+
+        # A secret the new configuration declares but the snapshot lacks would
+        # fail at activation and trigger a rollback; refuse before building.
+        rc=0
+        ${lib.getExe secretsSync.sync} check ${secretsArgs} --config "$repo" || rc=$?
+        if [ "$rc" -ne 0 ]; then
+          log "secrets check failed with code $rc"
+          exit 1
+        fi
+      ''}
 
       if ! newSystem="$(nix build --no-link --print-out-paths \
             "$repo#nixosConfigurations.$host.config.system.build.toplevel")"; then
