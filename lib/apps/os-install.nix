@@ -11,22 +11,41 @@
 #      its scratch space on /mnt too, reusing whatever the ISO already holds.
 #
 # The host and the target disks come from flags or from pickers.
+#
+# A host that fetches secrets also gets its identity here, before the first
+# boot: the age key and deploy key are generated (or carried over) into the
+# state directory on the new disk, and the enrollment file is shown for the
+# maintainer to register.
 { pkgs, self }:
+let
+  secretsSync = import ../secrets-sync.nix { inherit pkgs; };
+in
 pkgs.writeShellApplication {
   name = "os-install";
-  runtimeInputs = with pkgs; [ jq fzf util-linux coreutils nixos-install-tools ];
+  runtimeInputs = (with pkgs; [
+    jq fzf util-linux coreutils nixos-install-tools age sops git openssh qrencode
+  ]) ++ [ secretsSync.sync secretsSync.identity ];
   text = ''
     usage() {
       cat >&2 <<'EOF'
     usage: os-install [-H HOST] [-d [NAME=]DEVICE]... [--flake REF] [--yes]
+                      [--identity FILE] [--no-enroll] [--enroll-out PATH]
 
       -H, --host HOST        host to install (a directory under hosts/)
       -d, --disk [NAME=]DEV  physical device for a disk in the host's layout;
                              NAME may be omitted when the layout has one disk
           --flake REF        flake to install from (default: the one running this)
       -y, --yes              do not ask for confirmation before erasing
+          --identity FILE    carry over the identity document written by
+                             'fleet-identity --export' on the old install,
+                             instead of generating a new identity
+          --no-enroll        do not wait for the host to be enrolled
+          --enroll-out PATH  also copy the enrollment file to PATH, for
+                             example on a mounted USB stick
 
     Anything not given as a flag is chosen from a list, when run in a terminal.
+    A host with an encrypted layout asks for one passphrase, used for every
+    encrypted disk.
     Whether a firmware boot entry is written follows the host's
     conf.hardware.boot.efiVariables.
     EOF
@@ -38,6 +57,14 @@ pkgs.writeShellApplication {
     if [ "$(id -u)" -ne 0 ]; then
       exec sudo "$0" "$@"
     fi
+
+    passfile=""
+    cleanup() {
+      if [ -n "$passfile" ]; then
+        rm -f "$passfile"
+      fi
+    }
+    trap cleanup EXIT
 
     # The installer ISO does not enable flakes, and sudo above drops the
     # caller's environment, so turn them on here for every nix call below.
@@ -51,6 +78,9 @@ pkgs.writeShellApplication {
     confirm=""
     declare -A disks=()
     unnamedDisk=""
+    identity=""
+    noEnroll=false
+    enrollOut=""
 
     while [ $# -gt 0 ]; do
       case "$1" in
@@ -63,10 +93,19 @@ pkgs.writeShellApplication {
           shift 2 ;;
         --flake)    flake="''${2:?--flake needs a value}"; shift 2 ;;
         -y|--yes)   assumeYes=true; shift ;;
+        --identity) identity="''${2:?--identity needs a value}"; shift 2 ;;
+        --no-enroll) noEnroll=true; shift ;;
+        --enroll-out) enrollOut="''${2:?--enroll-out needs a value}"; shift 2 ;;
         -h|--help)  usage 0 ;;
         *)          echo "os-install: unknown argument '$1'" >&2; usage ;;
       esac
     done
+
+    if [ -n "$identity" ]; then
+      # Made absolute because the init step below runs from another directory.
+      identity="$(realpath -e -- "$identity")" \
+        || { echo "os-install: no such identity document: $identity" >&2; exit 1; }
+    fi
 
     interactive=false
     [ -t 0 ] && [ -t 1 ] && interactive=true
@@ -96,13 +135,18 @@ pkgs.writeShellApplication {
       bios = c.conf.hardware.boot.mode == "bios";
       luks = builtins.attrValues (builtins.mapAttrs (_: d: d.device) c.boot.initrd.luks.devices);
       tpm2 = c.conf.hardware.boot.tpm2Unlock;
-      secrets = c.conf.secrets.file != null;
+      secrets = c.conf.secrets.repo.url != null;
+      secretsRepo = c.conf.secrets.repo.url;
+      secretsRef = c.conf.secrets.repo.ref;
+      statePath = c.conf.secrets.statePath;
+      signers = let f = c.conf.fleet.signing.allowedSignersFile; in
+        if f == null then null else toString f;
       repo = c.conf.fleet.repo.url;
     }')"
 
     mapfile -t declared < <(jq -r '.disks | keys[]' <<<"$facts")
     if [ "''${#declared[@]}" -eq 0 ]; then
-      echo "os-install: host '$host' declares no disko layout (hosts/$host/disko-config.nix)" >&2
+      echo "os-install: host '$host' declares no disk layout: set conf.hardware.disk.enable or add hosts/$host/disko-config.nix" >&2
       exit 1
     fi
 
@@ -161,26 +205,60 @@ pkgs.writeShellApplication {
       fi
     fi
 
+    # One passphrase for every LUKS container, kept in a file only root can
+    # read under /run (a tmpfs) for disko to read; the exit trap removes it.
+    if [ "$(jq -r '.luks | length' <<<"$facts")" -gt 0 ]; then
+      need "the disk passphrase"
+      while true; do
+        read -rs -p "Passphrase for the encrypted disks: " pass1; echo
+        read -rs -p "Repeat the passphrase: " pass2; echo
+        if [ -z "$pass1" ]; then
+          echo "os-install: the passphrase may not be empty" >&2
+        elif [ "$pass1" != "$pass2" ]; then
+          echo "os-install: the passphrases differ" >&2
+        else
+          break
+        fi
+      done
+      passfile="$(umask 077; mktemp /run/os-install-passphrase.XXXXXX)"
+      printf '%s' "$pass1" > "$passfile"
+      unset pass1 pass2
+    fi
+
     # Step 1: the host's disko script with the chosen devices patched in.
     mapping="{}"
     for name in "''${!disks[@]}"; do
       mapping="$(jq -c --arg n "$name" --arg d "''${disks[$name]}" '. + {($n): $d}' <<<"$mapping")"
     done
     export OS_INSTALL_DISKS="$mapping" OS_INSTALL_FLAKE="$flake" OS_INSTALL_HOST="$host"
+    export OS_INSTALL_PASSFILE="$passfile"
     # shellcheck disable=SC2016 # a Nix expression; its interpolations are for Nix, not bash
     diskoScript="$(nix build --impure --no-link --print-out-paths --expr '
       let
         flake = builtins.getFlake (builtins.getEnv "OS_INSTALL_FLAKE");
         host = flake.nixosConfigurations.''${builtins.getEnv "OS_INSTALL_HOST"};
+        lib = flake.inputs.nixpkgs.lib;
         devices = builtins.fromJSON (builtins.getEnv "OS_INSTALL_DISKS");
-        patched = host.extendModules { modules = [{
-          disko.devices.disk = builtins.mapAttrs
-            (_: device: { device = flake.inputs.nixpkgs.lib.mkForce device; }) devices;
-        }]; };
+        passfile = builtins.getEnv "OS_INSTALL_PASSFILE";
+        # Every LUKS container reads the one passphrase from the same file;
+        # other partitions are left as the layout declares them.
+        luksOnly = lib.filterAttrs (_: part: (part.content.type or "") == "luks");
+        patched = host.extendModules { modules = [
+          { disko.devices.disk = lib.mapAttrs (_: device: { device = lib.mkForce device; }) devices; }
+          (lib.mkIf (passfile != "") {
+            disko.devices.disk = lib.mapAttrs
+              (_: d: {
+                content.partitions = lib.mapAttrs
+                  (_: _: { content.passwordFile = lib.mkForce passfile; })
+                  (luksOnly (d.content.partitions or { }));
+              })
+              host.config.disko.devices.disk;
+          })
+        ]; };
       in patched.config.system.build.diskoScript')"
 
-    # Wipes, formats and mounts at /mnt. An encrypted layout asks for its
-    # passphrase here.
+    # Wipes, formats and mounts at /mnt. An encrypted layout takes the
+    # passphrase given above.
     "$diskoScript"
 
     # disko formats swap but its mount step leaves it off (its fs entries are
@@ -200,6 +278,58 @@ pkgs.writeShellApplication {
     # Step 2: build and download straight onto the new disk.
     nixos-install --flake "$flake#$host" --root /mnt --no-root-passwd --no-channel-copy
 
+    # The identity goes onto the new disk while /mnt is still mounted.
+    enrollSkipped=false
+    if [ "$(jq -r '.secrets' <<<"$facts")" = true ]; then
+      statePath="$(jq -r '.statePath' <<<"$facts")"
+      state="/mnt$statePath"
+      initArgs=(--state "$state" --host "$host")
+      if [ -n "$identity" ]; then
+        initArgs+=(--from-identity "$identity")
+      fi
+      fleet-secrets-sync init "''${initArgs[@]}"
+
+      if [ -z "$identity" ]; then
+        echo
+        echo "Enrollment file for $host:"
+        cat "$state/$host.enroll"
+        echo
+        fleet-identity --state "$state" --qr
+        if [ -n "$enrollOut" ]; then
+          cp -- "$state/$host.enroll" "$enrollOut"
+          echo "os-install: enrollment file copied to $enrollOut"
+        fi
+        if $noEnroll; then
+          enrollSkipped=true
+        elif $interactive; then
+          echo "On the maintainer's machine: fleet-secrets host-enroll $host --from <that file>"
+          if ! read -r -p "Enroll the host now on the maintainer's machine, then press Enter (Ctrl-D skips) " _; then
+            echo
+            enrollSkipped=true
+          fi
+        fi
+      fi
+
+      secretsRepo="$(jq -r '.secretsRepo' <<<"$facts")"
+      secretsRef="$(jq -r '.secretsRef' <<<"$facts")"
+      signers="$(jq -r '.signers // empty' <<<"$facts")"
+      if $enrollSkipped; then
+        echo "os-install: enrollment skipped; the secrets are fetched after boot"
+      elif [ -z "$signers" ]; then
+        echo "os-install: warning: $host sets no conf.fleet.signing.allowedSignersFile; secrets not fetched" >&2
+      else
+        rc=0
+        fleet-secrets-sync sync --state "$state" --host "$host" \
+          --repo "$secretsRepo" --ref "$secretsRef" --signers "$signers" || rc=$?
+        case "$rc" in
+          0)  echo "os-install: secrets in place" ;;
+          15) echo "os-install: secrets fetched but not yet decryptable by this host: finish enrollment, the host retries at boot" >&2 ;;
+          10) echo "os-install: deploy key not accepted yet: register it, the host retries at boot" >&2 ;;
+          *)  echo "os-install: secrets sync exited with code $rc (see the message above); the host retries at boot" >&2 ;;
+        esac
+      fi
+    fi
+
     swapoff --all || true
 
     echo
@@ -212,9 +342,9 @@ pkgs.writeShellApplication {
       echo "  - To unlock with the TPM as well as the passphrase (needs a TPM2 chip):"
       jq -r '.luks[] | "      sudo systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=7 " + .' <<<"$facts"
     fi
-    if [ "$(jq -r '.secrets' <<<"$facts")" = true ]; then
-      echo "  - Add the machine's age key to .sops.yaml, then run sops updatekeys:"
-      echo "      sudo age-keygen -y /var/lib/sops-nix/key.txt"
+    if $enrollSkipped; then
+      echo "  - Enrollment was skipped. The enrollment file is $statePath/$host.enroll on the"
+      echo "    installed system; 'sudo fleet-identity --qr' shows it after boot."
     fi
   '';
 }
