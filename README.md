@@ -13,7 +13,7 @@ a common configuration module rather than being per host.
 ```
 ├── flake.nix                        # entry point; discovers hosts/
 ├── lib/
-│   ├── apps/                        # os-install, system-switch, home-switch, check-purity, rpi-image
+│   ├── apps/                        # os-install, system-switch, home-switch, check-purity, rpi-image, fleet-secrets, secrets-harness
 │   ├── mkHost.nix                   # host factory (NixOS / nix-darwin)
 │   ├── buildUser.nix                # assembles a user's Home Manager modules
 │   ├── mkUser.nix                   # standalone Home Manager builder
@@ -24,8 +24,8 @@ a common configuration module rather than being per host.
 │   └── *.nix                        # every file here is imported as a module
 ├── users/<username>/                # optional per-user configuration
 │   └── default.nix                  # merged into that user's home, both paths
-├── templates/
-│   └── disko-luks.nix               # encrypted disk layout to copy into a host
+├── tests/
+│   └── secrets/                     # secrets-harness: local stand-in for the secrets repository
 └── modules/
     ├── conf/                        # the conf.* vocabulary: options/<concern>.nix, role.nix, machineType.nix
     ├── common/                      # configuration valid on both platforms
@@ -117,13 +117,48 @@ nix run .#os-install -- -H my-laptop -d /dev/nvme0n1    # or give them as flags
 nix run .#os-install -- --help
 ```
 
-The host's disk layout is declared in `hosts/<name>/disko-config.nix`.
-`os-install` only needs to know which host and which physical disk: anything
-not given as a flag is chosen from a dropdown (`fzf`, fetched with the app, so
-nothing has to be installed first). The disk list leaves out the installer's
-own boot medium. It shows what will be erased and asks for the host name as
-confirmation (`--yes` skips that), re-running itself with sudo if needed. `-d`
-takes `NAME=DEVICE` when a layout declares more than one disk.
+The host's disk layout is generated from `conf.hardware.disk`. `os-install`
+only needs to know which host and which physical disk: anything not given as a
+flag is chosen from a dropdown (`fzf`, fetched with the app, so nothing has to
+be installed first). The disk list leaves out the installer's own boot medium.
+It shows what will be erased and asks for the host name as confirmation
+(`--yes` skips that), re-running itself with sudo if needed. `-d` takes
+`NAME=DEVICE` when a layout declares more than one disk: `main` is
+`disk.device`, any other name is a key of `disk.extraDevices`.
+
+```nix
+conf.hardware.disk = {
+  enable = true;
+  device = "/dev/nvme0n1";
+  encrypt = true;                                    # the only encryption switch
+  volumes.swap.size = "32G";                         # change one field of a default volume
+  volumes.data = { size = "500G"; mountpoint = "/data"; };   # a custom volume
+  extraDevices.scratch = "/dev/sdb";                 # a further disk joins the volume group
+};
+```
+
+The layout is always one shape: an LVM volume group `main` over the primary
+disk and every `extraDevices` disk, holding the volumes the host declares. With
+`encrypt = true` each physical volume is wrapped in a LUKS2 container; with
+`false` (a VM, say) it is bare. `encrypt` is the only encryption switch; there
+is no second layout. A `fleet` volume (64 MB, mounted at `/var/lib/fleet`, in
+the initrd) is always present: it holds the host's secrets identity and
+survives a reinstall of `/`. `swap` (16G) and `root` (`100%FREE`, `/`) are
+defaults a host changes field by field, or drops with `enable = false`. A host
+that needs a layout these options cannot express leaves `disk.enable` off and
+writes `hosts/<name>/disko-config.nix` itself, with
+`modules/linux/baseline/disk.nix` as the reference.
+
+**Adding a disk to a running machine** takes two steps, in this order. First,
+on the host, `sudo disk-extend <name> <device>` partitions the disk, creates the
+LUKS container when the host is encrypted (asking for the existing
+passphrase), and joins it to the volume group; `--grow <volume>` also enlarges
+that volume and its ext4 or xfs filesystem. It refuses a device that already
+carries a filesystem, partition table or LUKS header, and prints the option to
+add when it finishes. Second, in the flake, add `extraDevices.<name> =
+"<device>"`, commit and switch, so the layout matches the machine and the
+initrd unlocks the new container. Declaring the disk before running
+`disk-extend` would make the initrd wait for a device that does not exist.
 
 The live ISO keeps its writable store in RAM, so the install is arranged to
 keep the system off it. The host's disko script partitions, formats and mounts
@@ -143,16 +178,28 @@ clones its configuration into `conf.fleet.localPath` at the revision it was
 built from, and keeps retrying until it has a network. The sync starts from
 that checkout.
 
-For an encrypted layout, start from `templates/disko-luks.nix`: copy it to
-`hosts/<name>/disko-config.nix` and set the swap size. disko asks for the
-passphrase while formatting. Two things stay manual after the first boot,
-because neither can happen before the machine exists, and `os-install` prints
-both when they apply: enrolling the TPM as a second unlock method when
-`conf.hardware.boot.tpm2Unlock` is set (`systemd-cryptenroll
---tpm2-device=auto --tpm2-pcrs=7 <luks device>`, asking for the passphrase), and
-adding the machine's age key to `.sops.yaml` when it has secrets (`sudo
-age-keygen -y /var/lib/sops-nix/key.txt`). Without a TPM chip the passphrase is
+disko asks for the passphrase while formatting; `os-install` asks once and
+gives it to every LUKS container, and at boot one prompt unlocks them all. One
+thing stays manual after the first boot, because it cannot happen before the
+machine exists, and `os-install` prints it when it applies: enrolling the TPM
+as a second unlock method when `conf.hardware.boot.tpm2Unlock` is set
+(`systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=7 <luks device>`, asking
+for the passphrase, once per container). Without a TPM chip the passphrase is
 simply the only method; the TPM option falls through to it at boot.
+
+A host with `conf.secrets.repo.url` also needs to be enrolled, which happens
+during the install (the full flow is under [`conf.secrets`](#confsecrets)).
+After `nixos-install`, `os-install` creates the host's identity under
+`/mnt/var/lib/fleet`, prints the enrollment file and a QR code of it, and
+waits. On the maintainer's machine, `fleet-secrets host-enroll <host> --from
+<file>` admits the host; back at the installer, pressing Enter fetches the
+host's secrets and checks that they decrypt. These flags control the step:
+
+| Flag | Effect |
+|---|---|
+| `--identity FILE` | Restore a host identity exported by `fleet-identity --export` instead of generating one; no enrollment is needed |
+| `--no-enroll` | Do not wait for enrollment; the host boots with locked accounts and retries the secrets fetch until it is enrolled |
+| `--enroll-out PATH` | Also copy the enrollment file to `PATH`, for example a mounted USB stick |
 
 **Fleet machines pull; they cannot push.** The checkout's push URL is set to an
 unusable value by the first-boot clone and re-applied on every sync, so a `git push` from a
@@ -252,8 +299,10 @@ Each entry in `conf.users.accounts` takes these fields:
 | `email` | str | `""` | Email address |
 | `privileged` | bool | `false` | Grants sudo through `wheel`, plus the privilege-adjacent groups for whichever services the host enables |
 | `groups` | listOf str | `[]` | Extra groups. Privilege-granting groups are rejected here |
-| `initialHashedPassword` | nullOr str | `null` | Password hash applied when the account is created, `mkpasswd -m yescrypt` format. `null` creates it locked |
+| `initialHashedPassword` | nullOr str | `null` | Password hash applied when the account is created, `mkpasswd -m yescrypt` format. `null` creates it locked. On a host with `conf.secrets.repo.url` the hash comes from the secrets repository instead |
 | `sshKeys` | listOf str | `[]` | SSH public keys accepted for this account |
+| `secrets.password` | bool | `true` | Take the account's password hash from `users/<name>/<host>.yaml` in the secrets repository. Ignored on a host without `conf.secrets.repo.url`; setting `initialHashedPassword` as well is an error on an opted-in host |
+| `secrets.sshKey` | bool | `false` | Deploy a per-host SSH key from the same file to `/run/secrets/users/<name>/ssh_key`. Can be turned on any time after the account exists. Ignored on a host without `conf.secrets.repo.url` |
 | `selfManagedHome` | bool | `false` | This user manages their own home instead of the system doing it |
 | `manageAccount` | nullOr bool | `null` | Whether the account itself is created here. `null` means true on Linux and false on macOS |
 | `uid` | nullOr int | `null` | Numeric user id. Required on macOS when `manageAccount` is true |
@@ -272,6 +321,12 @@ user with `selfManagedHome` — their own `~/.config/home-manager/home.nix`.
 | `hardware.graphics.vendor` | enum: `intel`/`amd`/`nvidia` | `"intel"` | Driver selection |
 | `hardware.bluetooth.enable` | toggle | `false` | Bluetooth stack (bluez, blueman); also enables all firmware |
 | `hardware.powerManagement.enable` | toggle | `false` | Power management daemons (tuned, upower) |
+| `hardware.disk.enable` | bool | `false` | Generate `disko.devices` from the options below. `false` means the host provides its own `disko-config.nix`, or is not installable with `os-install` |
+| `hardware.disk.device` | nullOr str | `null` | Primary disk: boot partitions and the first physical volume. Required when enabled. `os-install -d main=DEV` overrides it |
+| `hardware.disk.encrypt` | bool | `true` | Wrap every physical volume in a LUKS2 container (`allowDiscards`). The only encryption switch; `false` for VMs. A generated unencrypted layout on a laptop gives a warning |
+| `hardware.disk.espSize` | str | `"1G"` | Size of the EFI system partition |
+| `hardware.disk.volumes.<name>` | attrsOf volume | `fleet`, `swap`, `root` | Logical volumes in the volume group `main`. Keys merge, so a host adds volumes without restating defaults, and drops one with `enable = false`. See below |
+| `hardware.disk.extraDevices.<name>` | attrsOf str | `{}` | Further whole disks that join the volume group, keyed by a short name (`data = "/dev/sdb"`). `os-install -d <name>=DEV` overrides each |
 | `hardware.boot.mode` | enum: `bios`/`uefi` | `"uefi"` | Firmware interface |
 | `hardware.boot.loader` | nullOr enum: `systemd-boot`/`grub`/`uboot` | `"systemd-boot"` | Bootloader; GRUB when `mode` is `bios` |
 | `hardware.boot.efiVariables` | toggle | `false` | Let the bootloader write EFI variables |
@@ -282,6 +337,23 @@ user with `selfManagedHome` — their own `~/.config/home-manager/home.nix`.
 | `hardware.boot.splash.themePackages` | listOf package | `[]` | Packages providing `theme`; the themes bundled with Plymouth need none |
 
 `hardware.graphics` also takes `extraPackages` and `nix-ldLibraries`.
+
+Each entry in `conf.hardware.disk.volumes` takes these fields:
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `enable` | bool | `true` | `false` removes a default volume, for example `swap` on a VM |
+| `type` | enum: `filesystem`/`swap` | `"filesystem"` | What the volume holds |
+| `size` | str | *(none)* | LVM syntax: `"16G"`, `"20%VG"`, `"100%FREE"`. At most one volume may use `100%FREE` |
+| `mountpoint` | nullOr str | `null` | Where it is mounted. Required for filesystems |
+| `fsType` | str | `"ext4"` | Any filesystem disko supports (`ext4`, `xfs`, `btrfs`, …) |
+| `mountOptions` | listOf str | `[ "defaults" ]` | Mount options |
+| `neededForBoot` | bool | `false` | Mount the volume in the initrd |
+| `priority` | int | `1000` | Creation order in the volume group, lower first. A `100%FREE` volume left at the default is created last |
+
+The module declares `fleet` (`64M`, `/var/lib/fleet`, `neededForBoot`; it must
+stay enabled), `swap` (`16G`) and `root` (`100%FREE`, `/`), each value as a
+default.
 
 ### `conf.networking` and `conf.sharing`
 
@@ -389,47 +461,13 @@ accept `configPath` for a local path and `configRepo` for a remote one.
 |---|---|---|---|
 | `fleet.repo.url` | nullOr str | `null` | Git remote the machine is deployed from |
 | `fleet.repo.ref` | str | `"main"` | Branch or tag to track |
-| `fleet.repo.deployKeySecret` | nullOr str | `null` | Key in `conf.secrets.file` with a read-only SSH deploy key for a private remote |
+| `fleet.repo.deployKeySecret` | nullOr str | `null` | Key in `hosts/<host>.yaml` of the secrets repository with a read-only SSH deploy key for a private remote. Requires `conf.secrets.repo.url` |
 | `fleet.localPath` | str | `"/etc/nixos"` | Where the configuration checkout lives |
 | `fleet.signing.allowedSignersFile` | nullOr path | `null` | SSH allowed-signers file every fetched commit must be signed by. Required when `repo.url` is set |
-
-### `conf.secrets`
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `secrets.file` | nullOr path | `null` | sops-encrypted file with this host's secrets. `null` keeps the sops machinery off |
-
-Each machine holds its own age key at `/var/lib/sops-nix/key.txt`; `os-install`
-generates it and prints the public half, and a machine installed another way
-generates one on first activation (`age-keygen -y /var/lib/sops-nix/key.txt`
-prints it afterwards). Public keys go into `.sops.yaml`; secrets are encrypted
-with `sops` and committed — only ciphertext ever enters the repository.
-
-Two kinds of secret file exist:
-
-- **Per user: `users/<name>/secrets.yaml`**, with a `password` key holding the
-  account's `mkpasswd -m yescrypt` hash. Its presence is enough: the hash is
-  applied on every activation to every host that declares the account, which is
-  also how a password is rotated. Encrypt it to every such host plus an
-  administrator key, and run `sops updatekeys` when a host is added.
-- **Per host: `conf.secrets.file`**, for things that belong to the machine —
-  a read-only deploy key (`fleet.repo.deployKeySecret`), certificates.
-
-```yaml
-# .sops.yaml
-keys:
-  - &admin age1...
-  - &laptop1 age1...
-  - &server1 age1...
-creation_rules:
-  - path_regex: users/alice/secrets\.yaml$
-    key_groups: [{ age: [*admin, *laptop1, *server1] }]
-  - path_regex: hosts/server1/secrets\.yaml$
-    key_groups: [{ age: [*admin, *server1] }]
-```
-
-Anyone with root on a machine can read the secrets encrypted to it — which is
-no more than root can read from `/etc/shadow` already.
+| `fleet.support.enable` | nullOr bool | `null` | Create an account for the maintainer to reach the host with. `null` means on when `conf.secrets.repo.url` is set. On macOS only where `manageAccount` is possible |
+| `fleet.support.user` | str | `"support"` | Name of the support account |
+| `fleet.support.sshKeys` | listOf str | `[]` | The maintainer's public keys, ideally hardware-backed `sk-ssh-ed25519`. Required when the account is enabled. The account is privileged with a sudo rule without a password, since its password is locked and the key is the factor |
+| `fleet.support.consolePassword` | bool | `false` | Also take a password hash for the account from `hosts/<host>.yaml` (`support_password`), for console login without a network |
 | `fleet.autoUpdate.enable` | nullOr bool | `null` | Periodic sync and rebuild. `null` means on when `repo.url` is set |
 | `fleet.autoUpdate.dates` | str | `"04:00"` | systemd `OnCalendar` expression |
 | `fleet.autoUpdate.randomizedDelaySec` | int | `1800` | Jitter, so a fleet does not sync simultaneously |
@@ -439,6 +477,119 @@ no more than root can read from `/etc/shadow` already.
 
 Point a canary group of machines at one `ref` and the rest at another, then
 promote a release by moving the slower ref.
+
+### `conf.secrets`
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `secrets.repo.url` | nullOr str | `null` | The private secrets repository (`git@github.com:org/fleet-secrets.git`). `null` opts the host out entirely: no secrets sync, no host identity, sops off, `accounts.<name>.secrets.*` ignored, no support account |
+| `secrets.repo.ref` | str | `"main"` | Branch of the secrets repository to track |
+| `secrets.statePath` | str | `"/var/lib/fleet"` | Where the host's identity, enrollment file and secrets snapshot live. Expected to be its own volume |
+
+Setting `repo.url` requires `conf.fleet.signing.allowedSignersFile`, and a plain
+`http://` URL is rejected. Secrets never enter this repository, which is
+public: the ciphertext, and the list of who can decrypt it, live in a separate
+**private** repository, `fleet-secrets`, with branch protection and one
+read-only deploy key per host. Its layout:
+
+```
+fleet-secrets/
+  fleet.yaml                   registry of recipients, kept by fleet-secrets
+  .sops.yaml                   rendered from fleet.yaml; never edited by hand
+  hosts/laptop1.yaml           host secrets for laptop1
+  users/alice/laptop1.yaml     alice's secrets on laptop1 (password, and ssh_key and ssh_key_pub if wanted)
+  users/alice/server1.yaml     alice's secrets on server1: a different SSH key, if any
+```
+
+`.sops.yaml` has two rules per host and none per user, so a file is readable by
+exactly one host plus the maintainer's recovery key. A user file holds
+`password` (a `mkpasswd -m yescrypt` hash) and, when `secrets.sshKey` is on,
+`ssh_key` and `ssh_key_pub`. A host file holds whatever that machine needs;
+`support_password` and `config_deploy_key` are reserved names.
+
+```nix
+# hosts/laptop1/default.nix
+conf.hardware.disk = { enable = true; device = "/dev/nvme0n1"; encrypt = true; volumes.swap.size = "32G"; };
+conf.secrets.repo.url = "git@github.com:org/fleet-secrets.git";
+conf.fleet.support.sshKeys = [ "sk-ssh-ed25519@openssh.com AAAA…" ];
+conf.users.accounts.alice = { fullName = "Alice"; };   # password from secrets; no SSH key yet
+```
+
+**On the host.** Each host has an identity of two keys, both root-only files in
+`conf.secrets.statePath`, which is its own volume (`fleet`) so a reinstall of
+`/` leaves it alone: an age key (`age.key`) that decrypts, and an SSH deploy
+key (`deploy_ed25519`) that only fetches ciphertext. `os-install` generates
+them, or restores them with `--identity`. No copy exists anywhere else, so a
+reinstall either carries the identity over by hand or re-keys the host. Each
+sync fetches the secrets repository into a temporary directory, verifies the
+commit signature, copies only this host's files into a snapshot in
+`<statePath>/secrets`, and deletes the clone; sops-nix decrypts the snapshot
+at activation. Before building, the sync also refuses a new configuration that
+needs a secret the snapshot lacks.
+
+| Path | Owner / mode | Used by |
+|---|---|---|
+| `/run/secrets-for-users/password/alice` | root, 0400 | Account creation (`hashedPasswordFile`), available before accounts exist |
+| `/run/secrets/users/alice/ssh_key` | alice, 0400 | Her SSH client and git signing; only if `secrets.sshKey` is on |
+| `/run/secrets/users/alice/ssh_key.pub` | alice, 0444 | For reference |
+| `/run/secrets/<host secret>` | per module | Whichever module declared it |
+
+`/run/secrets` is a tmpfs rebuilt at every activation and boot, and the key is
+deliberately not placed in `~/.ssh`: nothing is copied to disk, and the Home
+Manager baseline points SSH and git at the `/run/secrets` path. Anyone with
+root on a machine can read what is encrypted to it, which is no more than root
+can read from `/etc/shadow` already.
+
+Two commands carry the work. `fleet-secrets` (`nix run .#fleet-secrets`) is the
+maintainer's tool, run in a clone of the secrets repository, with `--recovery
+~/.fleet/recovery.age` for the passphrase-protected recovery identity: `host-enroll`,
+`host-rekey`, `host-retire`, `user-password` and `user-key`. It keeps
+`fleet.yaml` and `.sops.yaml` consistent and commits each change; it refuses a
+dirty tree. `fleet-identity` is installed on opted-in hosts and prints the
+host's enrollment file (`--qr` for a QR code); `sudo fleet-identity --export`
+writes the private identity document for a planned reinstall. For a local
+test without a hosting service, `nix run .#secrets-harness` stands in for the
+secrets repository and the configuration upstream; see `tests/secrets/README.md`.
+
+**Runbooks**, with host `laptop1`, user `alice` and the maintainer:
+
+- **New host.** Declare `hosts/laptop1/` with `conf.secrets.repo.url` and the
+  accounts, commit, push. At the machine run `os-install -H laptop1`; it waits
+  with the enrollment file on screen. On the maintainer's machine run
+  `fleet-secrets host-enroll laptop1 --from laptop1.enroll`, register the
+  printed deploy public key as a read-only deploy key of the secrets
+  repository, run `fleet-secrets user-password alice laptop1`, and push. Press
+  Enter at the installer. With `--no-enroll` the host boots with locked
+  accounts and retries until enrolled. Once the host is up, the remote variant
+  is `ssh support@laptop1 cat /var/lib/fleet/laptop1.enroll | fleet-secrets
+  host-enroll laptop1 --from -`.
+- **Add a user.** Add `users.accounts.bob` to the host, run
+  `fleet-secrets user-password bob laptop1`, push both repositories. If the
+  file is forgotten, the sync refuses to build and logs `missing:
+  secrets/users/bob/laptop1.yaml`; nothing changes until it exists.
+- **Add an SSH key later.** Set `accounts.bob.secrets.sshKey = true`, run
+  `fleet-secrets user-key bob laptop1`, register the printed public key where
+  bob needs access, push both repositories. Order does not matter; the sync
+  refuses until both exist.
+- **Rotate a password or key.** Run `user-password` or `user-key` again and
+  push. For a key, register the new public key and revoke the old one on the
+  forge. Users cannot change their own passwords on a fleet host.
+- **Lost or compromised host.** `fleet-secrets host-retire laptop1`, push,
+  delete its deploy key on the forge (immediate), then rotate what the host
+  could decrypt, which is only its own files: alice's password and key on
+  laptop1, and whatever was in `hosts/laptop1.yaml`. Her keys on other hosts
+  were never there.
+- **User leaves.** Delete `users/alice/*.yaml`, remove `accounts.alice` from the
+  hosts, commit both repositories, revoke her public keys on the forge. The
+  account disappears at the next sync.
+- **Reinstall.** If the `fleet` volume survived, nothing is needed. Otherwise
+  it is a re-key: `os-install -H laptop1` creates a new identity and
+  enrollment file, `fleet-secrets host-rekey laptop1 --from laptop1.enroll`
+  re-encrypts that host's files to it, swap the deploy key on the forge, press
+  Enter at the installer. To carry the identity over instead, on the working
+  machine `sudo fleet-identity --export > /media/usb/laptop1.identity`, then
+  `os-install -H laptop1 --identity laptop1.identity`; no repository or forge
+  change is needed, and the stick should be shredded afterwards.
 
 ## Roles
 
@@ -615,7 +766,7 @@ since root has no `known_hosts` of its own.
 **Fleet hosts have immutable accounts.** `users.mutableUsers` is false whenever
 `fleet.repo.url` is set: activation rewrites `/etc/passwd` and `/etc/shadow`, so
 a locally added user or a changed password does not survive the next sync.
-Passwords then come from `passwordSecret`; an account without one is locked.
+Passwords then come from the secrets repository; an account without one is locked.
 
 **Every Linux host audits.** `auditd` records commands run as root by a
 logged-in person, and writes to the configuration checkout, the system
