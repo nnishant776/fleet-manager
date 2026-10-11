@@ -10,6 +10,10 @@
           `null` opts the host out entirely: no secrets sync, no host
           identity, sops off, and `conf.users.accounts.<name>.secrets.*` are
           ignored.
+
+          On NixOS it must be an SSH URL, since the host authenticates with
+          its deploy key, and it requires `conf.fleet.signing.allowedSignersFile`
+          and `conf.fleet.repo.url`: the fleet sync refreshes the secrets.
         '';
       };
       ref = lib.mkOption {

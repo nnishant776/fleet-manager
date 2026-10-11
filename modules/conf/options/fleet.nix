@@ -70,8 +70,7 @@
 
           `null` means on when `conf.secrets.repo.url` is set and off when it
           is not. Set `true` to create the account on a host that has not opted
-          in to secrets. On Darwin the account is created only where
-          `manageAccount` is possible, so an MDM-managed Mac never gets one.
+          in to secrets. NixOS only: no Darwin host gets the account yet.
         '';
       };
       user = lib.mkOption {

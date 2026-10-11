@@ -319,7 +319,7 @@ user with `selfManagedHome` — their own `~/.config/home-manager/home.nix`.
 |---|---|---|---|
 | `hardware.graphics.enable` | toggle | `false` | Hardware acceleration |
 | `hardware.graphics.vendor` | enum: `intel`/`amd`/`nvidia` | `"intel"` | Driver selection |
-| `hardware.bluetooth.enable` | toggle | `false` | Bluetooth stack (bluez, blueman); also enables all firmware |
+| `hardware.bluetooth.enable` | toggle | `false` | Bluetooth stack (bluez, blueman); also enables all firmware. Needs `networking.enable` |
 | `hardware.powerManagement.enable` | toggle | `false` | Power management daemons (tuned, upower) |
 | `hardware.disk.enable` | bool | `false` | Generate `disko.devices` from the options below. `false` means the host provides its own `disko-config.nix`, or is not installable with `os-install` |
 | `hardware.disk.device` | nullOr str | `null` | Primary disk: boot partitions and the first physical volume. Required when enabled. `os-install -d main=DEV` overrides it |
@@ -360,11 +360,11 @@ default.
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `networking.enable` | toggle | `false` | NetworkManager |
-| `networking.wifi.enable` | toggle | `false` | Wi-Fi backend |
+| `networking.wifi.enable` | toggle | `false` | Wi-Fi backend. Needs `networking.enable` |
 | `networking.firewall.enable` | nullOr bool | `null` | `null` keeps the NixOS firewall at its default, which is on; `true`/`false` set it explicitly. `false` is rejected on a fleet host |
 | `networking.firewall.config` | attrs | `{}` | Merged into `networking.firewall` |
-| `sharing.enable` | toggle | `false` | Services that expose this machine to the network |
-| `sharing.ssh.enable` | toggle | `false` | SSH server |
+| `sharing.enable` | toggle | `false` | Services that expose this machine to the network. Gates `rdp`; `ssh` does not need it |
+| `sharing.ssh.enable` | toggle | `false` | SSH server, keys only, for members of `ssh-users`. Needs `networking.enable`. Set by the support account |
 | `sharing.ssh.config` | attrs | `{}` | Merged into `services.openssh` |
 | `sharing.rdp.enable` | toggle | `false` | Host a remote desktop (GNOME RDP). Off even with GNOME; connecting to other machines needs nothing here |
 
@@ -393,7 +393,7 @@ for example in a `network.nix`.
 | `desktop.environments.hyprland.enable` | toggle | `false` | Make Hyprland available |
 | `desktop.environments.hyprland.shell` | enum: `none`/`caelestia`/`noctalia`/`dms` | `"none"` | Desktop shell on Hyprland |
 | `desktop.environments.sway.enable` | toggle | `false` | Make Sway available |
-| `desktop.greeter.wallpaper` | nullOr path | `null` | Background image for the login screen |
+| `desktop.greeter.wallpaper` | nullOr path | *bundled image* | Background image for the login screen; `null` for ReGreet's plain background |
 | `desktop.packages` | listOf package | `[]` | **Replaces** the default desktop application set |
 | `desktop.extraPackages` | listOf package | `[]` | **Appends** to the desktop application set |
 | `desktop.fonts.packages` | listOf package | `[]` | **Replaces** the curated font set |
@@ -464,7 +464,7 @@ accept `configPath` for a local path and `configRepo` for a remote one.
 | `fleet.repo.deployKeySecret` | nullOr str | `null` | Key in `hosts/<host>.yaml` of the secrets repository with a read-only SSH deploy key for a private remote. Requires `conf.secrets.repo.url` |
 | `fleet.localPath` | str | `"/etc/nixos"` | Where the configuration checkout lives |
 | `fleet.signing.allowedSignersFile` | nullOr path | `null` | SSH allowed-signers file every fetched commit must be signed by. Required when `repo.url` is set |
-| `fleet.support.enable` | nullOr bool | `null` | Create an account for the maintainer to reach the host with. `null` means on when `conf.secrets.repo.url` is set. On macOS only where `manageAccount` is possible |
+| `fleet.support.enable` | nullOr bool | `null` | Create an account for the maintainer to reach the host with. `null` means on when `conf.secrets.repo.url` is set. NixOS only; macOS hosts get no support account yet. Sets `sharing.ssh.enable` |
 | `fleet.support.user` | str | `"support"` | Name of the support account |
 | `fleet.support.sshKeys` | listOf str | `[]` | The maintainer's public keys, ideally hardware-backed `sk-ssh-ed25519`. Required when the account is enabled. The account is privileged with a sudo rule without a password, since its password is locked and the key is the factor |
 | `fleet.support.consolePassword` | bool | `false` | Also take a password hash for the account from `hosts/<host>.yaml` (`support_password`), for console login without a network |
@@ -482,12 +482,15 @@ promote a release by moving the slower ref.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `secrets.repo.url` | nullOr str | `null` | The private secrets repository (`git@github.com:org/fleet-secrets.git`). `null` opts the host out entirely: no secrets sync, no host identity, sops off, `accounts.<name>.secrets.*` ignored, no support account |
+| `secrets.repo.url` | nullOr str | `null` | The private secrets repository, as an SSH URL (`git@github.com:org/fleet-secrets.git`). Requires `fleet.repo.url` and `fleet.signing.allowedSignersFile`. `null` opts the host out entirely: no secrets sync, no host identity, sops off, `accounts.<name>.secrets.*` ignored, no support account |
 | `secrets.repo.ref` | str | `"main"` | Branch of the secrets repository to track |
 | `secrets.statePath` | str | `"/var/lib/fleet"` | Where the host's identity, enrollment file and secrets snapshot live. Expected to be its own volume |
 
-Setting `repo.url` requires `conf.fleet.signing.allowedSignersFile`, and a plain
-`http://` URL is rejected. Secrets never enter this repository, which is
+Setting `repo.url` requires `conf.fleet.signing.allowedSignersFile`, which every
+fetched commit is verified against, and `conf.fleet.repo.url`, since the fleet
+sync is what refreshes the secrets. The URL must be an SSH one, because the host
+authenticates with its deploy key; `http://` and `https://` are rejected.
+Secrets never enter this repository, which is
 public: the ciphertext, and the list of who can decrypt it, live in a separate
 **private** repository, `fleet-secrets`, with branch protection and one
 read-only deploy key per host. Its layout:
@@ -510,6 +513,8 @@ exactly one host plus the maintainer's recovery key. A user file holds
 ```nix
 # hosts/laptop1/default.nix
 conf.hardware.disk = { enable = true; device = "/dev/nvme0n1"; encrypt = true; volumes.swap.size = "32G"; };
+conf.fleet.repo.url = "https://github.com/org/fleet-config.git";
+conf.fleet.signing.allowedSignersFile = ../../fleet/allowed_signers;
 conf.secrets.repo.url = "git@github.com:org/fleet-secrets.git";
 conf.fleet.support.sshKeys = [ "sk-ssh-ed25519@openssh.com AAAA…" ];
 conf.users.accounts.alice = { fullName = "Alice"; };   # password from secrets; no SSH key yet
@@ -595,29 +600,91 @@ secrets repository and the configuration upstream; see `tests/secrets/README.md`
 
 A role is what the machine is for. Every value it sets uses `lib.mkDefault`, so
 a plain assignment in a host configuration always wins without any special
-syntax. Roles inherit from one another; `developer` and `gaming` build on
-`workstation`.
+syntax. Roles inherit from one another using `lib.recursiveUpdate`; `developer`
+and `gaming` build on `workstation`, while `server` and `embedded` build on
+`minimal`.
 
-| Role | Enables |
-|---|---|
-| `minimal` | networking |
-| `server` | networking, containers, virtualisation, development with `sdk.base` |
-| `workstation` | networking, graphics, desktop with multimedia, flatpak |
-| `developer` | the workstation set, plus containers, virtualisation and development with `sdk.base`, `sdk.cpp` and neovim |
-| `gaming` | the workstation set |
-| `embedded` | networking, development with `sdk.base` and `sdk.cpp` |
+When `conf.machineType` is omitted, its default is deduced from `conf.role`:
+roles without an interactive graphical seat (`server`, `minimal`, `embedded`)
+default to `headless`, while graphical workstation roles (`workstation`,
+`developer`, `gaming`) default to `desktop`.
+
+| Role | Direct `conf.*` Defaults | Default `machineType` |
+|---|---|---|
+| `minimal` | `networking.enable` | `headless` |
+| `server` | `networking.enable`, `containers.enable`, `virtualisation.enable`, `development.enable`, `development.sdk.base.enable` | `headless` |
+| `workstation` | `networking.enable`, `hardware.graphics.enable`, `desktop.enable`, `desktop.multimedia.enable`, `flatpak.enable` | `desktop` |
+| `developer` | The `workstation` set, plus `containers.enable`, `virtualisation.enable`, `development.enable`, `development.sdk.base.enable`, `development.sdk.cpp.enable`, `development.editors.neovim.enable` | `desktop` |
+| `gaming` | The `workstation` set | `desktop` |
+| `embedded` | `networking.enable`, `development.enable`, `development.sdk.base.enable`, `development.sdk.cpp.enable` | `headless` |
 
 ### Machine types
 
 A machine type is what the machine physically is, orthogonal to its role. The
 defaults it sets are `lib.mkDefault` too.
 
-| Type | Sets |
+A machine type contributes defaults across two levels:
+1. **`conf.*` options** applied with `flakeLib.mkDefaults` (`modules/conf/machineType.nix`).
+2. **System, kernel, hardware and security postures** keyed directly off `conf.machineType` across the Linux modules.
+
+| Type | `conf.*` Options | System, Hardware & Security Posture (Linux) |
+|---|---|---|
+| `laptop` | `networking.wifi.enable`, `hardware.bluetooth.enable`, `hardware.powerManagement.enable` | `services.fwupd.enable = true`; `services.thermald.enable` on Intel (follows `hardware.cpu.intel.updateMicrocode`); `hardware.sensor.iio.enable = true`; `security.protectKernelImage = false` (kexec and hibernation stay available); a generated disk layout with `hardware.disk.encrypt = false` gives an evaluation warning |
+| `desktop` | `hardware.powerManagement.enable` | `services.fwupd.enable = true`; `security.protectKernelImage = false` (kexec and hibernation stay available); Wi-Fi and Bluetooth stay off unless set |
+| `headless` | *(none)* | Hardened posture: `security.protectKernelImage = true` (no kexec, no hibernation); `nix.settings.allowed-users = [ "@wheel" ]` on NixOS; `networking.firewall.logRefusedConnections = true`; `services.fwupd.enable = false` |
+| `vm` | *(none)* | Guest integration: `services.qemuGuest.enable = true`; `services.spice-vdagentd.enable` follows `desktop.enable`; `security.protectKernelImage = true`; `services.fwupd.enable = false`. Power daemons still follow `desktop.enable` (see below), so a desktop-role VM gets them unless `hardware.powerManagement.enable = false` |
+
+Only the `conf.*` column applies on macOS; the posture column is implemented
+by the Linux modules.
+
+### Computed defaults
+
+Some options have no fixed default: when left unset (usually `null`) they
+resolve from other options. A plain assignment always wins.
+
+| Option | Unset resolves to | Where |
+|---|---|---|
+| `conf.machineType` | `"headless"` for the `server`, `minimal` and `embedded` roles, otherwise `"desktop"` | `modules/conf/machineType.nix` |
+| `conf.hardware.boot.loader` | `"grub"` when `hardware.boot.mode = "bios"`, otherwise `"systemd-boot"` | `modules/linux/baseline/boot.nix` |
+| `conf.networking.firewall.enable` | `null`: the NixOS default, which is on. `false` is rejected when `conf.fleet.repo.url` is set | `modules/linux/networking/firewall.nix` |
+| `conf.fleet.autoUpdate.enable` | on when `conf.fleet.repo.url` is set, off otherwise. `true` without a `repo.url` is an error | `modules/linux/fleet/sync.nix` |
+| `conf.fleet.support.enable` | on when `conf.secrets.repo.url` is set, off otherwise. NixOS only | `modules/linux/fleet/support.nix` |
+| `conf.users.accounts.<name>.manageAccount` | `true` on NixOS, `false` on macOS (accounts come from MDM) | `lib/flakeLib.nix` |
+| `conf.users.accounts.<name>.fullName` | the username | `modules/conf/options/users.nix` |
+| `conf.desktop.greeter.wallpaper` | the bundled `wallhaven-j5oy7m.jpg`; `null` gives ReGreet's plain background | `modules/linux/desktop/greeter/wallpaper.nix` |
+| `conf.hardware.disk.volumes` | `fleet` (`64M`, `/var/lib/fleet`), `swap` (`16G`), `root` (`100%FREE`, `/`), each field a default, when `hardware.disk.enable` | `modules/linux/baseline/disk.nix` |
+| `users.mutableUsers` | `false` when `conf.fleet.repo.url` is set, so accounts and passwords are exactly what the configuration declares | `modules/linux/host/users.nix` |
+| `programs.nix-ld.enable` | follows `conf.development.enable` | `modules/linux/development/nix-ld.nix` |
+| `services.sshguard.enable` | on only while sshd accepts passwords | `modules/linux/sharing/ssh.nix` |
+| `boot.loader.timeout` | `0` on systemd-boot and `1` on GRUB (menu hidden) when `hardware.boot.splash.enable` | `modules/linux/baseline/boot.nix` |
+
+### Cascading implications
+
+Enabling a toggle, by hand or through `role` and `machineType`, cascades into
+secondary defaults, services and account groups. The roles that turn each
+trigger on are in italics. "Weakly" means `lib.mkDefault`: a host can still
+turn the implied option off.
+
+| Trigger | Cascading Implications |
 |---|---|
-| `laptop` | Wi-Fi, Bluetooth, power management, thermald on Intel, sensors; hibernation stays available |
-| `desktop` | power management, firmware updates |
-| `headless` | `protectKernelImage` (no kexec, no hibernation), no removable-media automount, `nix.settings.allowed-users = [ "@wheel" ]`, firewall logs refused connections |
-| `vm` | `protectKernelImage`, QEMU guest agent, SPICE agent when a desktop is on |
+| `conf.networking.enable`<br>*(all roles)* | • NetworkManager, with `systemd-resolved` doing opportunistic DNS-over-TLS and `DNSSEC = "allow-downgrade"`<br>• Prerequisite for `networking.wifi`, `hardware.bluetooth` and `sharing.ssh`: without it those three do nothing<br>• Account groups: `network-users` (join and switch networks only) for unprivileged accounts, `networkmanager` for privileged ones |
+| `conf.networking.wifi.enable`<br>*(laptop)* | • With `networking.enable`: `networking.wireless.enable` |
+| `conf.hardware.bluetooth.enable`<br>*(laptop)* | • With `networking.enable`: `hardware.bluetooth.enable`, `hardware.enableAllFirmware`, `hardware.alsa.enableBluetooth`, `services.blueman.enable` |
+| `conf.hardware.powerManagement.enable`<br>*(laptop, desktop, or `desktop.enable`)* | • `services.upower.enable`, `services.tuned.enable` |
+| `conf.desktop.enable`<br>*(workstation, developer, gaming)* | • Weakly enables `desktop.multimedia.enable`, `hardware.graphics.enable`, `hardware.powerManagement.enable` and `flatpak.enable`, whatever the role<br>• Polkit, GVFS, display manager with the ReGreet greeter, AccountsService, `udisks2` (removable-media automount)<br>• Account groups: `video` and `input` for every account<br>• On `machineType = "vm"`: `services.spice-vdagentd` |
+| `conf.containers.enable`<br>*(server, developer)* | • Docker (rootful daemon, plus rootless with `DOCKER_HOST` set for users) and Podman; Podman, skopeo and buildah accept only `containers.registries`<br>• Account groups: `docker` and `podman` for privileged accounts only |
+| `conf.virtualisation.enable`<br>*(server, developer)* | • `libvirtd` with swtpm, virt-manager<br>• Account groups: `kvm` for every account, `libvirtd` for privileged accounts only |
+| `conf.development.enable`<br>*(server, developer, embedded)* | • Weakly enables `programs.nix-ld.enable`, for running unpatched foreign binaries<br>• Enabled SDK, editor, tool, graphics, multimedia and virtualisation groups export their `nix-ldLibraries`; the curated base set needs `development.nixLd.enable` |
+| `conf.sharing.ssh.enable` | • With `networking.enable`: sshd on port 22, keys only, root login refused, `AllowGroups = [ "ssh-users" ]`<br>• Account groups: `ssh-users` for privileged accounts; others opt in through `groups` |
+| `conf.sharing.rdp.enable` | • With `sharing.enable`: GNOME Remote Desktop |
+| `conf.users.accounts.<name>.privileged` | • `wheel` (sudo), plus `networkmanager`, `ssh-users`, `docker`, `podman` and `libvirtd` for whichever of those services the host enables. These groups are rejected in `groups` |
+| `conf.fleet.repo.url` | • `fleet.autoUpdate.enable` on, `users.mutableUsers = false`<br>• Requires `fleet.signing.allowedSignersFile`; plain `http://` is rejected<br>• `networking.firewall.enable = false` is rejected; sshd password authentication gives a warning |
+| `conf.secrets.repo.url` | • `fleet.support.enable` on, which requires `fleet.support.sshKeys` and sets `sharing.ssh.enable = true` (sshd still needs `networking.enable`)<br>• sops-nix reads `<statePath>/secrets`; every account with `secrets.password` (the default) takes its hash from the secrets repository, so `initialHashedPassword` is an error<br>• Requires `fleet.repo.url` (`fleet-bootstrap` and `config-auto-update` refresh the secrets) and `fleet.signing.allowedSignersFile` (every fetched commit is verified against it); an HTTP(S) URL is rejected<br>• Accounts with `secrets.sshKey`: Home Manager points SSH and git signing at `/run/secrets/users/<name>/ssh_key` |
+| `conf.fleet.support.enable` | • A privileged `support` account with `fleet.support.sshKeys`, a locked password and passwordless sudo<br>• `sharing.ssh.enable = true` (a plain value, so it beats role defaults) |
+| `conf.hardware.boot.mode = "bios"` | • `hardware.boot.loader` defaults to `"grub"`; GRUB without `grubPasswordHash` gives a warning |
+| `conf.hardware.boot.splash.enable` | • Plymouth, quiet kernel and systemd output, hidden generation menu<br>• With `hardware.graphics.enable`: the Intel or AMD driver loads in the initrd (early KMS) |
+| `conf.hardware.disk.enable` | • Default `fleet`, `swap` and `root` volumes; `fleet` must stay enabled at `/var/lib/fleet`<br>• On a laptop: a warning when `encrypt = false` |
+
 
 ```nix
 # hosts/my-laptop/default.nix
