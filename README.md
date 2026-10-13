@@ -56,7 +56,7 @@ itself — and then hands over to the flake's own tools:
 |---|---|
 | macOS | installs Lix if needed, then switches to `<hostname>` with the nix-darwin this flake pins |
 | NixOS installer ISO | runs `os-install`; `<hostname>` is optional, and further arguments are passed to it |
-| an installed NixOS host | runs `system-switch` for `<hostname>` (default: this machine's hostname) |
+| an installed NixOS host | runs `system-switch` for `<hostname>` (default: this machine's hostname), building from the same flake |
 | another Linux | installs Lix and stops; only Home Manager is supported there |
 
 `FLAKE=github:org/repo/<tag>` in front of `sh` makes it use another flake, or a
@@ -92,7 +92,7 @@ in the host directory is imported, so `hardware-configuration.nix`,
 ```bash
 nixos-rebuild  switch --flake .#<hostname>     # Linux
 darwin-rebuild switch --flake .#<hostname>     # macOS
-system-switch                                  # wrapper; defaults to /etc/nixos and this host
+system-switch [host] [flake]                   # wrapper; defaults to this host and /etc/nixos; flake is a directory or a reference
 ```
 
 On a machine whose configuration lives in `/etc/nixos`, `nixos-rebuild switch`
