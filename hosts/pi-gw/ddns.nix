@@ -4,9 +4,13 @@
 #
 # The name is its own zone at deSEC (desec.io), delegated from the Cloudflare
 # zone by NS records, so nothing on the Pi can change the rest of the domain
-# (design doc, H3). The token's policies should allow writing only this name's
-# A and AAAA records (the update interface may touch both; this script keeps A
-# as it is). On pi-gw:
+# (design doc, H3). The record is written through deSEC's REST API, which
+# touches the zone apex's AAAA record only; A is left alone. Give the token a
+# default policy that denies everything, then one allowing just that record:
+#   {"domain": null, "subname": null, "type": null}
+#   {"domain": "private.geeky-panda.dev", "subname": "", "type": "AAAA", "perm_write": true}
+# The TTL is the domain's minimum at deSEC (3600 s unless support lowers it),
+# so clients may use the old address that long after a prefix change. On pi-gw:
 #   install -d -m 0700 /var/lib/ddns
 #   install -m 0600 /dev/stdin /var/lib/ddns/desec.token   # paste, Ctrl-D
 { pkgs, lib, ... }:
@@ -14,7 +18,8 @@ let
   a = import ./vms/addresses.nix;
   sandbox = import ./vms/sandbox.nix;
 
-  hostname = "private.geeky-panda.dev";
+  zone = "private.geeky-panda.dev";
+  api = "https://desec.io/api/v1/domains/${zone}";
 
   update = pkgs.writeShellApplication {
     name = "ddns-aaaa";
@@ -28,27 +33,42 @@ let
         exit 1
       fi
 
-      # deSEC rate-limits updates: send one only when the address changed.
+      # deSEC rate-limits writes: send one only when the address changed.
       last="$STATE_DIRECTORY/address"
       if [ -f "$last" ] && [ "$(< "$last")" = "$addr" ]; then
         exit 0
       fi
 
-      # The token reaches curl as a header file, never on a command line.
-      reply=$(curl -fsS \
-        -H @<(printf 'Authorization: Token %s\n' "$(< "$CREDENTIALS_DIRECTORY/token")") \
-        "https://update.dedyn.io/?hostname=${hostname}&myipv6=$addr&myipv4=preserve")
-      if [ "$reply" != good ]; then
+      # The token reaches curl as a header file, never on a command line. On
+      # an HTTP error curl fails but still returns deSEC's reply, for the log.
+      desec() {
+        curl -sS --fail-with-body \
+          -H @<(printf 'Authorization: Token %s\n' "$(< "$CREDENTIALS_DIRECTORY/token")") \
+          "$@"
+      }
+
+      if ! domain=$(desec "${api}/"); then
+        echo "deSEC: cannot read ${zone}: $domain" >&2
+        exit 1
+      fi
+      ttl=$(jq -er '.minimum_ttl' <<<"$domain")
+
+      # A bulk PATCH creates the RRset or replaces its records, and leaves
+      # every other RRset alone. The zone apex is the empty subname.
+      body=$(jq -nc --arg addr "$addr" --argjson ttl "$ttl" \
+        '[{subname: "", type: "AAAA", ttl: $ttl, records: [$addr]}]')
+      if ! reply=$(desec -X PATCH -H 'Content-Type: application/json' --data "$body" "${api}/rrsets/"); then
         echo "deSEC refused the update: $reply" >&2
         exit 1
       fi
+
       echo "$addr" > "$last"
-      echo "${hostname} -> $addr"
+      echo "${zone} -> $addr (TTL $ttl)"
     '';
   };
 in {
   systemd.services.ddns-aaaa = {
-    description = "Point ${hostname} at this host's stable IPv6 address";
+    description = "Point ${zone} at this host's stable IPv6 address";
     after = [ "network-online.target" ];
     wants = [ "network-online.target" ];
     serviceConfig = sandbox.serviceConfig // {
