@@ -2,14 +2,15 @@
 # own store image (storeOnDisk) holding only its closure: the host's /nix/store
 # is not shared, so a VM sees none of the host's or the other VM's store paths
 # and no virtiofsd runs on the host. Each VM's QEMU runs as its own host user,
-# microvm-<vm> (vm-users.nix).
+# guest-<vm> (vm-users.nix).
 #
 # Secrets reach a VM as systemd credentials (microvm.credentialFiles), read by
-# QEMU as that user from /var/lib/microvm-secrets/<vm>/, which is root's and
+# QEMU as that user from /var/lib/guest-credentials/<vm>/, which is root's and
 # readable by the VM's group only:
-#   install -m 0640 -o root -g microvm-<vm> <file> /var/lib/microvm-secrets/<vm>/<name>
+#   install -m 0640 -o root -g guest-<vm> <file> /var/lib/guest-credentials/<vm>/<name>
 { inputs, lib, ... }:
 let
+  n = import ./vms/names.nix;
   a = import ./vms/addresses.nix;
   ap = a.wg.apUsb;
   usbAp = a.wg.homeWifi == "usb";
@@ -34,6 +35,6 @@ in {
   # open it.
   boot.blacklistedKernelModules = lib.mkIf usbAp [ ap.driver ];
   services.udev.extraRules = lib.mkIf usbAp ''
-    SUBSYSTEM=="usb", ATTR{idVendor}=="${ap.vendor}", ATTR{idProduct}=="${ap.product}", GROUP="microvm-wg", MODE="0660"
+    SUBSYSTEM=="usb", ATTR{idVendor}=="${ap.vendor}", ATTR{idProduct}=="${ap.product}", GROUP="${n.userOf "wg"}", MODE="0660"
   '';
 }

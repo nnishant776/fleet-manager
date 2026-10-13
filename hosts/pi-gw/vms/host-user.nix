@@ -1,10 +1,10 @@
-# Taps and macvtap devices owned by this VM's own host user, microvm-<name>
+# Taps and macvtap devices owned by this VM's own host user, guest-<name>
 # (design doc, N1; the host side is ../vm-users.nix). microvm.nix creates them
 # for its shared `microvm` user, hardcoded in its interfaces.nix; these are its
 # set-up scripts with only the owner changed.
 { config, lib, pkgs, ... }:
 let
-  user = "microvm-${config.networking.hostName}";
+  user = (import ./names.nix).userOf config.networking.hostName;
   ip = lib.getExe' pkgs.iproute2 "ip";
   ofType = type: builtins.filter (i: i.type == type) config.microvm.interfaces;
 

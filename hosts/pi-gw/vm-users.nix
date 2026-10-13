@@ -2,7 +2,7 @@
 # one shared user, `microvm` in group `kvm`, which can open every VM's state
 # directory, taps and macvtap devices: a QEMU escape from the public VM would
 # reach the wg VM's disk (the WireGuard key) and, through its macvtap, the home
-# LAN. Here each VM's QEMU runs as microvm-<vm> in a group of its own, and no
+# LAN. Here each VM's QEMU runs as guest-<vm> in a group of its own, and no
 # VM shares a group with another. /dev/kvm, /dev/net/tun and /dev/vhost-net are
 # world-accessible on NixOS, so nothing needs `kvm`.
 #
@@ -18,7 +18,7 @@
 let
   stateDir = config.microvm.stateDir;
   names = lib.attrNames config.microvm.vms;
-  userOf = name: "microvm-${name}";
+  inherit (import ./vms/names.nix) userOf credentialsDir;
   forEach = f: lib.mkMerge (map f names);
 
   guestOf = name: config.microvm.vms.${name}.config.config;
@@ -37,7 +37,7 @@ let
 in {
   assertions = map (name: {
     assertion = (guestOf name).networking.hostName == name;
-    message = "microvm ${name}: its hostName must be its name; vms/host-user.nix derives the host user from it";
+    message = "guest ${name}: its hostName must be its name; vms/host-user.nix derives the host user from it";
   }) names;
 
   users.users = forEach (name: {
@@ -70,10 +70,10 @@ in {
 
     # Files QEMU passes to a VM as systemd credentials (microvm.credentialFiles),
     # readable by that VM's user only.
-    "20-microvm-secrets" = lib.mkMerge [
-      { "/var/lib/microvm-secrets".d = { user = "root"; group = "root"; mode = "0755"; }; }
+    "20-guest-credentials" = lib.mkMerge [
+      { "${credentialsDir}".d = { user = "root"; group = "root"; mode = "0755"; }; }
       (forEach (name: {
-        "/var/lib/microvm-secrets/${name}".d = { user = "root"; group = userOf name; mode = "0750"; };
+        "${credentialsDir}/${name}".d = { user = "root"; group = userOf name; mode = "0750"; };
       }))
     ];
   };

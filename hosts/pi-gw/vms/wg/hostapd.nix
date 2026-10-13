@@ -4,7 +4,7 @@
 # Pi's own Wi-Fi uplink.
 #
 # The passphrase comes from the host as a systemd credential:
-#   install -m 0640 -o root -g microvm-wg /dev/stdin /var/lib/microvm-secrets/wg/wifi.password
+#   install -m 0640 -o root -g guest-wg /dev/stdin /var/lib/guest-credentials/wg/wifi.password
 { pkgs, ... }:
 let
   a = import ../addresses.nix;
@@ -15,7 +15,7 @@ in {
     bus = "usb";
     path = "vendorid=0x${ap.vendor},productid=0x${ap.product}";
   }];
-  microvm.credentialFiles.wifi-password = "/var/lib/microvm-secrets/wg/wifi.password";
+  microvm.credentialFiles.wifi-password = "${(import ../names.nix).credentialsDir}/wg/wifi.password";
 
   # A stable name for the adapter, whatever bus path it lands on.
   systemd.network.links."10-wlan-lan" = {

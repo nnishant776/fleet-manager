@@ -27,7 +27,7 @@ in {
       mountPoint = "/var";
       size = 1024;
     }];
-    credentialFiles.cloudflared-tunnel = "/var/lib/microvm-secrets/public/tunnel.json";
+    credentialFiles.cloudflared-tunnel = "${(import ../names.nix).credentialsDir}/public/tunnel.json";
   };
 
   systemd.network.networks."10-uplink" = {

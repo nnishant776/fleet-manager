@@ -1,5 +1,5 @@
 # Test of pi-gw's per-VM host users (design doc, N1) on two small x86_64
-# microVMs built with the same modules as pi-gw's: vm-users.nix on the host and
+# VMs built with the same modules as pi-gw's: vm-users.nix on the host and
 # vms/host-user.nix in each guest. VM `a` has one tap without vhost, like the
 # public VM; VM `b` has a multi-queue tap with vhost and a macvtap, like the wg
 # VM. The test checks that both boot and answer under the confinement, that
@@ -117,7 +117,7 @@ pkgs.testers.runNixOSTest {
 
     with subtest("each VM's QEMU and resources belong to its own user"):
         for vm in ["a", "b"]:
-            user = f"microvm-{vm}"
+            user = f"guest-{vm}"
             pid = host.succeed(f"systemctl show -P MainPID microvm@{vm}").strip()
             host.succeed(f'test "$(stat -c %U /proc/{pid})" = {user}')
             host.succeed(
@@ -127,17 +127,17 @@ pkgs.testers.runNixOSTest {
             host.succeed(f'test "$(stat -c %U /var/lib/microvms/{vm}/var.img)" = {user}')
             host.succeed(f'test "$(cat /sys/class/net/vm-{vm}/owner)" = "$(id -u {user})"')
         host.succeed(
-            'test "$(stat -c %U /dev/tap$(cat /sys/class/net/vm-b-lan/ifindex))" = microvm-b'
+            'test "$(stat -c %U /dev/tap$(cat /sys/class/net/vm-b-lan/ifindex))" = guest-b'
         )
 
     with subtest("a's user cannot reach b's disk, macvtap or tap"):
-        host.fail("runuser -u microvm-a -- head -c1 /var/lib/microvms/b/var.img")
+        host.fail("runuser -u guest-a -- head -c1 /var/lib/microvms/b/var.img")
         host.fail(
-            "runuser -u microvm-a -- sh -c"
+            "runuser -u guest-a -- sh -c"
             " 'exec 3<>/dev/tap$(cat /sys/class/net/vm-b-lan/ifindex)'"
         )
-        host.fail("runuser -u microvm-a -- tun-attach vm-b")
+        host.fail("runuser -u guest-a -- tun-attach vm-b")
         # The refusal is about the user: b's own user may attach a queue.
-        host.succeed("runuser -u microvm-b -- tun-attach vm-b")
+        host.succeed("runuser -u guest-b -- tun-attach vm-b")
   '';
 }
