@@ -49,7 +49,8 @@
           fullName = "Bob Example";
           email = "bob@example.com";
           # No sudo, and network access limited to the narrow `network-users`
-          # permissions rather than the full `networkmanager` group.
+          # permissions rather than the full `networkmanager` group (with the
+          # NetworkManager backend; under networkd they cannot change networks).
           privileged = false;
           homeConfig = {};
         };

@@ -108,6 +108,10 @@
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
       };
       x86_64-linux.rpi-image-firstboot = import ./tests/rpi-image/firstboot.nix { inherit inputs; };
+      x86_64-linux.networking-networkd = import ./tests/networking/networkd.nix {
+        inherit inputs;
+        pkgs = nixpkgs.legacyPackages.x86_64-linux;
+      };
     };
   in {
     inherit nixosConfigurations darwinConfigurations homeConfigurations apps checks;

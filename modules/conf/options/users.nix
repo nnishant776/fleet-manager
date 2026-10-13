@@ -22,7 +22,7 @@ let
         description = ''
           Grant this user administrative access: sudo through `wheel`, plus the
           privilege-adjacent groups for whichever services the host enables,
-          namely networkmanager, docker, podman and libvirtd.
+          namely networkmanager, wpa_supplicant, docker, podman and libvirtd.
 
           Those groups all confer root or near-root access, so they follow from
           this one flag rather than being listed individually in `groups`.
@@ -34,7 +34,7 @@ let
         description = ''
           Extra groups for the user, beyond those derived from `privileged` and
           from the host's enabled services. The privilege-granting groups
-          (wheel, docker, podman, libvirtd, networkmanager) are rejected here;
+          (wheel, docker, podman, libvirtd, networkmanager, wpa_supplicant) are rejected here;
           set `privileged = true` instead.
         '';
       };

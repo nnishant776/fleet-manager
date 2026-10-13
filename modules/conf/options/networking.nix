@@ -10,7 +10,20 @@
   ];
 
   options.conf.networking = {
-    enable = lib.mkEnableOption "networking (NetworkManager)";
+    enable = lib.mkEnableOption "networking, managed as `backend` says";
+
+    backend = lib.mkOption {
+      type = lib.types.enum [ "networkmanager" "networkd" ];
+      default = "networkmanager";
+      description = ''
+        What manages the network. `networkmanager` suits machines whose users
+        pick networks themselves. `networkd` is for appliances: every wired and
+        Wi-Fi interface gets an address by DHCP (systemd-networkd), Wi-Fi
+        networks are joined by wpa_supplicant and kept in
+        /etc/wpa_supplicant/imperative.conf, and only privileged users can
+        change them (`wpa_cli`).
+      '';
+    };
 
     # Radios only: wired networking follows `enable` alone, whatever is set here.
     wireless = {
@@ -24,7 +37,29 @@
           Not the NixOS option of the same name, which is wpa_supplicant alone.
         '';
       };
-      wifi.enable = lib.mkEnableOption "the Wi-Fi client";
+      countryCode = lib.mkOption {
+        type = lib.types.nullOr (lib.types.strMatching "[A-Z]{2}");
+        default = null;
+        example = "IN";
+        description = ''
+          Two-letter country code whose radio rules apply. Without it the
+          strict worldwide rules apply. Used by the `networkd` backend.
+        '';
+      };
+
+      wifi = {
+        enable = lib.mkEnableOption "the Wi-Fi client";
+        interface = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "wlan0";
+          description = ''
+            `networkd` backend: the one interface the Wi-Fi client uses. `null`
+            uses every Wi-Fi interface.
+          '';
+        };
+      };
+
       bluetooth.enable = lib.mkEnableOption "the Bluetooth stack";
     };
 
