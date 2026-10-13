@@ -79,6 +79,8 @@ pkgs.testers.runNixOSTest {
         netd.succeed('test "$(wpa_cli -i wlan1 get country)" = IN')
 
     with subtest("the network file is private to wpa_supplicant"):
+        netd.succeed('test "$(stat -c %a /etc/wpa_supplicant)" = 750')
+        netd.fail("runuser -u bob -- cat /etc/wpa_supplicant/imperative.conf")
         netd.succeed('test "$(stat -c %a /etc/wpa_supplicant/imperative.conf)" = 660')
 
     with subtest("privileged users drive wpa_cli, others cannot"):
