@@ -4,8 +4,9 @@
 # installer (systemd-networkd, iwd) and lib/apps/rpi-image/firstboot.nix. The
 # Pi board support and nixos-raspberrypi's installer module are left out.
 # A FAT disk labelled FIRMWARE carries firstboot/ files written as on Windows
-# (CRLF), with an SSID that has a space and a passphrase with quotes, a
-# backslash, a dollar and a hash. A router on a second simulated radio, in its
+# (CRLF; the key file with a byte-order mark and no final newline), with an
+# SSID that has a space and a passphrase with quotes, a backslash, a dollar
+# and a hash. A router on a second simulated radio, in its
 # own network namespace, offers WPA2/WPA3 and DHCP (tests/lib/hwsim-router.nix).
 # The test checks that the first boot sets the hostname, installs the SSH key
 # and adds the network to /etc/wpa_supplicant/imperative.conf, which a host on
@@ -36,7 +37,8 @@ let
   } ''
     mkdir firstboot
     printf '%s\r\n' ${hostName} > firstboot/hostname
-    cp ${sshKey}/id_ed25519.pub firstboot/authorized_keys
+    # As Windows Notepad may save it: a byte-order mark and no final newline.
+    printf '\xef\xbb\xbf%s' "$(cat ${sshKey}/id_ed25519.pub)" > firstboot/authorized_keys
     printf 'SSID=%s\r\nPSK=%s\r\n' '${ssid}' '${psk}' > firstboot/wifi
     mkfs.vfat -C -n FIRMWARE $out 8192
     mcopy -s -i $out firstboot ::firstboot

@@ -8,8 +8,11 @@ pkgs.writeShellApplication {
   text = ''
     dir=/boot/firmware/firstboot
 
-    # Files may have been written on Windows: strip carriage returns.
-    read_file() { tr -d '\r' <"$1"; }
+    # Files may have been written on Windows: strip carriage returns and a
+    # leading byte-order mark. Editors often leave the last line without a
+    # newline, which `read` would drop, so one is always added; the empty
+    # lines that may make are skipped.
+    read_file() { { tr -d '\r' <"$1"; echo; } | sed '1s/^\xef\xbb\xbf//'; }
 
     # hostname: the given one, or rpi-<last 4 of the board serial>, so several
     # freshly flashed Pis are still told apart on the network.
@@ -36,7 +39,7 @@ pkgs.writeShellApplication {
         chmod 600 "$home/.ssh/authorized_keys"
         chown -R "$(stat -c %U:%G "$home")" "$home/.ssh"
       done
-      echo "rpi-firstboot: installed $(grep -c . "$dir/authorized_keys") SSH key(s)"
+      echo "rpi-firstboot: $(grep -c . /root/.ssh/authorized_keys) SSH key(s) in place"
     fi
 
     # wifi: SSID=... and PSK=... lines, added as a network to the file
