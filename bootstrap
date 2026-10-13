@@ -74,8 +74,10 @@ case "$(uname -s)" in
         # shellcheck disable=SC2086
         exec nix $nixFlags run "$flake#os-install" -- "$@" <"$tty"
       fi
+      # The flake goes along too: system-switch otherwise builds from
+      # /etc/nixos, which a machine new to this flake does not have.
       # shellcheck disable=SC2086
-      exec nix $nixFlags run "$flake#system-switch" -- ${host:+"$host"} <"$tty"
+      exec nix $nixFlags run "$flake#system-switch" -- "${host:-$(uname -n)}" "$flake" <"$tty"
     fi
     ensure_nix
     say "Nix is installed. This flake has no system configuration for $(uname -s) outside NixOS;"
