@@ -1,14 +1,14 @@
-# Sample Raspberry Pi 5: a plain headless machine on the card written by
-# `nix run .#rpi-image`. Copy this directory to start a new Pi host; for a Pi
-# that does more (routing, microVMs), see hosts/pi-gw.
+# A Raspberry Pi 5: a plain headless machine on the card written by
+# `nix run .#rpi-image`. Copy this directory to start a new Pi host.
 #
 # To bring a card up as this host:
-#   1. Flash the image and put `rpi5` in firstboot/hostname on its FAT
+#   1. Flash the image and put `neerajpinew` in firstboot/hostname on its FAT
 #      partition, plus authorized_keys (and wifi, if it has no cable).
 #   2. Boot it, SSH in as `nixos`, and switch:
-#        sudo nixos-rebuild switch --flake <this flake>#rpi5
-#   The Wi-Fi network added on first boot is a NetworkManager connection in
-#   /etc, so it survives the switch.
+#        sudo nixos-rebuild switch --flake <this flake>#neerajpinew
+#   The first boot adds the card's Wi-Fi network to
+#   /etc/wpa_supplicant/imperative.conf, which this host reads too (networkd
+#   backend), so the Pi stays on the same Wi-Fi after the switch.
 #
 # This file only takes { config, pkgs, lib } so flake.nix can read the platform
 # from it; the board support, which needs `inputs`, is in hardware.nix.
@@ -16,12 +16,18 @@
   nixpkgs.hostPlatform = "aarch64-linux";
 
   conf = {
-    # minimal brings NetworkManager, which the image's Wi-Fi connection uses.
     role = "minimal";
     machineType = "headless";
 
-    # This Pi's network is Wi-Fi; headless machines leave it off by default.
-    networking.wireless.wifi.enable = true;
+    # The same network setup as the card: systemd-networkd and wpa_supplicant.
+    networking = {
+      backend = "networkd";
+      wireless = {
+        countryCode = "IN";
+        # This Pi's network is Wi-Fi; headless machines leave it off by default.
+        wifi.enable = true;
+      };
+    };
 
     host = {
       name = "neerajpinew";
