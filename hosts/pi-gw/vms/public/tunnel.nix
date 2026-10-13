@@ -9,8 +9,8 @@
 #   cloudflared tunnel login
 #   cloudflared tunnel create public           # prints the tunnel ID, writes <ID>.json
 #   cloudflared tunnel route dns public <hostname>
-# then on pi-gw put <ID>.json at /var/lib/microvm-secrets/public/tunnel.json
-# (see microvms.nix) and fill in tunnelId and hostname.
+# then on pi-gw put <ID>.json at /var/lib/guest-credentials/public/tunnel.json
+# (see guests.nix) and fill in tunnelId and hostname.
 { pkgs, lib, ... }:
 let
   sandbox = import ../sandbox.nix;

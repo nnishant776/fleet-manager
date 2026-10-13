@@ -33,7 +33,7 @@
     # evaluated.
     nixos-raspberrypi.url = "github:nvmd/nixos-raspberrypi";
 
-    # Declarative microVMs; the host module is imported by hosts/pi-gw.
+    # Declarative VMs (microvm.nix); the host module is imported by hosts/pi-gw/guests.nix.
     microvm = {
       url = "github:microvm-nix/microvm.nix";
       inputs.nixpkgs.follows = "nixpkgs";

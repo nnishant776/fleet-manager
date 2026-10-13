@@ -1,4 +1,4 @@
-# Address plan and hardware choices shared by the host and its microVMs, so a
+# Address plan and hardware choices shared by the host and its VMs, so a
 # value is written once. Each VM link is routed through the host on its own tap: no bridge, so
 # a VM can only ever talk to the host, never put frames on another VM's link.
 let

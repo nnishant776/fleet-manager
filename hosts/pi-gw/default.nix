@@ -1,4 +1,4 @@
-# Raspberry Pi 5 that hosts the home network's microVMs (microvms.nix):
+# Raspberry Pi 5 that hosts the home network's VMs (guests.nix):
 #   public  public services, reachable only through a Cloudflare Tunnel
 #   wg      the home router (Wi-Fi AP and wired LAN), WireGuard endpoint and
 #           private services
