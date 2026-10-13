@@ -19,8 +19,6 @@
       };
     };
 
-    bluetooth.enable = lib.mkEnableOption "the Bluetooth stack";
-
     powerManagement.enable = lib.mkEnableOption "the power management daemons (tuned, upower)";
 
     disk = {

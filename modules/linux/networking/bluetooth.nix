@@ -1,6 +1,7 @@
 { config, pkgs,lib, ... }:
 let
   cfg = config.conf.networking;
+  bluetooth = cfg.wireless.enable && cfg.wireless.bluetooth.enable;
 in {
   config  = lib.mkIf cfg.enable {
     # Force bluez installation
@@ -9,7 +10,7 @@ in {
     ];
 
     # Enable bluetooth adapter
-    hardware = lib.mkIf config.conf.hardware.bluetooth.enable {
+    hardware = lib.mkIf bluetooth {
       enableAllFirmware = true;
       bluetooth = {
         enable = true;
@@ -20,7 +21,7 @@ in {
     };
 
     # Enabe bluetooth management service
-    services = lib.mkIf config.conf.hardware.bluetooth.enable {
+    services = lib.mkIf bluetooth {
       blueman.enable = true;
     };
   };
