@@ -9,6 +9,8 @@ this folder after flashing the card; all are optional.
   wifi             two lines:
                      SSID=MyNetwork
                      PSK=the-passphrase
-                   deleted after it has been applied
+                   the passphrase must be 8 to 63 characters; leave out
+                   the PSK= line for an open network
+                   the file is deleted after it has been used
 
 Then boot the Pi, log in over SSH and switch it to its host configuration.

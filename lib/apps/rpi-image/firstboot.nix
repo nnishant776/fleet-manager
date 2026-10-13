@@ -12,46 +12,64 @@
   networking.hostName = lib.mkForce "";
   systemd.services.systemd-hostnamed.environment.SYSTEMD_ETC_HOSTNAME = lib.mkForce "/etc/hostname";
 
-  # The installer stacks two network setups: NixOS's installation-device
-  # profile turns on NetworkManager (with wpa_supplicant), and nixos-images
-  # adds systemd-networkd with iwd. Both then fight over the interfaces, and
-  # Wi-Fi never comes up. Keep NetworkManager only: the first-boot step adds
-  # the Wi-Fi network with nmcli, and the hosts in this flake use
-  # NetworkManager too, so the connection survives switching to one.
-  networking.networkmanager.enable = true;
+  # The network as on a host with the `networkd` backend
+  # (modules/linux/networking/networkd.nix): systemd-networkd gives wired and
+  # Wi-Fi interfaces addresses by DHCP, and wpa_supplicant joins the networks
+  # kept in /etc/wpa_supplicant/imperative.conf. The first boot writes the
+  # card's Wi-Fi network there, and such a host reads the same file, so the
+  # connection survives switching to one.
+  #
+  # The installer stacks other setups that must go: NixOS's installation-device
+  # profile turns on NetworkManager, whose module also turns DHCP off, which
+  # left Wi-Fi with IPv6 only; nixos-images adds iwd; and nixos-raspberrypi
+  # forces networking.wireless off (mkForce) to leave Wi-Fi to iwd.
+  networking.networkmanager.enable = lib.mkForce false;
   networking.wireless.iwd.enable = lib.mkForce false;
-  # NetworkManager drives Wi-Fi through wpa_supplicant, which it gets by
-  # turning on networking.wireless; nixos-raspberrypi's installer forces that
-  # off (mkForce) to leave Wi-Fi to iwd, which leaves wlan0 "unavailable".
-  networking.wireless.enable = lib.mkOverride 40 true;
-  networking.useNetworkd = lib.mkForce false;
-  systemd.network.enable = lib.mkForce false;
-  # mDNS through systemd-resolved, as networkd provided it, so the Pi answers
-  # as <hostname>.local. Resolved only came with networkd; it is what the
-  # hosts use too (modules/linux/networking/dns.nix).
+  networking.wireless = {
+    enable = lib.mkOverride 40 true;
+    allowAuxiliaryImperativeNetworks = true;
+    userControlled = true;
+    dbusControlled = false;
+  };
+  # NixOS' 99-ethernet-default-dhcp and 99-wireless-client-dhcp networks, to
+  # which nixos-images adds mDNS.
+  networking.useNetworkd = true;
+  networking.useDHCP = true;
+  systemd.network.enable = true;
+  # mDNS through systemd-resolved, so the Pi answers as <hostname>.local.
   services.resolved = {
     enable = true;
     settings.Resolve.MulticastDNS = "yes";
   };
-  networking.networkmanager.dns = "systemd-resolved";
-  networking.networkmanager.connectionConfig."connection.mdns" = 2;
+
+  # The card's passphrase ends up in imperative.conf, but NixOS makes it
+  # readable by everyone (0664) each time wpa_supplicant starts. Closing the
+  # directory keeps it private at all times; the file mode is tightened once
+  # started. As on a networkd host.
+  systemd.tmpfiles.rules = [ "d /etc/wpa_supplicant 0750 wpa_supplicant wpa_supplicant -" ];
+  systemd.services.wpa_supplicant.serviceConfig.ExecStartPre = lib.mkAfter [
+    "+${pkgs.coreutils}/bin/chmod 0660 /etc/wpa_supplicant/imperative.conf"
+  ];
 
   # The settings above override what nixos-raspberrypi and nixos-images set,
   # so an update of either could undo them. Checked against the real image by
   # the rpi-image-config check and on every build of the image.
   assertions = [
     {
-      assertion = config.networking.networkmanager.enable
-        && config.networking.networkmanager.wifi.backend == "wpa_supplicant"
-        && config.networking.wireless.enable
-        && config.networking.wireless.dbusControlled;
-      message = "rpi-image: NetworkManager must drive Wi-Fi through its own wpa_supplicant.";
+      assertion = !config.networking.networkmanager.enable && !config.networking.wireless.iwd.enable;
+      message = "rpi-image: NetworkManager and iwd must stay off; systemd-networkd and wpa_supplicant manage the network.";
     }
     {
-      assertion = !config.networking.wireless.iwd.enable
-        && !config.networking.useNetworkd
-        && !config.systemd.network.enable;
-      message = "rpi-image: iwd and systemd-networkd must stay off; NetworkManager manages every interface.";
+      assertion = config.networking.wireless.enable
+        && config.networking.wireless.allowAuxiliaryImperativeNetworks
+        && config.networking.wireless.interfaces == [ ];
+      message = "rpi-image: wpa_supplicant must run on every Wi-Fi interface and read /etc/wpa_supplicant/imperative.conf.";
+    }
+    {
+      assertion = config.systemd.network.enable
+        && (config.systemd.network.networks."99-wireless-client-dhcp".networkConfig.DHCP or null) == "yes"
+        && (config.systemd.network.networks."99-ethernet-default-dhcp".networkConfig.DHCP or null) == "yes";
+      message = "rpi-image: systemd-networkd must give wired and Wi-Fi interfaces addresses by DHCP, IPv4 included.";
     }
     {
       assertion = config.systemd.services.systemd-hostnamed.environment.SYSTEMD_ETC_HOSTNAME == "/etc/hostname";
@@ -62,8 +80,8 @@
   systemd.services.rpi-firstboot = {
     description = "Apply per-card settings from the firmware partition";
     wantedBy = [ "multi-user.target" ];
-    after = [ "NetworkManager.service" "systemd-hostnamed.service" ];
-    before = [ "sshd.service" ];
+    # Before wpa_supplicant reads the networks, and before sshd reads the keys.
+    before = [ "wpa_supplicant.service" "sshd.service" ];
     unitConfig = {
       RequiresMountsFor = "/boot/firmware";
       ConditionPathExists = "!/var/lib/rpi-firstboot.done";
