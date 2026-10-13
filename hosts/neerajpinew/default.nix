@@ -17,10 +17,11 @@
 
   conf = {
     # minimal brings NetworkManager, which the image's Wi-Fi connection uses.
-    # Do not set networking.wifi.enable: it selects the standalone
-    # wpa_supplicant backend, which conflicts with NetworkManager.
     role = "minimal";
     machineType = "headless";
+
+    # This Pi's network is Wi-Fi; headless machines leave it off by default.
+    networking.wireless.wifi.enable = true;
 
     host = {
       name = "neerajpinew";

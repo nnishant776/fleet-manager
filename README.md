@@ -668,7 +668,7 @@ turn the implied option off.
 
 | Trigger | Cascading Implications |
 |---|---|
-| `conf.networking.enable`<br>*(all roles)* | • NetworkManager, with `systemd-resolved` doing opportunistic DNS-over-TLS and `DNSSEC = "allow-downgrade"`<br>• Prerequisite for `networking.wireless.wifi`, `networking.wireless.bluetooth` and `sharing.ssh`: without it those three do nothing<br>• Account groups: `network-users` (join and switch networks only) for unprivileged accounts, `networkmanager` for privileged ones |
+| `conf.networking.enable`<br>*(all roles)* | • NetworkManager, with `systemd-resolved` doing opportunistic DNS-over-TLS and `DNSSEC = "allow-downgrade"`<br>• Wi-Fi stays off, and NetworkManager leaves Wi-Fi devices alone, unless `networking.wireless.wifi.enable` is on<br>• Prerequisite for `networking.wireless.wifi`, `networking.wireless.bluetooth` and `sharing.ssh`: without it those three do nothing<br>• Account groups: `network-users` (join and switch networks only) for unprivileged accounts, `networkmanager` for privileged ones |
 | `conf.networking.wireless.wifi.enable`<br>*(laptop)* | • With `networking.enable` and `networking.wireless.enable`: wpa_supplicant, the Wi-Fi client (the NixOS option `networking.wireless.enable`) |
 | `conf.networking.wireless.bluetooth.enable`<br>*(laptop)* | • With `networking.enable` and `networking.wireless.enable`: `hardware.bluetooth.enable`, `hardware.enableAllFirmware`, `hardware.alsa.enableBluetooth`, `services.blueman.enable` |
 | `conf.hardware.powerManagement.enable`<br>*(laptop, desktop, or `desktop.enable`)* | • `services.upower.enable`, `services.tuned.enable` |
