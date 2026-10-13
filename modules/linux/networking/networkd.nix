@@ -10,7 +10,12 @@
 let
   cfg = config.conf.networking;
   wifi = cfg.wireless.enable && cfg.wireless.wifi.enable;
-  iface = cfg.wireless.wifi.interface;
+  # With a USB adapter reserved for the hotspot, the other Wi-Fi interface is
+  # named wlan-uplink (hotspot.nix), whether or not the hotspot runs.
+  iface =
+    if cfg.wireless.wifi.interface != null then cfg.wireless.wifi.interface
+    else if cfg.wireless.hotspot.adapter == "usb" then "wlan-uplink"
+    else null;
   # The units NixOS generates: one per listed interface, or one for all.
   wpaUnit = if iface == null then "wpa_supplicant" else "wpa_supplicant-${iface}";
 in {

@@ -94,25 +94,40 @@
     apps = lib.genAttrs systems (system:
       import ./lib/apps { inherit self; pkgs = nixpkgs.legacyPackages.${system}; });
 
-    checks = {
-      x86_64-linux.secrets-sync = import ./tests/secrets/vm-test.nix {
+    checks.x86_64-linux = {
+      secrets-sync = import ./tests/secrets/vm-test.nix {
         inherit inputs self;
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
       };
-      x86_64-linux.pi-gw-vm-users = import ./tests/pi-gw/vm-users.nix {
+      pi-gw-vm-users = import ./tests/pi-gw/vm-users.nix {
         inherit inputs;
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
       };
-      x86_64-linux.rpi-image-config = import ./tests/rpi-image/config.nix {
+      rpi-image-config = import ./tests/rpi-image/config.nix {
         inherit inputs;
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
       };
-      x86_64-linux.rpi-image-firstboot = import ./tests/rpi-image/firstboot.nix { inherit inputs; };
-      x86_64-linux.networking-networkd = import ./tests/networking/networkd.nix {
+      rpi-image-firstboot = import ./tests/rpi-image/firstboot.nix { inherit inputs; };
+      networking-networkd = import ./tests/networking/networkd.nix {
         inherit inputs;
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
       };
-    };
+      networking-hotspot = import ./tests/networking/hotspot.nix {
+        inherit inputs;
+        pkgs = nixpkgs.legacyPackages.x86_64-linux;
+      };
+    }
+    # One `<host>-hotspot-ready` per host that has prepared a hotspot but not
+    # turned it on, so turning it on stays a one-line change.
+    // lib.mapAttrs'
+      (name: host: lib.nameValuePair "${name}-hotspot-ready"
+        (import ./tests/networking/hotspot-ready.nix {
+          inherit name host;
+          pkgs = nixpkgs.legacyPackages.x86_64-linux;
+        }))
+      (lib.filterAttrs
+        (_: host: let hs = host.config.conf.networking.wireless.hotspot; in hs.adapter != null && !hs.enable)
+        nixosConfigurations);
   in {
     inherit nixosConfigurations darwinConfigurations homeConfigurations apps checks;
   };

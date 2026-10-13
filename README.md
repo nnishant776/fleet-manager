@@ -365,10 +365,20 @@ default.
 |---|---|---|---|
 | `networking.enable` | toggle | `false` | Networking, managed by `networking.backend` |
 | `networking.backend` | enum: `networkmanager`/`networkd` | `"networkmanager"` | `networkmanager` is for machines where users pick networks. `networkd` is for appliances: DHCP on every wired and Wi-Fi interface, Wi-Fi through wpa_supplicant, and only privileged users can change networks |
-| `networking.wireless.enable` | bool | `true` | Master switch for every radio: Wi-Fi and Bluetooth. Set it to `false` to turn them all off at once. Wired networking keeps working |
+| `networking.wireless.enable` | bool | `true` | Master switch for every radio: Wi-Fi, the hotspot and Bluetooth. Set it to `false` to turn them all off at once. Wired networking keeps working |
 | `networking.wireless.countryCode` | nullOr str | `null` | Two capital letters, such as `DE`: the country whose radio rules apply. Without it the strict worldwide rules apply. Used by `networkd` |
 | `networking.wireless.wifi.enable` | toggle | `false` | Wi-Fi client. Needs `networking.enable`; off when `networking.wireless.enable` is off |
-| `networking.wireless.wifi.interface` | nullOr str | `null` | With `networkd`: the one interface the Wi-Fi client uses. `null` uses every Wi-Fi interface |
+| `networking.wireless.wifi.interface` | nullOr str | `null` | With `networkd`: the one interface the Wi-Fi client uses. `null` uses every Wi-Fi interface not reserved for the hotspot |
+| `networking.wireless.hotspot.enable` | toggle | `false` | A Wi-Fi hotspot that shares this machine's connection with other devices. Needs `networking.backend = "networkd"`, `networking.wireless.countryCode`, `adapter`, and the password file. Off when `networking.wireless.enable` is off |
+| `networking.wireless.hotspot.adapter` | nullOr str | `null` | Which Wi-Fi adapter runs the hotspot: `"usb"` for the machine's one USB Wi-Fi adapter, or the adapter's MAC address (then `networking.wireless.wifi.interface` must be set). Setting it reserves that adapter for the hotspot right away, even while the hotspot is off. With `"usb"`, the other Wi-Fi is named `wlan-uplink`. So turning the hotspot on later changes nothing else |
+| `networking.wireless.hotspot.interface` | str | `"wlan-ap"` | Name given to the hotspot's adapter |
+| `networking.wireless.hotspot.ssid` | str | the host name | Network name the hotspot shows (1 to 32 bytes) |
+| `networking.wireless.hotspot.band` | enum: `2g`/`5g`/`6g` | `"5g"` | Frequency band. `6g` is Wi-Fi 6E and needs an adapter and a country that allow it (India allows indoor use since 2026) |
+| `networking.wireless.hotspot.channel` | nullOr int | `null` | Channel. `null` picks 6, 36 or 37 for `2g`, `5g`, `6g` |
+| `networking.wireless.hotspot.security` | enum: `wpa3`/`wpa2-wpa3` | `"wpa3"` | `wpa3` lets in WPA3 devices only. `wpa2-wpa3` also lets older devices in. 6 GHz allows WPA3 only |
+| `networking.wireless.hotspot.address` | str | `"10.42.0.1/24"` | The hotspot's own address and subnet. Joining devices get an address in it and reach the internet through this machine |
+| `networking.wireless.hotspot.passwordFile` | str | `"/var/lib/hotspot/password"` | File on the machine holding only the password (8 to 63 characters, no `\|`), created by root with mode 0600. It is read when the hotspot starts and never copied into the Nix store |
+| `networking.wireless.hotspot.settings` | attrs | `{}` | Extra hostapd settings for fine-tuning |
 | `networking.wireless.bluetooth.enable` | toggle | `false` | Bluetooth (bluez, blueman); also turns on all firmware. Needs `networking.enable`; off when `networking.wireless.enable` is off |
 | `networking.firewall.enable` | nullOr bool | `null` | `null` keeps the NixOS firewall at its default, which is on; `true`/`false` set it explicitly. `false` is rejected on a fleet host |
 | `networking.firewall.config` | attrs | `{}` | Merged into `networking.firewall` |
@@ -397,6 +407,31 @@ wpa_cli list_networks                            # find the old one's number
 wpa_cli remove_network 0
 wpa_cli save_config
 ```
+
+**Turning on the hotspot** takes two steps. First, prepare once in the host's
+configuration. This reserves the USB adapter for the hotspot but leaves the
+hotspot off:
+
+```nix
+conf = {
+  networking.backend = "networkd";
+  networking.wireless.countryCode = "IN";
+  networking.wireless.hotspot = { enable = false; adapter = "usb"; };
+};
+```
+
+Then, when you want the hotspot, plug in the adapter and create the password
+file as root:
+
+```bash
+sudo install -d -m 700 /var/lib/hotspot
+sudo sh -c 'umask 077; printf "%s\n" "the password" > /var/lib/hotspot/password'
+```
+
+Set `enable = true` and switch. Devices that join get an address and reach the
+internet through this machine. The Wi-Fi client keeps working as before.
+`nix flake check` checks every host that has prepared a hotspot with it turned
+on (`<host>-hotspot-ready`), so turning it on stays a one-line change.
 
 ### `conf.containers` and `conf.virtualisation`
 
@@ -696,6 +731,7 @@ turn the implied option off.
 | `conf.networking.enable`<br>*(all roles)* | • NetworkManager (or systemd-networkd with `networking.backend = "networkd"`), with `systemd-resolved` doing opportunistic DNS-over-TLS and `DNSSEC = "allow-downgrade"`<br>• Wi-Fi stays off, and NetworkManager leaves Wi-Fi devices alone, unless `networking.wireless.wifi.enable` is on<br>• Prerequisite for `networking.wireless.wifi`, `networking.wireless.bluetooth` and `sharing.ssh`: without it those three do nothing<br>• Account groups: with NetworkManager, `network-users` (join and switch networks only) for unprivileged accounts and `networkmanager` for privileged ones; with networkd, `wpa_supplicant` for privileged accounts (while Wi-Fi is on) and nothing for the others |
 | `conf.networking.wireless.wifi.enable`<br>*(laptop)* | • With `networking.enable` and `networking.wireless.enable`: wpa_supplicant, the Wi-Fi client (the NixOS option `networking.wireless.enable`) |
 | `conf.networking.wireless.bluetooth.enable`<br>*(laptop)* | • With `networking.enable` and `networking.wireless.enable`: `hardware.bluetooth.enable`, `hardware.enableAllFirmware`, `hardware.alsa.enableBluetooth`, `services.blueman.enable` |
+| `conf.networking.wireless.hotspot.enable` | • With `networking.enable`, `networking.wireless.enable` and the networkd backend: hostapd on the adapter, with WPA3 (on 6 GHz with protected management frames)<br>• systemd-networkd gives joining devices addresses by DHCP and shares the uplink through NAT; DHCP is allowed through the firewall on the hotspot only |
 | `conf.hardware.powerManagement.enable`<br>*(laptop, desktop, or `desktop.enable`)* | • `services.upower.enable`, `services.tuned.enable` |
 | `conf.desktop.enable`<br>*(workstation, developer, gaming)* | • Weakly enables `desktop.multimedia.enable`, `hardware.graphics.enable`, `hardware.powerManagement.enable` and `flatpak.enable`, whatever the role<br>• Polkit, GVFS, display manager with the ReGreet greeter, AccountsService, `udisks2` (removable-media automount)<br>• Account groups: `video` and `input` for every account<br>• On `machineType = "vm"`: `services.spice-vdagentd` |
 | `conf.containers.enable`<br>*(server, developer)* | • Docker (rootful daemon, plus rootless with `DOCKER_HOST` set for users) and Podman; Podman, skopeo and buildah accept only `containers.registries`<br>• Account groups: `docker` and `podman` for privileged accounts only |

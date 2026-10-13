@@ -26,6 +26,14 @@
         countryCode = "IN";
         # This Pi's network is Wi-Fi; headless machines leave it off by default.
         wifi.enable = true;
+        # Ready, but off. The hotspot is the USB Wi-Fi adapter, and the
+        # built-in Wi-Fi stays the uplink, named wlan-uplink. To turn it on:
+        # plug in the adapter, put the password in /var/lib/hotspot/password
+        # (root, mode 0600) and set enable = true.
+        hotspot = {
+          enable = false;
+          adapter = "usb";
+        };
       };
     };
 
