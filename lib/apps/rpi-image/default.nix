@@ -1,6 +1,6 @@
 # rpi-image: build a generic Raspberry Pi 5 SD image on demand. A utility, not
 # part of any host or rebuild: it extends the installer from nixos-raspberrypi
-# with the first-boot step in ./firstboot.nix. One image serves any number of
+# with the first-boot step in ./firstboot.nix (assembled in ./image.nix). One image serves any number of
 # cards and boards; per-card settings go on the card after flashing (see
 # ./README.txt, which is also copied onto the card).
 { pkgs, self }:
@@ -64,9 +64,8 @@ pkgs.writeShellApplication {
     image="$(nix build --impure --no-link --print-out-paths "''${cache[@]}" --expr '
       let
         flake = builtins.getFlake (builtins.getEnv "RPI_IMAGE_FLAKE");
-        installer = flake.inputs.nixos-raspberrypi.nixosConfigurations.rpi5-installer;
-        firstboot = import (flake.outPath + "/lib/apps/rpi-image/firstboot.nix");
-      in (installer.extendModules { modules = [ firstboot ]; }).config.system.build.sdImage')"
+        image = import (flake.outPath + "/lib/apps/rpi-image/image.nix") { inherit (flake) inputs; };
+      in image.config.system.build.sdImage')"
 
     cp "$image"/sd-image/*.img.zst "$output"
     chmod 644 "$output"
