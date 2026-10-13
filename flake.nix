@@ -33,6 +33,12 @@
     # evaluated.
     nixos-raspberrypi.url = "github:nvmd/nixos-raspberrypi";
 
+    # Declarative microVMs; the host module is imported by hosts/pi-gw.
+    microvm = {
+      url = "github:microvm-nix/microvm.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     caelestia-shell = {
       url = "github:caelestia-dots/shell";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -93,6 +99,15 @@
         inherit inputs self;
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
       };
+      x86_64-linux.pi-gw-vm-users = import ./tests/pi-gw/vm-users.nix {
+        inherit inputs;
+        pkgs = nixpkgs.legacyPackages.x86_64-linux;
+      };
+      x86_64-linux.rpi-image-config = import ./tests/rpi-image/config.nix {
+        inherit inputs;
+        pkgs = nixpkgs.legacyPackages.x86_64-linux;
+      };
+      x86_64-linux.rpi-image-firstboot = import ./tests/rpi-image/firstboot.nix { inherit inputs; };
     };
   in {
     inherit nixosConfigurations darwinConfigurations homeConfigurations apps checks;
