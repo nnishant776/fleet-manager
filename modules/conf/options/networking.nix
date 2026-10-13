@@ -1,14 +1,4 @@
 { lib, config, ... }: {
-  imports = [
-    # The radios share one master switch under `wireless`.
-    (lib.mkRenamedOptionModule
-      [ "conf" "networking" "wifi" "enable" ]
-      [ "conf" "networking" "wireless" "wifi" "enable" ])
-    (lib.mkRenamedOptionModule
-      [ "conf" "hardware" "bluetooth" "enable" ]
-      [ "conf" "networking" "wireless" "bluetooth" "enable" ])
-  ];
-
   options.conf.networking = {
     enable = lib.mkEnableOption "networking, managed as `backend` says";
 
