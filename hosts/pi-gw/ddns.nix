@@ -9,8 +9,11 @@
 # default policy that denies everything, then one allowing just that record:
 #   {"domain": null, "subname": null, "type": null}
 #   {"domain": "private.geeky-panda.dev", "subname": "", "type": "AAAA", "perm_write": true}
-# The TTL is the domain's minimum at deSEC (3600 s unless support lowers it),
-# so clients may use the old address that long after a prefix change. On pi-gw:
+# deSEC's docs do not say how a policy names the apex; "" is what its code
+# matches, so check that an update still succeeds after adding the policy.
+# The TTL is the domain's minimum_ttl at deSEC (support can lower it), so
+# clients may use the old address that long after a prefix change; deSEC's
+# dynDNS interface (update.dedyn.io) would set 60 s instead. On pi-gw:
 #   install -d -m 0700 /var/lib/ddns
 #   install -m 0600 /dev/stdin /var/lib/ddns/desec.token   # paste, Ctrl-D
 { pkgs, lib, ... }:
