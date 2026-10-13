@@ -319,7 +319,6 @@ user with `selfManagedHome` — their own `~/.config/home-manager/home.nix`.
 |---|---|---|---|
 | `hardware.graphics.enable` | toggle | `false` | Hardware acceleration |
 | `hardware.graphics.vendor` | enum: `intel`/`amd`/`nvidia` | `"intel"` | Driver selection |
-| `hardware.bluetooth.enable` | toggle | `false` | Bluetooth stack (bluez, blueman); also enables all firmware. Needs `networking.enable` |
 | `hardware.powerManagement.enable` | toggle | `false` | Power management daemons (tuned, upower) |
 | `hardware.disk.enable` | bool | `false` | Generate `disko.devices` from the options below. `false` means the host provides its own `disko-config.nix`, or is not installable with `os-install` |
 | `hardware.disk.device` | nullOr str | `null` | Primary disk: boot partitions and the first physical volume. Required when enabled. `os-install -d main=DEV` overrides it |
@@ -360,7 +359,9 @@ default.
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `networking.enable` | toggle | `false` | NetworkManager |
-| `networking.wifi.enable` | toggle | `false` | Wi-Fi backend. Needs `networking.enable` |
+| `networking.wireless.enable` | bool | `true` | Master switch for every radio: Wi-Fi and Bluetooth. Set it to `false` to turn them all off at once. Wired networking keeps working |
+| `networking.wireless.wifi.enable` | toggle | `false` | Wi-Fi client. Needs `networking.enable`; off when `networking.wireless.enable` is off |
+| `networking.wireless.bluetooth.enable` | toggle | `false` | Bluetooth (bluez, blueman); also turns on all firmware. Needs `networking.enable`; off when `networking.wireless.enable` is off |
 | `networking.firewall.enable` | nullOr bool | `null` | `null` keeps the NixOS firewall at its default, which is on; `true`/`false` set it explicitly. `false` is rejected on a fleet host |
 | `networking.firewall.config` | attrs | `{}` | Merged into `networking.firewall` |
 | `sharing.enable` | toggle | `false` | Services that expose this machine to the network. Gates `rdp`; `ssh` does not need it |
@@ -629,7 +630,7 @@ A machine type contributes defaults across two levels:
 
 | Type | `conf.*` Options | System, Hardware & Security Posture (Linux) |
 |---|---|---|
-| `laptop` | `networking.wifi.enable`, `hardware.bluetooth.enable`, `hardware.powerManagement.enable` | `services.fwupd.enable = true`; `services.thermald.enable` on Intel (follows `hardware.cpu.intel.updateMicrocode`); `hardware.sensor.iio.enable = true`; `security.protectKernelImage = false` (kexec and hibernation stay available); a generated disk layout with `hardware.disk.encrypt = false` gives an evaluation warning |
+| `laptop` | `networking.wireless.wifi.enable`, `networking.wireless.bluetooth.enable`, `hardware.powerManagement.enable` | `services.fwupd.enable = true`; `services.thermald.enable` on Intel (follows `hardware.cpu.intel.updateMicrocode`); `hardware.sensor.iio.enable = true`; `security.protectKernelImage = false` (kexec and hibernation stay available); a generated disk layout with `hardware.disk.encrypt = false` gives an evaluation warning |
 | `desktop` | `hardware.powerManagement.enable` | `services.fwupd.enable = true`; `security.protectKernelImage = false` (kexec and hibernation stay available); Wi-Fi and Bluetooth stay off unless set |
 | `headless` | *(none)* | Hardened posture: `security.protectKernelImage = true` (no kexec, no hibernation); `nix.settings.allowed-users = [ "@wheel" ]` on NixOS; `networking.firewall.logRefusedConnections = true`; `services.fwupd.enable = false` |
 | `vm` | *(none)* | Guest integration: `services.qemuGuest.enable = true`; `services.spice-vdagentd.enable` follows `desktop.enable`; `security.protectKernelImage = true`; `services.fwupd.enable = false`. Power daemons still follow `desktop.enable` (see below), so a desktop-role VM gets them unless `hardware.powerManagement.enable = false` |
@@ -667,9 +668,9 @@ turn the implied option off.
 
 | Trigger | Cascading Implications |
 |---|---|
-| `conf.networking.enable`<br>*(all roles)* | • NetworkManager, with `systemd-resolved` doing opportunistic DNS-over-TLS and `DNSSEC = "allow-downgrade"`<br>• Prerequisite for `networking.wifi`, `hardware.bluetooth` and `sharing.ssh`: without it those three do nothing<br>• Account groups: `network-users` (join and switch networks only) for unprivileged accounts, `networkmanager` for privileged ones |
-| `conf.networking.wifi.enable`<br>*(laptop)* | • With `networking.enable`: `networking.wireless.enable` |
-| `conf.hardware.bluetooth.enable`<br>*(laptop)* | • With `networking.enable`: `hardware.bluetooth.enable`, `hardware.enableAllFirmware`, `hardware.alsa.enableBluetooth`, `services.blueman.enable` |
+| `conf.networking.enable`<br>*(all roles)* | • NetworkManager, with `systemd-resolved` doing opportunistic DNS-over-TLS and `DNSSEC = "allow-downgrade"`<br>• Prerequisite for `networking.wireless.wifi`, `networking.wireless.bluetooth` and `sharing.ssh`: without it those three do nothing<br>• Account groups: `network-users` (join and switch networks only) for unprivileged accounts, `networkmanager` for privileged ones |
+| `conf.networking.wireless.wifi.enable`<br>*(laptop)* | • With `networking.enable` and `networking.wireless.enable`: wpa_supplicant, the Wi-Fi client (the NixOS option `networking.wireless.enable`) |
+| `conf.networking.wireless.bluetooth.enable`<br>*(laptop)* | • With `networking.enable` and `networking.wireless.enable`: `hardware.bluetooth.enable`, `hardware.enableAllFirmware`, `hardware.alsa.enableBluetooth`, `services.blueman.enable` |
 | `conf.hardware.powerManagement.enable`<br>*(laptop, desktop, or `desktop.enable`)* | • `services.upower.enable`, `services.tuned.enable` |
 | `conf.desktop.enable`<br>*(workstation, developer, gaming)* | • Weakly enables `desktop.multimedia.enable`, `hardware.graphics.enable`, `hardware.powerManagement.enable` and `flatpak.enable`, whatever the role<br>• Polkit, GVFS, display manager with the ReGreet greeter, AccountsService, `udisks2` (removable-media automount)<br>• Account groups: `video` and `input` for every account<br>• On `machineType = "vm"`: `services.spice-vdagentd` |
 | `conf.containers.enable`<br>*(server, developer)* | • Docker (rootful daemon, plus rootless with `DOCKER_HOST` set for users) and Podman; Podman, skopeo and buildah accept only `containers.registries`<br>• Account groups: `docker` and `podman` for privileged accounts only |

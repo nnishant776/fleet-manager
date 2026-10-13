@@ -8,11 +8,11 @@ let
 
   machines = {
     laptop = {
-      networking.wifi.enable = true;
-      hardware = {
+      networking.wireless = {
+        wifi.enable = true;
         bluetooth.enable = true;
-        powerManagement.enable = true;
       };
+      hardware.powerManagement.enable = true;
     };
     desktop = {
       hardware.powerManagement.enable = true;
