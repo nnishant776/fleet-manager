@@ -358,9 +358,12 @@ default.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `networking.enable` | toggle | `false` | NetworkManager |
+| `networking.enable` | toggle | `false` | Networking, managed by `networking.backend` |
+| `networking.backend` | enum: `networkmanager`/`networkd` | `"networkmanager"` | `networkmanager` is for machines where users pick networks. `networkd` is for appliances: DHCP on every wired and Wi-Fi interface, Wi-Fi through wpa_supplicant, and only privileged users can change networks |
 | `networking.wireless.enable` | bool | `true` | Master switch for every radio: Wi-Fi and Bluetooth. Set it to `false` to turn them all off at once. Wired networking keeps working |
+| `networking.wireless.countryCode` | nullOr str | `null` | Two capital letters, such as `DE`: the country whose radio rules apply. Without it the strict worldwide rules apply. Used by `networkd` |
 | `networking.wireless.wifi.enable` | toggle | `false` | Wi-Fi client. Needs `networking.enable`; off when `networking.wireless.enable` is off |
+| `networking.wireless.wifi.interface` | nullOr str | `null` | With `networkd`: the one interface the Wi-Fi client uses. `null` uses every Wi-Fi interface |
 | `networking.wireless.bluetooth.enable` | toggle | `false` | Bluetooth (bluez, blueman); also turns on all firmware. Needs `networking.enable`; off when `networking.wireless.enable` is off |
 | `networking.firewall.enable` | nullOr bool | `null` | `null` keeps the NixOS firewall at its default, which is on; `true`/`false` set it explicitly. `false` is rejected on a fleet host |
 | `networking.firewall.config` | attrs | `{}` | Merged into `networking.firewall` |
@@ -372,6 +375,23 @@ default.
 Topology — addresses, routes, VLANs, bridges, a DHCP server — is not wrapped.
 Write it as `networking.*` or `systemd.network.*` options in the host directory,
 for example in a `network.nix`.
+
+**Wi-Fi networks with `networkd`** are kept on the machine, in
+`/etc/wpa_supplicant/imperative.conf`. On a Raspberry Pi, the network from the
+card's `firstboot/wifi` file ends up there. To move to a new access point, add
+it while the old one still works, then remove the old one:
+
+```bash
+wpa_cli add_network                              # prints a number, say 1
+wpa_cli set_network 1 ssid '"New network"'
+wpa_cli set_network 1 psk '"its password"'
+wpa_cli enable_network 1
+wpa_cli save_config
+# later, once the machine uses the new network:
+wpa_cli list_networks                            # find the old one's number
+wpa_cli remove_network 0
+wpa_cli save_config
+```
 
 ### `conf.containers` and `conf.virtualisation`
 
@@ -668,7 +688,7 @@ turn the implied option off.
 
 | Trigger | Cascading Implications |
 |---|---|
-| `conf.networking.enable`<br>*(all roles)* | • NetworkManager, with `systemd-resolved` doing opportunistic DNS-over-TLS and `DNSSEC = "allow-downgrade"`<br>• Wi-Fi stays off, and NetworkManager leaves Wi-Fi devices alone, unless `networking.wireless.wifi.enable` is on<br>• Prerequisite for `networking.wireless.wifi`, `networking.wireless.bluetooth` and `sharing.ssh`: without it those three do nothing<br>• Account groups: `network-users` (join and switch networks only) for unprivileged accounts, `networkmanager` for privileged ones |
+| `conf.networking.enable`<br>*(all roles)* | • NetworkManager (or systemd-networkd with `networking.backend = "networkd"`), with `systemd-resolved` doing opportunistic DNS-over-TLS and `DNSSEC = "allow-downgrade"`<br>• Wi-Fi stays off, and NetworkManager leaves Wi-Fi devices alone, unless `networking.wireless.wifi.enable` is on<br>• Prerequisite for `networking.wireless.wifi`, `networking.wireless.bluetooth` and `sharing.ssh`: without it those three do nothing<br>• Account groups: with NetworkManager, `network-users` (join and switch networks only) for unprivileged accounts and `networkmanager` for privileged ones; with networkd, `wpa_supplicant` for privileged accounts (while Wi-Fi is on) and nothing for the others |
 | `conf.networking.wireless.wifi.enable`<br>*(laptop)* | • With `networking.enable` and `networking.wireless.enable`: wpa_supplicant, the Wi-Fi client (the NixOS option `networking.wireless.enable`) |
 | `conf.networking.wireless.bluetooth.enable`<br>*(laptop)* | • With `networking.enable` and `networking.wireless.enable`: `hardware.bluetooth.enable`, `hardware.enableAllFirmware`, `hardware.alsa.enableBluetooth`, `services.blueman.enable` |
 | `conf.hardware.powerManagement.enable`<br>*(laptop, desktop, or `desktop.enable`)* | • `services.upower.enable`, `services.tuned.enable` |
@@ -678,7 +698,7 @@ turn the implied option off.
 | `conf.development.enable`<br>*(server, developer, embedded)* | • Weakly enables `programs.nix-ld.enable`, for running unpatched foreign binaries<br>• Enabled SDK, editor, tool, graphics, multimedia and virtualisation groups export their `nix-ldLibraries`; the curated base set needs `development.nixLd.enable` |
 | `conf.sharing.ssh.enable` | • With `networking.enable`: sshd on port 22, keys only, root login refused, `AllowGroups = [ "ssh-users" ]`<br>• Account groups: `ssh-users` for privileged accounts; others opt in through `groups` |
 | `conf.sharing.rdp.enable` | • With `sharing.enable`: GNOME Remote Desktop |
-| `conf.users.accounts.<name>.privileged` | • `wheel` (sudo), plus `networkmanager`, `ssh-users`, `docker`, `podman` and `libvirtd` for whichever of those services the host enables. These groups are rejected in `groups` |
+| `conf.users.accounts.<name>.privileged` | • `wheel` (sudo), plus `networkmanager` or `wpa_supplicant`, by backend, `ssh-users`, `docker`, `podman` and `libvirtd` for whichever of those services the host enables. These groups are rejected in `groups` |
 | `conf.fleet.repo.url` | • `fleet.autoUpdate.enable` on, `users.mutableUsers = false`<br>• Requires `fleet.signing.allowedSignersFile`; plain `http://` is rejected<br>• `networking.firewall.enable = false` is rejected; sshd password authentication gives a warning |
 | `conf.secrets.repo.url` | • `fleet.support.enable` on, which requires `fleet.support.sshKeys` and sets `sharing.ssh.enable = true` (sshd still needs `networking.enable`)<br>• sops-nix reads `<statePath>/secrets`; every account with `secrets.password` (the default) takes its hash from the secrets repository, so `initialHashedPassword` is an error<br>• Requires `fleet.repo.url` (`fleet-bootstrap` and `config-auto-update` refresh the secrets) and `fleet.signing.allowedSignersFile` (every fetched commit is verified against it); an HTTP(S) URL is rejected<br>• Accounts with `secrets.sshKey`: Home Manager points SSH and git signing at `/run/secrets/users/<name>/ssh_key` |
 | `conf.fleet.support.enable` | • A privileged `support` account with `fleet.support.sshKeys`, a locked password and passwordless sudo<br>• `sharing.ssh.enable = true` (a plain value, so it beats role defaults) |
