@@ -225,11 +225,16 @@ cards as needed, then give each card its own settings by creating files in
 |---|---|
 | `hostname` | the Pi's hostname (default: `rpi-` and the last four characters of the board serial) |
 | `authorized_keys` | SSH keys for `root` and the `nixos` user |
-| `wifi` | `SSID=` and `PSK=` lines; deleted once applied |
+| `wifi` | `SSID=` and `PSK=` lines (password 8 to 63 characters; no `PSK=` for an open network). Added to the Wi-Fi networks in `/etc/wpa_supplicant/imperative.conf`, then deleted from the card |
 
 A `README.txt` on the card repeats this. After the first boot, log in over SSH
 and switch the Pi to its host configuration; from then on it updates from this
 flake like any other host and the image is not needed again.
+
+The card itself uses systemd-networkd and wpa_supplicant. To keep the same
+Wi-Fi after the switch, give the host `conf.networking.backend = "networkd"`
+with Wi-Fi on, since it reads the same network file. If the first boot reports
+a problem with the wifi file, `journalctl -u rpi-firstboot` says what.
 
 Building needs `aarch64-linux`: natively, through emulation
 (`boot.binfmt.emulatedSystems = [ "aarch64-linux" ];` on a NixOS host), or with

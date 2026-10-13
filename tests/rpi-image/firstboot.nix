@@ -1,24 +1,29 @@
 # Test of the rpi-image card's first boot on x86_64. The node has the image's
 # network-relevant layers, from the same nixpkgs as the image: NixOS's
-# installation-device profile (NetworkManager), the nixos-images installer
-# (systemd-networkd, iwd) and lib/apps/rpi-image/firstboot.nix. The Pi board
-# support and nixos-raspberrypi's installer module are left out.
+# installation-device profile (which brings NetworkManager), the nixos-images
+# installer (systemd-networkd, iwd) and lib/apps/rpi-image/firstboot.nix. The
+# Pi board support and nixos-raspberrypi's installer module are left out.
 # A FAT disk labelled FIRMWARE carries firstboot/ files written as on Windows
-# (CRLF), and a simulated radio (mac80211_hwsim) runs a WPA2 access point.
+# (CRLF), with an SSID that has a space and a passphrase with quotes, a
+# backslash, a dollar and a hash. A router on a second simulated radio, in its
+# own network namespace, offers WPA2/WPA3 and DHCP (tests/lib/hwsim-router.nix).
 # The test checks that the first boot sets the hostname, installs the SSH key
-# and joins the Wi-Fi with NetworkManager alone, keeping the connection in /etc
-# so it outlives the switch to a host.
+# and adds the network to /etc/wpa_supplicant/imperative.conf, which a host on
+# the networkd backend reads after the switch; and that the card then joins
+# the Wi-Fi with systemd-networkd and wpa_supplicant alone and gets IPv4.
 # Run it with `nix build .#checks.x86_64-linux.rpi-image-firstboot`.
 { inputs }:
 let
-  # The image's nixpkgs, not this flake's, so the NetworkManager and hostnamed
-  # modules are the ones on the card.
+  # The image's nixpkgs, not this flake's, so the wpa_supplicant, networkd and
+  # hostnamed modules are the ones on the card.
   pkgs = inputs.nixos-raspberrypi.inputs.nixpkgs.legacyPackages.x86_64-linux;
   nixos-images = inputs.nixos-raspberrypi.inputs.nixos-images;
 
-  ssid = "rpi-test";
-  psk = "correct horse battery";
+  ssid = "home net";
+  psk = ''say "hi" \ $5 #1'';
   hostName = "pi-test";
+
+  router = import ../lib/hwsim-router.nix { inherit pkgs; } { inherit ssid; passphrase = psk; };
 
   # What a card owner would generate on their workstation.
   sshKey = pkgs.runCommand "rpi-firstboot-key" { nativeBuildInputs = [ pkgs.openssh ]; } ''
@@ -32,7 +37,7 @@ let
     mkdir firstboot
     printf '%s\r\n' ${hostName} > firstboot/hostname
     cp ${sshKey}/id_ed25519.pub firstboot/authorized_keys
-    printf 'SSID=%s\r\nPSK=%s\r\n' ${ssid} '${psk}' > firstboot/wifi
+    printf 'SSID=%s\r\nPSK=%s\r\n' '${ssid}' '${psk}' > firstboot/wifi
     mkfs.vfat -C -n FIRMWARE $out 8192
     mcopy -s -i $out firstboot ::firstboot
   '';
@@ -73,37 +78,9 @@ pkgs.testers.runNixOSTest {
       options = [ "noatime" "noauto" "x-systemd.automount" "x-systemd.idle-timeout=1min" ];
     };
 
-    # Two simulated radios: wlan0 is the access point, wlan1 the Pi's Wi-Fi.
+    # Two simulated radios: wlan0 becomes the router, wlan1 is the Pi's Wi-Fi.
     boot.kernelModules = [ "mac80211_hwsim" ];
-    services.hostapd = {
-      enable = true;
-      radios.wlan0 = {
-        band = "2g";
-        channel = 6;
-        countryCode = "US";
-        # Plain WPA2-Personal, what most home routers offer.
-        networks.wlan0 = {
-          inherit ssid;
-          authentication = {
-            mode = "wpa2-sha1";
-            wpaPassword = psk;
-          };
-        };
-      };
-    };
-    networking.networkmanager.unmanaged = [ "interface-name:wlan0" ];
-    networking.interfaces.wlan0.ipv4.addresses = [{ address = "192.168.77.1"; prefixLength = 24; }];
-    # DHCP only; port 0 leaves DNS to systemd-resolved.
-    services.dnsmasq = {
-      enable = true;
-      resolveLocalQueries = false;
-      settings = {
-        port = 0;
-        interface = "wlan0";
-        bind-dynamic = true;
-        dhcp-range = "192.168.77.10,192.168.77.50,1h";
-      };
-    };
+    environment.systemPackages = [ router ];
   };
 
   testScript = ''
@@ -118,19 +95,24 @@ pkgs.testers.runNixOSTest {
             machine.succeed(f"diff {home}/.ssh/authorized_keys ${sshKey}/id_ed25519.pub")
         # The Wi-Fi passphrase does not stay on the card.
         machine.fail("test -e /boot/firmware/firstboot/wifi")
+        # The network is in the file a networkd host reads after the switch,
+        # readable by wpa_supplicant only.
+        machine.succeed("grep -q 'ssid=686f6d65206e6574' /etc/wpa_supplicant/imperative.conf")
+        machine.succeed('test "$(stat -c %a /etc/wpa_supplicant)" = 750')
+        machine.fail("runuser -u nobody -- cat /etc/wpa_supplicant/imperative.conf")
+        machine.wait_for_unit("wpa_supplicant.service")
+        machine.succeed('test "$(stat -c %a /etc/wpa_supplicant/imperative.conf)" = 660')
 
-    with subtest("NetworkManager alone manages the network"):
-        machine.succeed("systemctl is-active NetworkManager.service")
-        machine.succeed("systemctl is-active wpa_supplicant.service")
+    with subtest("systemd-networkd and wpa_supplicant alone manage the network"):
+        machine.fail("systemctl cat NetworkManager.service")
         machine.fail("systemctl is-active iwd.service")
-        machine.fail("systemctl is-active systemd-networkd.service")
-        machine.wait_until_succeeds(
-            "nmcli -t -f GENERAL.STATE device show wlan1 | grep -q '(connected)'",
-            timeout=120,
-        )
-        machine.wait_until_succeeds("ip -4 -br addr show wlan1 | grep -q 192.168.77.", timeout=60)
-        # Kept in /etc, so the connection outlives switching to a host.
-        machine.succeed("test -s /etc/NetworkManager/system-connections/firstboot-wifi.nmconnection")
+        machine.succeed("systemctl is-active systemd-networkd.service")
+        machine.succeed("systemctl is-active wpa_supplicant.service")
+
+    with subtest("joins the Wi-Fi and gets IPv4 by DHCP"):
+        machine.succeed("hwsim-router")
+        machine.wait_until_succeeds("ip -4 -br addr show wlan1 | grep -q 192.168.77.", timeout=120)
+        machine.succeed("ping -c1 -W2 192.168.77.1")
         machine.succeed("resolvectl status wlan1 | grep -q '+mDNS'")
 
     with subtest("the owner's key logs in as nixos on the Wi-Fi address"):
