@@ -56,8 +56,10 @@ in {
         networkConfig.DHCP = "yes";
       };
 
-      # NixOS leaves imperative.conf readable by everyone (0664), and it holds
-      # passphrases; only wpa_supplicant and its group may read it.
+      # imperative.conf holds passphrases, but NixOS makes it readable by
+      # everyone (0664) each time wpa_supplicant starts. Closing the directory
+      # keeps it private at all times; the file mode is tightened once started.
+      systemd.tmpfiles.rules = [ "d /etc/wpa_supplicant 0750 wpa_supplicant wpa_supplicant -" ];
       systemd.services.${wpaUnit}.serviceConfig.ExecStartPre = lib.mkAfter [
         "+${pkgs.coreutils}/bin/chmod 0660 /etc/wpa_supplicant/imperative.conf"
       ];
