@@ -46,14 +46,19 @@ pkgs.writeShellApplication {
     # wpa_supplicant reads, where a host on the networkd backend finds it too.
     # The SSID is written in hex, so any name works; WPA2 and WPA3 are both
     # allowed, as most routers offer either. No PSK means an open network.
+    # An optional COUNTRY=... line sets the country whose radio rules apply:
+    # without it the strict worldwide rules leave much of 5 GHz unusable.
     wifi_error=""
     if [ -s "$dir/wifi" ]; then
       ssid="$(read_file "$dir/wifi" | sed -n 's/^SSID=//p' | head -1)"
       psk="$(read_file "$dir/wifi" | sed -n 's/^PSK=//p' | head -1)"
+      country="$(read_file "$dir/wifi" | sed -n 's/^COUNTRY=//p' | head -1 | tr -d ' ' | tr '[:lower:]' '[:upper:]')"
       if [ -z "$ssid" ]; then
         wifi_error="the wifi file has no SSID= line"
       elif [ -n "$psk" ] && { [ ''${#psk} -lt 8 ] || [ ''${#psk} -gt 63 ]; }; then
         wifi_error="the Wi-Fi password must be 8 to 63 characters"
+      elif [ -n "$country" ] && ! printf '%s\n' "$country" | grep -qx '[A-Z][A-Z]'; then
+        wifi_error="COUNTRY= must be a two-letter country code, such as IN"
       else
         # The directory is closed (0750) at boot, by systemd-tmpfiles.
         conf=/etc/wpa_supplicant/imperative.conf
@@ -61,6 +66,16 @@ pkgs.writeShellApplication {
         touch "$conf"
         chmod 660 "$conf"
         chown wpa_supplicant:wpa_supplicant "$conf"
+        # The country goes first, before any network, and only once. The file
+        # is rewritten in place, so it keeps its owner and mode.
+        if [ -n "$country" ] && ! grep -q '^country=' "$conf"; then
+          content="$(cat "$conf")"
+          {
+            printf 'country=%s\n' "$country"
+            [ -z "$content" ] || printf '%s\n' "$content"
+          } >"$conf"
+          echo "rpi-firstboot: Wi-Fi country $country"
+        fi
         {
           printf 'network={\n'
           printf '\tssid=%s\n' "$(printf '%s' "$ssid" | od -An -v -tx1 | tr -d ' \n')"

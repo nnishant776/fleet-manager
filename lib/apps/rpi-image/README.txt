@@ -6,11 +6,14 @@ this folder after flashing the card; all are optional.
 
   authorized_keys  SSH public keys, one per line, for root and the nixos user
 
-  wifi             two lines:
+  wifi             two or three lines:
                      SSID=MyNetwork
                      PSK=the-passphrase
+                     COUNTRY=IN
                    the passphrase must be 8 to 63 characters; leave out
                    the PSK= line for an open network
+                   COUNTRY= is your two-letter country code; without it
+                   much of 5 GHz is unusable and the Pi may stay on 2.4 GHz
                    the file is deleted after it has been used
 
 Then boot the Pi, log in over SSH and switch it to its host configuration.
