@@ -54,6 +54,19 @@ let
         default = [ ];
         description = "SSH public keys accepted for this account.";
       };
+      sudoSshKeys = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = ''
+          SSH public keys that unlock sudo for this privileged account instead
+          of its password (NixOS). sudo checks the key held by the SSH agent
+          the user brings along (`ssh -A`); without one of these keys it asks
+          for the password as usual. Login keys (`sshKeys`) do not count unless
+          listed here too, so the sudo key can be a separate, stronger one.
+          Forward your agent only to machines you trust: while you are
+          connected, root there can use your agent too.
+        '';
+      };
       secrets = {
         password = lib.mkOption {
           type = lib.types.bool;
