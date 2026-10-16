@@ -60,6 +60,12 @@
       sshKeys = [
         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAVFepUnXSeStB3vOnVM4poqOy1ETJEgyH0UAbP5dF0e Home Network SSH Key"
       ];
+      # admin has no password, so sudo takes this key instead, from the agent
+      # brought along with `ssh -A`. The login key for now; a separate,
+      # stronger key (a hardware one) can replace it here alone.
+      sudoSshKeys = [
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAVFepUnXSeStB3vOnVM4poqOy1ETJEgyH0UAbP5dF0e Home Network SSH Key"
+      ];
     };
 
     sharing = {
