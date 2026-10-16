@@ -15,6 +15,8 @@
 , ns ? "router"
 , subnet ? "192.168.77"
 , countryCode ? "IN"
+  # "g" for 2.4 GHz, "a" for 5 GHz (with a 5 GHz channel, such as 149).
+, hwMode ? "g"
 , channel ? 6
 }:
 let
@@ -23,7 +25,7 @@ let
     driver=nl80211
     ssid=${ssid}
     country_code=${countryCode}
-    hw_mode=g
+    hw_mode=${hwMode}
     channel=${toString channel}
     ieee80211n=1
     wmm_enabled=1

@@ -225,7 +225,7 @@ cards as needed, then give each card its own settings by creating files in
 |---|---|
 | `hostname` | the Pi's hostname (default: `rpi-` and the last four characters of the board serial) |
 | `authorized_keys` | SSH keys for `root` and the `nixos` user |
-| `wifi` | `SSID=` and `PSK=` lines (password 8 to 63 characters; no `PSK=` for an open network). Added to the Wi-Fi networks in `/etc/wpa_supplicant/imperative.conf`, then deleted from the card |
+| `wifi` | `SSID=` and `PSK=` lines (password 8 to 63 characters; no `PSK=` for an open network), and a `COUNTRY=` line with your two-letter country code, such as `IN`. Without a country, much of 5 GHz is unusable and the Pi may stay on 2.4 GHz. Added to the Wi-Fi networks in `/etc/wpa_supplicant/imperative.conf`, then deleted from the card |
 
 A `README.txt` on the card repeats this. After the first boot, log in over SSH
 and switch the Pi to its host configuration; from then on it updates from this

@@ -24,7 +24,13 @@ let
   psk = ''say "hi" \ $5 #1'';
   hostName = "pi-test";
 
-  router = import ../lib/hwsim-router.nix { inherit pkgs; } { inherit ssid; passphrase = psk; };
+  # On 5 GHz channel 149 (5745 MHz), as many home routers in India use.
+  router = import ../lib/hwsim-router.nix { inherit pkgs; } {
+    inherit ssid;
+    passphrase = psk;
+    hwMode = "a";
+    channel = 149;
+  };
 
   # What a card owner would generate on their workstation.
   sshKey = pkgs.runCommand "rpi-firstboot-key" { nativeBuildInputs = [ pkgs.openssh ]; } ''
@@ -39,7 +45,7 @@ let
     printf '%s\r\n' ${hostName} > firstboot/hostname
     # As Windows Notepad may save it: a byte-order mark and no final newline.
     printf '\xef\xbb\xbf%s' "$(cat ${sshKey}/id_ed25519.pub)" > firstboot/authorized_keys
-    printf 'SSID=%s\r\nPSK=%s\r\n' '${ssid}' '${psk}' > firstboot/wifi
+    printf 'SSID=%s\r\nPSK=%s\r\nCOUNTRY=in\r\n' '${ssid}' '${psk}' > firstboot/wifi
     mkfs.vfat -C -n FIRMWARE $out 8192
     mcopy -s -i $out firstboot ::firstboot
   '';
@@ -100,6 +106,8 @@ pkgs.testers.runNixOSTest {
         # The network is in the file a networkd host reads after the switch,
         # readable by wpa_supplicant only.
         machine.succeed("grep -q 'ssid=686f6d65206e6574' /etc/wpa_supplicant/imperative.conf")
+        # The card's lower-case country, first in the file.
+        machine.succeed('test "$(head -1 /etc/wpa_supplicant/imperative.conf)" = country=IN')
         machine.succeed('test "$(stat -c %a /etc/wpa_supplicant)" = 750')
         machine.fail("runuser -u nobody -- cat /etc/wpa_supplicant/imperative.conf")
         machine.wait_for_unit("wpa_supplicant.service")
@@ -115,6 +123,9 @@ pkgs.testers.runNixOSTest {
         machine.succeed("hwsim-router")
         machine.wait_until_succeeds("ip -4 -br addr show wlan1 | grep -q 192.168.77.", timeout=120)
         machine.succeed("ping -c1 -W2 192.168.77.1")
+        # On the router's 5 GHz channel, under the card's country.
+        machine.succeed("wpa_cli -i wlan1 status | grep -qx freq=5745")
+        machine.succeed('test "$(wpa_cli -i wlan1 get country)" = IN')
         machine.succeed("resolvectl status wlan1 | grep -q '+mDNS'")
 
     with subtest("the owner's key logs in as nixos on the Wi-Fi address"):
