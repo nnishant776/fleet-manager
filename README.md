@@ -306,6 +306,7 @@ Each entry in `conf.users.accounts` takes these fields:
 | `groups` | listOf str | `[]` | Extra groups. Privilege-granting groups are rejected here |
 | `initialHashedPassword` | nullOr str | `null` | Password hash applied when the account is created, `mkpasswd -m yescrypt` format. `null` creates it locked. On a host with `conf.secrets.repo.url` the hash comes from the secrets repository instead |
 | `sshKeys` | listOf str | `[]` | SSH public keys accepted for this account |
+| `sudoSshKeys` | listOf str | `[]` | SSH public keys that unlock sudo for this privileged account instead of its password. Not the same as `sshKeys`. Listing keys on an unprivileged account is an error. NixOS only. See below |
 | `secrets.password` | bool | `true` | Take the account's password hash from `users/<name>/<host>.yaml` in the secrets repository. Ignored on a host without `conf.secrets.repo.url`; setting `initialHashedPassword` as well is an error on an opted-in host |
 | `secrets.sshKey` | bool | `false` | Deploy a per-host SSH key from the same file to `/run/secrets/users/<name>/ssh_key`. Can be turned on any time after the account exists. Ignored on a host without `conf.secrets.repo.url` |
 | `selfManagedHome` | bool | `false` | This user manages their own home instead of the system doing it |
@@ -313,6 +314,37 @@ Each entry in `conf.users.accounts` takes these fields:
 | `uid` | nullOr int | `null` | Numeric user id. Required on macOS when `manageAccount` is true |
 | `gid` | nullOr int | `null` | Numeric primary group id. Defaults to `20` (`staff`) on macOS |
 | `homeConfig` | deferredModule | `{}` | Additional Home Manager configuration for this user |
+
+**sudo with an SSH key.** This helps when an account has no password, on a machine you reach over SSH. List the keys that may unlock sudo:
+
+```nix
+conf.users.accounts.admin = {
+  sshKeys     = [ "ssh-ed25519 AAAA… login key" ];
+  sudoSshKeys = [ "ssh-ed25519 AAAA… sudo key" ];   # may be the same key
+};
+```
+
+Then connect with your agent forwarded:
+
+```sh
+ssh -A admin@host
+```
+
+Or set it once in `~/.ssh/config`:
+
+```
+Host myhost
+  ForwardAgent yes
+  IdentityFile ~/.ssh/id_ed25519
+```
+
+How it behaves:
+
+- sudo checks the key held by your agent against `sudoSshKeys`, which are kept in `/etc/ssh/sudo_keys.d/<user>` (owned by root).
+- Login keys in `sshKeys` do not unlock sudo unless they are listed in `sudoSshKeys` too, so the sudo key can be a separate, stronger one, such as a hardware security key. Keys in `~/.ssh/authorized_keys` never count.
+- Without one of these keys, or without the agent, sudo asks for the password as before. `sudo -n`, as scripts use it, works with the key too.
+- Only sudo changes. Console login and `su` still need the password, and root login stays off.
+- Forward your agent only to machines you trust: while you are connected, root on that machine can use your agent too.
 
 A user's home configuration is assembled from the baseline in `modules/user/`,
 anything in `users/<username>/default.nix`, their `homeConfig`, and — only for a
@@ -844,6 +876,7 @@ turn the implied option off.
 | `conf.sharing.ssh.enable` | • With `networking.enable`: sshd on port 22, keys only, root login refused, `AllowGroups = [ "ssh-users" ]`<br>• Account groups: `ssh-users` for privileged accounts; others opt in through `groups` |
 | `conf.sharing.rdp.enable` | • With `sharing.enable`: GNOME Remote Desktop |
 | `conf.users.accounts.<name>.privileged` | • `wheel` (sudo), plus `networkmanager` or `wpa_supplicant`, by backend, `ssh-users`, `docker`, `podman` and `libvirtd` for whichever of those services the host enables. These groups are rejected in `groups` |
+| `conf.users.accounts.<name>.sudoSshKeys` | • `/etc/ssh/sudo_keys.d/<name>` (root's, mode 0444) with those keys<br>• `security.pam.sshAgentAuth` reading only those files, for sudo<br>• `Defaults noninteractive_auth`, so `sudo -n` can use the key<br>• Listing keys on an unprivileged account is a build error |
 | `conf.fleet.repo.url` | • `fleet.autoUpdate.enable` on, `users.mutableUsers = false`<br>• Requires `fleet.signing.allowedSignersFile`; plain `http://` is rejected<br>• `networking.firewall.enable = false` is rejected; sshd password authentication gives a warning |
 | `conf.secrets.repo.url` | • `fleet.support.enable` on, which requires `fleet.support.sshKeys` and sets `sharing.ssh.enable = true` (sshd still needs `networking.enable`)<br>• sops-nix reads `<statePath>/secrets`; every account with `secrets.password` (the default) takes its hash from the secrets repository, so `initialHashedPassword` is an error<br>• Requires `fleet.repo.url` (`fleet-bootstrap` and `config-auto-update` refresh the secrets) and `fleet.signing.allowedSignersFile` (every fetched commit is verified against it); an HTTP(S) URL is rejected<br>• Accounts with `secrets.sshKey`: Home Manager points SSH and git signing at `/run/secrets/users/<name>/ssh_key` |
 | `conf.fleet.support.enable` | • A privileged `support` account with `fleet.support.sshKeys`, a locked password and passwordless sudo<br>• `sharing.ssh.enable = true` (a plain value, so it beats role defaults) |

@@ -16,6 +16,9 @@ let
   wpaControl = net.enable && net.backend == "networkd"
     && net.wireless.enable && net.wireless.wifi.enable;
 
+  # Accounts whose sudo also takes an SSH key.
+  sudoKeyUsers = lib.filterAttrs (_: u: u.privileged && u.sudoSshKeys != [ ]) users;
+
   # Deliberately NOT in the list above: `kvm`. /dev/kvm is world-accessible by
   # default udev rule, so the group grants nothing and is given to every user,
   # not just privileged ones, as insurance against that mode ever tightening.
@@ -84,6 +87,31 @@ in
     # sudo is reachable only through wheel, which only `privileged` grants.
     security.sudo.execWheelOnly = true;
 
+    # sudo by SSH key, per account (`sudoSshKeys`): pam_ssh_agent_auth checks
+    # the forwarded agent's key against /etc/ssh/sudo_keys.d/<user>, a file of
+    # root's that exists only for accounts that list sudo keys. Login keys do
+    # not count, nor does ~/.ssh/authorized_keys, which anything running as
+    # the user could add a key to. sudo only: login and su still want the
+    # password.
+    environment.etc = lib.mapAttrs' (username: user:
+      lib.nameValuePair "ssh/sudo_keys.d/${username}" {
+        text = lib.concatLines user.sudoSshKeys;
+        # A copy owned by root, not a link into the store, which the module
+        # would refuse: the store's directory is writable by the build users.
+        mode = "0444";
+      }) sudoKeyUsers;
+    security.pam.sshAgentAuth = lib.mkIf (sudoKeyUsers != { }) {
+      enable = true;
+      authorizedKeysFiles = [ "/etc/ssh/sudo_keys.d/%u" ];
+    };
+    security.pam.services.sudo.sshAgentAuth = lib.mkIf (sudoKeyUsers != { }) true;
+    # `sudo -n` (never prompt), as scripts and remote deploys use it, skips
+    # authentication altogether unless told otherwise; then the key, which
+    # needs no input, works there too, and a password still cannot.
+    security.sudo.extraConfig = lib.mkIf (sudoKeyUsers != { }) ''
+      Defaults noninteractive_auth
+    '';
+
     # Non-privileged users are not in `networkmanager`, so NixOS' blanket rules
     # for that group never match them and this allowlist is what they get.
     # NixOS also has a blanket rule for org.freedesktop.ModemManager keyed on
@@ -100,6 +128,12 @@ in
     '';
 
     assertions =
+      (lib.mapAttrsToList (username: user: {
+        assertion = user.sudoSshKeys == [ ] || user.privileged;
+        message = "conf.users.accounts.${username} lists sudoSshKeys but is not privileged;"
+          + " only privileged accounts can use sudo.";
+      }) users)
+      ++
       # `groups` is for non-privilege extras only, so that sudo-equivalent
       # access is declared in exactly one place and can be checked.
       (lib.mapAttrsToList (username: user: {
