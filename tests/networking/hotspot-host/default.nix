@@ -18,7 +18,7 @@
         # wlan2 its hotspot, wlan3 a phone.
         wifi = {
           enable = true;
-          interface = "wlan1";
+          interfaces.wlan1 = { };
         };
         hotspot = {
           enable = true;

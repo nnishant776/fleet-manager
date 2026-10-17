@@ -48,10 +48,10 @@ pkgs.writeShellApplication {
     iw phy "$phy" set netns name ${ns}
     ip netns exec ${ns} ip link set lo up
     ip netns exec ${ns} ip addr add ${subnet}.1/24 dev ${iface}
-    ip netns exec ${ns} hostapd -B -P /run/hwsim-router-hostapd.pid ${conf}
+    ip netns exec ${ns} hostapd -B -P /run/hwsim-router-${ns}-hostapd.pid ${conf}
     ip netns exec ${ns} dnsmasq --port=0 --interface=${iface} --bind-dynamic \
       --dhcp-range=${subnet}.10,${subnet}.50,1h \
-      --pid-file=/run/hwsim-router-dnsmasq.pid \
-      --dhcp-leasefile=/run/hwsim-router-dnsmasq.leases
+      --pid-file=/run/hwsim-router-${ns}-dnsmasq.pid \
+      --dhcp-leasefile=/run/hwsim-router-${ns}-dnsmasq.leases
   '';
 }

@@ -56,14 +56,35 @@
 
       wifi = {
         enable = lib.mkEnableOption "the Wi-Fi client";
-        interface = lib.mkOption {
-          type = lib.types.nullOr lib.types.str;
-          default = null;
-          example = "wlan0";
+        interfaces = lib.mkOption {
+          type = lib.types.attrsOf (lib.types.submodule {
+            options.routeMetric = lib.mkOption {
+              type = lib.types.nullOr lib.types.ints.unsigned;
+              default = null;
+              example = 2048;
+              description = ''
+                Which network carries internet traffic when several offer a
+                default route: the lowest metric wins. `null` leaves
+                networkd's default, 1024, the same as a wired network gets.
+              '';
+            };
+          });
+          default = { };
+          example = lib.literalExpression ''
+            {
+              wlsd83add1a2b3c = { };
+              wlu001a2b3c4d5e.routeMetric = 2048;
+            }
+          '';
           description = ''
-            `networkd` backend: the one interface the Wi-Fi client uses. `null`
-            uses every Wi-Fi interface; with `hotspot.adapter = "usb"`, every
-            one that is not on USB, named `wlan-uplink`.
+            `networkd` backend: the interfaces the Wi-Fi client uses, by name.
+            Each gets a wpa_supplicant of its own, with its own networks in
+            /etc/wpa_supplicant/<name>.conf, so different interfaces join
+            different networks; the file starts as a copy of
+            /etc/wpa_supplicant/imperative.conf. Each starts when its adapter
+            appears. `{ }` uses every Wi-Fi interface, all sharing
+            imperative.conf; with `hotspot.adapter = "usb"`, every one that is
+            not on USB, named `wlan-uplink`.
           '';
         };
       };
@@ -83,7 +104,7 @@
           description = ''
             Which Wi-Fi adapter runs the hotspot: `"usb"` for the machine's one
             USB Wi-Fi adapter, or the adapter's MAC address in lower case (then
-            `wifi.interface` must be set). Setting it reserves the adapter for
+            `wifi.interfaces` must name the client's interfaces). Setting it reserves the adapter for
             the hotspot and names it `interface`, even while the hotspot is
             off, so turning the hotspot on changes nothing else.
           '';
