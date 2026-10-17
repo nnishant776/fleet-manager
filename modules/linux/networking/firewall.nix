@@ -32,6 +32,8 @@ let
     "netavark"
     "libvirt_network"
     "io.systemd.nat"
+    # This flake's own (networking/hotspot.nix).
+    "hotspot-guard"
   ];
   clashes = lib.intersectLists (lib.attrNames fw.tables) takenTables;
 

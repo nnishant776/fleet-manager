@@ -31,13 +31,15 @@
             ssid = "pi a";
             band = "5g";
           };
-          # B: 6 GHz, one device at a time, as a custom hostapd setting.
+          # B: 6 GHz, one device at a time, as a custom hostapd setting; its
+          # devices may reach this machine's own services.
           wlx020000000300 = {
             enable = true;
             ssid = "pi b";
             band = "6g";
             address = "10.43.0.1/24";
             settings.max_num_sta = 1;
+            hostAccess = true;
           };
           # C: turned on, but its adapter is not there.
           wlx020000009900 = {
@@ -64,6 +66,10 @@
         };
       };
     };
+
+    # A service on this machine for the hotspots to reach, or not (SSH, port
+    # 22, open on every interface).
+    sharing.ssh.enable = true;
 
     users.accounts.admin = {
       fullName = "Admin";

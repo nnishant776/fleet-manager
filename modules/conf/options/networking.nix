@@ -170,6 +170,17 @@ in {
               '';
             };
 
+            hostAccess = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+              description = ''
+                Let devices on this hotspot reach this machine's own services,
+                as devices on the uplink side can (SSH, say). Off, they reach
+                only its DHCP server. Either way they reach the internet, see
+                each other, and never reach devices on another hotspot.
+              '';
+            };
+
             passwordFile = lib.mkOption {
               type = lib.types.str;
               default = "/var/lib/hotspot/${name}";

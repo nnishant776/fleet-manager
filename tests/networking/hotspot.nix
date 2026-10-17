@@ -14,7 +14,10 @@
 # - phones join with WPA3 (on 6 GHz with protected management frames, under
 #   India's rules), get an address by DHCP and reach the router through NAT,
 #   which has no route back to the hotspots' subnets;
-# - two phones on the same hotspot reach each other;
+# - two phones on the same hotspot reach each other, but not phones on
+#   another hotspot, in either direction;
+# - a hotspot reaches this machine's own services (SSH) only with hostAccess,
+#   as B has and A has not;
 # - B's custom setting (one device at a time) reaches hostapd.
 # Run it with `nix build .#checks.x86_64-linux.networking-hotspot`.
 { pkgs, inputs }:
@@ -189,6 +192,16 @@ pkgs.testers.runNixOSTest {
     with subtest("phones reach the router through the host"):
         for name in ["a1", "a2", "b1"]:
             m.succeed(f"ip netns exec {name} ping -c1 -W3 192.168.77.1")
+
+    with subtest("phones on different hotspots cannot reach each other"):
+        a1 = m.succeed("ip netns exec a1 ip -4 -o addr show ${radio 4} | awk '{print $4}' | cut -d/ -f1").strip()
+        b1 = m.succeed("ip netns exec b1 ip -4 -o addr show ${radio 6} | awk '{print $4}' | cut -d/ -f1").strip()
+        m.fail(f"ip netns exec a1 ping -c1 -W3 {b1}")
+        m.fail(f"ip netns exec b1 ping -c1 -W3 {a1}")
+
+    with subtest("a hotspot reaches this machine's own services only with hostAccess"):
+        m.fail("ip netns exec a1 timeout 5 bash -c '</dev/tcp/10.42.0.1/22'")
+        m.succeed("ip netns exec b1 timeout 5 bash -c '</dev/tcp/10.43.0.1/22'")
 
     with subtest("stopping one hotspot leaves the others running"):
         m.succeed("systemctl stop hostapd-${hotspotA}.service")
