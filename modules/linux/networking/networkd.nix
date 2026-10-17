@@ -63,7 +63,7 @@ let
   };
 
   # Interface names that do not look like conf.networking.macNames' own.
-  odd = lib.filter (n: builtins.match "wl[upsx][0-9a-f]{12}" n == null) (lib.attrNames named);
+  odd = lib.filter (n: builtins.match "wl[upsox][0-9a-f]{12}" n == null) (lib.attrNames named);
 in {
   config = lib.mkMerge [
     (lib.mkIf (cfg.enable && cfg.backend == "networkd") (lib.mkMerge [
