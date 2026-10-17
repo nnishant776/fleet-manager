@@ -19,7 +19,7 @@
       wireless = {
         countryCode = "IN";
         # Radio 0 is the router, 1 this machine's uplink, 2 and 3 hotspots
-        # A and B, 4 to 7 phones, 8 hotspot E.
+        # A and B, 4 to 7 phones, 8 and 9 hotspots E and F.
         wifi = {
           enable = true;
           interfaces.wlx020000000100 = { };
@@ -52,6 +52,14 @@
             band = "2g";
             address = "10.45.0.1/24";
             extraConfig = "not_a_hostapd_key=1";
+          };
+          # F: 5 GHz, a pinned width rather than the widest.
+          wlx020000000900 = {
+            enable = true;
+            ssid = "pi f";
+            channel = 149;
+            width = 40;
+            address = "10.46.0.1/24";
           };
         };
       };
