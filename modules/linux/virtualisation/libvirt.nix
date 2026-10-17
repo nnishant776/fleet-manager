@@ -9,8 +9,9 @@ let
     bridge-utils
     dnsmasq
     vde2
-    ebtables
-    iptables
+    # libvirt's networks follow the nftables firewall; it needs neither
+    # iptables nor ebtables for them.
+    nftables
     dmidecode
   ] ++ cfg.extraPackages;
 
@@ -28,6 +29,14 @@ in {
     };
 
     programs.virt-manager.enable = true;
+
+    # libvirt turns forwarding on for its NAT networks. Forwarding is denied
+    # unless allowed (see containers/docker.nix); VMs on libvirt's networks
+    # (virbr0, ...) are allowed out.
+    networking.firewall.filterForward = true;
+    networking.firewall.extraForwardRules = ''
+      iifname "virbr*" accept comment "libvirt's networks"
+    '';
 
     environment.systemPackages = virtPackages;
 

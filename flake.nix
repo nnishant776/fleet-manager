@@ -116,6 +116,10 @@
         inherit inputs;
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
       };
+      networking-forwarding = import ./tests/networking/forwarding.nix {
+        inherit inputs;
+        pkgs = nixpkgs.legacyPackages.x86_64-linux;
+      };
     }
     # One `<host>-hotspot-ready` per host that has prepared a hotspot but not
     # turned it on, so turning it on stays a one-line change.
