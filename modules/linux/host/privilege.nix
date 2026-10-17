@@ -4,10 +4,17 @@ let
 
   # Groups that confer root or near-root (wheel: sudo; docker/podman: rootful
   # sockets; libvirtd: VM disk passthrough; networkmanager: a blanket polkit
-  # YES for every org.freedesktop.NetworkManager.* action). These must follow
-  # from a user's `privileged` flag — never from a hand-written group list,
-  # and never from a service merely being enabled.
-  privilegedGroups = [ "wheel" "docker" "podman" "libvirtd" "networkmanager" ];
+  # YES for every org.freedesktop.NetworkManager.* action; wpa_supplicant:
+  # wpa_cli, which joins any network and rewrites the saved ones). These must
+  # follow from a user's `privileged` flag — never from a hand-written group
+  # list, and never from a service merely being enabled.
+  privilegedGroups = [ "wheel" "docker" "podman" "libvirtd" "networkmanager" "wpa_supplicant" ];
+
+  net = config.conf.networking;
+  networkManager = net.enable && net.backend == "networkmanager";
+  # The group exists only while the networkd backend runs wpa_supplicant.
+  wpaControl = net.enable && net.backend == "networkd"
+    && net.wireless.enable && net.wireless.wifi.enable;
 
   # Deliberately NOT in the list above: `kvm`. /dev/kvm is world-accessible by
   # default udev rule, so the group grants nothing and is given to every user,
@@ -45,11 +52,14 @@ let
     ++ lib.optionals user.privileged (
       [ "wheel" ]
       ++ lib.optionals config.conf.sharing.ssh.enable [ "ssh-users" ]
-      ++ lib.optionals config.conf.networking.enable [ "networkmanager" ]
+      ++ lib.optionals networkManager [ "networkmanager" ]
+      ++ lib.optionals wpaControl [ "wpa_supplicant" ]
       ++ lib.optionals config.conf.containers.enable [ "docker" "podman" ]
       ++ lib.optionals config.conf.virtualisation.enable [ "libvirtd" ]
     )
-    ++ lib.optionals (!user.privileged && config.conf.networking.enable) [ "network-users" ];
+    # Under networkd there is no narrow equivalent: unprivileged users cannot
+    # change networks at all.
+    ++ lib.optionals (!user.privileged && networkManager) [ "network-users" ];
 
   offendingGroups = user: lib.intersectLists user.groups privilegedGroups;
 
@@ -65,7 +75,7 @@ in
 
     users.groups = lib.mkMerge [
       # Holds the narrow NetworkManager permissions below.
-      (lib.mkIf config.conf.networking.enable { network-users = { }; })
+      (lib.mkIf networkManager { network-users = { }; })
       # sshd's AllowGroups (sharing/ssh.nix). Not a privilege: membership only
       # permits a login that still needs a key or password.
       (lib.mkIf config.conf.sharing.ssh.enable { ssh-users = { }; })
@@ -79,7 +89,7 @@ in
     # NixOS also has a blanket rule for org.freedesktop.ModemManager keyed on
     # the same group; nothing is allowlisted here for it, so a non-privileged
     # user can toggle WWAN but cannot drive the modem directly.
-    security.polkit.extraConfig = lib.mkIf config.conf.networking.enable ''
+    security.polkit.extraConfig = lib.mkIf networkManager ''
       polkit.addRule(function(action, subject) {
         var allowed = [${lib.concatMapStringsSep "" (a: "\n    \"${a}\",") networkUserActions}
         ];

@@ -4,12 +4,15 @@
 { pkgs }:
 pkgs.writeShellApplication {
   name = "rpi-firstboot";
-  runtimeInputs = with pkgs; [ coreutils gnused systemd networkmanager ];
+  runtimeInputs = with pkgs; [ coreutils gnused gnugrep systemd ];
   text = ''
     dir=/boot/firmware/firstboot
 
-    # Files may have been written on Windows: strip carriage returns.
-    read_file() { tr -d '\r' <"$1"; }
+    # Files may have been written on Windows: strip carriage returns and a
+    # leading byte-order mark. Editors often leave the last line without a
+    # newline, which `read` would drop, so one is always added; the empty
+    # lines that may make are skipped.
+    read_file() { { tr -d '\r' <"$1"; echo; } | sed '1s/^\xef\xbb\xbf//'; }
 
     # hostname: the given one, or rpi-<last 4 of the board serial>, so several
     # freshly flashed Pis are still told apart on the network.
@@ -22,32 +25,84 @@ pkgs.writeShellApplication {
     hostnamectl set-hostname "$name"
     echo "rpi-firstboot: hostname $name"
 
-    # authorized_keys: SSH keys for root and the image's nixos user.
+    # authorized_keys: SSH keys for root and the image's nixos user. Only keys
+    # not there yet, so a repeated run adds nothing twice.
     if [ -s "$dir/authorized_keys" ]; then
       for home in /root /home/nixos; do
         [ -d "$home" ] || continue
         install -d -m 700 "$home/.ssh"
-        read_file "$dir/authorized_keys" >>"$home/.ssh/authorized_keys"
+        touch "$home/.ssh/authorized_keys"
+        read_file "$dir/authorized_keys" | while IFS= read -r key; do
+          [ -n "$key" ] || continue
+          grep -qxF -- "$key" "$home/.ssh/authorized_keys" || printf '%s\n' "$key" >>"$home/.ssh/authorized_keys"
+        done
         chmod 600 "$home/.ssh/authorized_keys"
         chown -R "$(stat -c %U:%G "$home")" "$home/.ssh"
       done
-      echo "rpi-firstboot: installed $(grep -c . "$dir/authorized_keys") SSH key(s)"
+      echo "rpi-firstboot: $(grep -c . /root/.ssh/authorized_keys) SSH key(s) in place"
     fi
 
-    # wifi: SSID=... and PSK=... lines.
+    # wifi: SSID=... and PSK=... lines, added as a network to the file
+    # wpa_supplicant reads, where a host on the networkd backend finds it too.
+    # The SSID is written in hex, so any name works; WPA2 and WPA3 are both
+    # allowed, as most routers offer either. No PSK means an open network.
+    # An optional COUNTRY=... line sets the country whose radio rules apply:
+    # without it the strict worldwide rules leave much of 5 GHz unusable.
+    wifi_error=""
     if [ -s "$dir/wifi" ]; then
       ssid="$(read_file "$dir/wifi" | sed -n 's/^SSID=//p' | head -1)"
       psk="$(read_file "$dir/wifi" | sed -n 's/^PSK=//p' | head -1)"
-      if [ -n "$ssid" ]; then
-        nmcli connection add type wifi con-name firstboot-wifi ssid "$ssid" \
-          wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$psk" connection.autoconnect yes >/dev/null
+      country="$(read_file "$dir/wifi" | sed -n 's/^COUNTRY=//p' | head -1 | tr -d ' ' | tr '[:lower:]' '[:upper:]')"
+      if [ -z "$ssid" ]; then
+        wifi_error="the wifi file has no SSID= line"
+      elif [ -n "$psk" ] && { [ ''${#psk} -lt 8 ] || [ ''${#psk} -gt 63 ]; }; then
+        wifi_error="the Wi-Fi password must be 8 to 63 characters"
+      elif [ -n "$country" ] && ! printf '%s\n' "$country" | grep -qx '[A-Z][A-Z]'; then
+        wifi_error="COUNTRY= must be a two-letter country code, such as IN"
+      else
+        # The directory is closed (0750) at boot, by systemd-tmpfiles.
+        conf=/etc/wpa_supplicant/imperative.conf
+        [ -d /etc/wpa_supplicant ] || install -d -m 750 /etc/wpa_supplicant
+        touch "$conf"
+        chmod 660 "$conf"
+        chown wpa_supplicant:wpa_supplicant "$conf"
+        # The country goes first, before any network, and only once. The file
+        # is rewritten in place, so it keeps its owner and mode.
+        if [ -n "$country" ] && ! grep -q '^country=' "$conf"; then
+          content="$(cat "$conf")"
+          {
+            printf 'country=%s\n' "$country"
+            [ -z "$content" ] || printf '%s\n' "$content"
+          } >"$conf"
+          echo "rpi-firstboot: Wi-Fi country $country"
+        fi
+        {
+          printf 'network={\n'
+          printf '\tssid=%s\n' "$(printf '%s' "$ssid" | od -An -v -tx1 | tr -d ' \n')"
+          if [ -n "$psk" ]; then
+            printf '\tpsk="%s"\n' "$psk"
+            printf '\tkey_mgmt=WPA-PSK WPA-PSK-SHA256 SAE\n'
+            printf '\tieee80211w=1\n'
+          else
+            printf '\tkey_mgmt=NONE\n'
+          fi
+          printf '}\n'
+        } >>"$conf"
         echo "rpi-firstboot: Wi-Fi network '$ssid' added"
       fi
-      # The passphrase is not left readable on a card that might change hands.
+      # The passphrase is not left readable on a card that might change hands,
+      # whether or not it could be used.
       rm -f "$dir/wifi"
     fi
 
     # mDNS announces the new name.
     systemctl restart systemd-resolved.service || true
+
+    # Fail visibly after the other settings are applied, so the unit shows as
+    # failed and the reason is in its log.
+    if [ -n "$wifi_error" ]; then
+      echo "rpi-firstboot: Wi-Fi not added: $wifi_error" >&2
+      exit 1
+    fi
   '';
 }

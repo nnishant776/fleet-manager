@@ -1,14 +1,14 @@
-# Sample Raspberry Pi 5: a plain headless machine on the card written by
-# `nix run .#rpi-image`. Copy this directory to start a new Pi host; for a Pi
-# that does more (routing, microVMs), see hosts/pi-gw.
+# A Raspberry Pi 5: a plain headless machine on the card written by
+# `nix run .#rpi-image`. Copy this directory to start a new Pi host.
 #
 # To bring a card up as this host:
-#   1. Flash the image and put `rpi5` in firstboot/hostname on its FAT
+#   1. Flash the image and put `neerajpinew` in firstboot/hostname on its FAT
 #      partition, plus authorized_keys (and wifi, if it has no cable).
 #   2. Boot it, SSH in as `nixos`, and switch:
-#        sudo nixos-rebuild switch --flake <this flake>#rpi5
-#   The Wi-Fi network added on first boot is a NetworkManager connection in
-#   /etc, so it survives the switch.
+#        sudo nixos-rebuild switch --flake <this flake>#neerajpinew
+#   The first boot adds the card's Wi-Fi network to
+#   /etc/wpa_supplicant/imperative.conf, which this host reads too (networkd
+#   backend), so the Pi stays on the same Wi-Fi after the switch.
 #
 # This file only takes { config, pkgs, lib } so flake.nix can read the platform
 # from it; the board support, which needs `inputs`, is in hardware.nix.
@@ -16,11 +16,31 @@
   nixpkgs.hostPlatform = "aarch64-linux";
 
   conf = {
-    # minimal brings NetworkManager, which the image's Wi-Fi connection uses.
-    # Do not set networking.wifi.enable: it selects the standalone
-    # wpa_supplicant backend, which conflicts with NetworkManager.
     role = "minimal";
     machineType = "headless";
+
+    # The same network setup as the card: systemd-networkd and wpa_supplicant.
+    networking = {
+      backend = "networkd";
+      # Interfaces are named after their bus and MAC from the next boot: the
+      # built-in Wi-Fi becomes wls<MAC>, the Ethernet enp<MAC>. `ip link`
+      # shows them.
+      macNames = true;
+      wireless = {
+        countryCode = "IN";
+        # This Pi's network is Wi-Fi; headless machines leave it off by default.
+        # With no interfaces named, it uses every Wi-Fi interface, from
+        # /etc/wpa_supplicant/imperative.conf.
+        wifi.enable = true;
+        # To add a hotspot on a USB adapter: plug it in and read its name
+        # with `ip link` (wlu<MAC>). Name the client's interface, so it never
+        # takes the hotspot's adapter, and put the hotspot's password in
+        # /var/lib/hotspot/<name> (root, mode 0600):
+        #
+        #   wifi.interfaces.wls<MAC of the built-in Wi-Fi> = { };
+        #   hotspots.wlu<MAC of the adapter> = { enable = true; };
+      };
+    };
 
     host = {
       name = "neerajpinew";

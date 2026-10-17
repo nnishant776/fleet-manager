@@ -56,7 +56,7 @@ itself — and then hands over to the flake's own tools:
 |---|---|
 | macOS | installs Lix if needed, then switches to `<hostname>` with the nix-darwin this flake pins |
 | NixOS installer ISO | runs `os-install`; `<hostname>` is optional, and further arguments are passed to it |
-| an installed NixOS host | runs `system-switch` for `<hostname>` (default: this machine's hostname) |
+| an installed NixOS host | runs `system-switch` for `<hostname>` (default: this machine's hostname), building from the same flake |
 | another Linux | installs Lix and stops; only Home Manager is supported there |
 
 `FLAKE=github:org/repo/<tag>` in front of `sh` makes it use another flake, or a
@@ -92,7 +92,7 @@ in the host directory is imported, so `hardware-configuration.nix`,
 ```bash
 nixos-rebuild  switch --flake .#<hostname>     # Linux
 darwin-rebuild switch --flake .#<hostname>     # macOS
-system-switch                                  # wrapper; defaults to /etc/nixos and this host
+system-switch [host] [flake]                   # wrapper; defaults to this host and /etc/nixos; flake is a directory or a reference
 ```
 
 On a machine whose configuration lives in `/etc/nixos`, `nixos-rebuild switch`
@@ -225,11 +225,16 @@ cards as needed, then give each card its own settings by creating files in
 |---|---|
 | `hostname` | the Pi's hostname (default: `rpi-` and the last four characters of the board serial) |
 | `authorized_keys` | SSH keys for `root` and the `nixos` user |
-| `wifi` | `SSID=` and `PSK=` lines; deleted once applied |
+| `wifi` | `SSID=` and `PSK=` lines (password 8 to 63 characters; no `PSK=` for an open network), and a `COUNTRY=` line with your two-letter country code, such as `IN`. Without a country, much of 5 GHz is unusable and the Pi may stay on 2.4 GHz. Added to the Wi-Fi networks in `/etc/wpa_supplicant/imperative.conf`, then deleted from the card |
 
 A `README.txt` on the card repeats this. After the first boot, log in over SSH
 and switch the Pi to its host configuration; from then on it updates from this
 flake like any other host and the image is not needed again.
+
+The card itself uses systemd-networkd and wpa_supplicant. To keep the same
+Wi-Fi after the switch, give the host `conf.networking.backend = "networkd"`
+with Wi-Fi on, since it reads the same network file. If the first boot reports
+a problem with the wifi file, `journalctl -u rpi-firstboot` says what.
 
 Building needs `aarch64-linux`: natively, through emulation
 (`boot.binfmt.emulatedSystems = [ "aarch64-linux" ];` on a NixOS host), or with
@@ -319,7 +324,6 @@ user with `selfManagedHome` — their own `~/.config/home-manager/home.nix`.
 |---|---|---|---|
 | `hardware.graphics.enable` | toggle | `false` | Hardware acceleration |
 | `hardware.graphics.vendor` | enum: `intel`/`amd`/`nvidia` | `"intel"` | Driver selection |
-| `hardware.bluetooth.enable` | toggle | `false` | Bluetooth stack (bluez, blueman); also enables all firmware. Needs `networking.enable` |
 | `hardware.powerManagement.enable` | toggle | `false` | Power management daemons (tuned, upower) |
 | `hardware.disk.enable` | bool | `false` | Generate `disko.devices` from the options below. `false` means the host provides its own `disko-config.nix`, or is not installable with `os-install` |
 | `hardware.disk.device` | nullOr str | `null` | Primary disk: boot partitions and the first physical volume. Required when enabled. `os-install -d main=DEV` overrides it |
@@ -359,10 +363,33 @@ default.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `networking.enable` | toggle | `false` | NetworkManager |
-| `networking.wifi.enable` | toggle | `false` | Wi-Fi backend. Needs `networking.enable` |
+| `networking.enable` | toggle | `false` | Networking, managed by `networking.backend` |
+| `networking.backend` | enum: `networkmanager`/`networkd` | `"networkmanager"` | `networkmanager` is for machines where users pick networks. `networkd` is for appliances: DHCP on every wired and Wi-Fi interface, Wi-Fi through wpa_supplicant, and only privileged users can change networks |
+| `networking.macNames` | bool | `false` | Names every physical network interface, Wi-Fi and wired, after its bus and MAC (e.g. `wlu001a2b3c4d5e`), from the next boot |
+| `networking.wireless.enable` | bool | `true` | Master switch for every radio: Wi-Fi, the hotspot and Bluetooth. Set it to `false` to turn them all off at once. Wired networking keeps working |
+| `networking.wireless.countryCode` | nullOr str | `null` | Two capital letters, such as `DE`: the country whose radio rules apply. Without it the strict worldwide rules apply. Used by `networkd` |
+| `networking.wireless.wifi.enable` | toggle | `false` | Wi-Fi client. Needs `networking.enable`; off when `networking.wireless.enable` is off |
+| `networking.wireless.wifi.interfaces` | attrs | `{}` | With `networkd`: the client's interfaces, by name. Each joins its own networks, kept in `/etc/wpa_supplicant/<name>.conf`. `{}` uses every Wi-Fi interface, sharing `imperative.conf`. With a hotspot declared, it must name them, so the client never takes a hotspot's adapter |
+| `networking.wireless.wifi.interfaces.<name>.routeMetric` | nullOr int | `null` | Which network carries internet traffic when several give a default route. The lowest wins. `null` is networkd's 1024, as for a wired network |
+| `networking.wireless.hotspots` | attrs | `{}` | Wi-Fi hotspots that share this machine's connection with other devices, keyed by the adapter's interface name. Each has a service of its own. Needs `networking.backend = "networkd"`, `networking.wireless.countryCode`, the client's interfaces named in `networking.wireless.wifi.interfaces`, and each password file. Off when `networking.wireless.enable` is off |
+| `networking.wireless.hotspots.<name>.enable` | bool | `false` | Turns this hotspot on. Off, its adapter is still kept from the Wi-Fi client, so turning it on changes nothing else |
+| `networking.wireless.hotspots.<name>.ssid` | str | the host name | Network name the hotspot shows (1 to 32 bytes). Each hotspot needs its own |
+| `networking.wireless.hotspots.<name>.band` | enum: `2g`/`5g`/`6g` | `"5g"` | Frequency band. `6g` is Wi-Fi 6E and needs an adapter and a country that allow it (India allows indoor use since 2026) |
+| `networking.wireless.hotspots.<name>.channel` | nullOr int | `null` | Channel. `null` picks 6, 36 or 37 for `2g`, `5g`, `6g` |
+| `networking.wireless.hotspots.<name>.width` | `"max"` or 20/40/80/160/320 | `"max"` | Channel width in MHz. `"max"` takes the widest the adapter and the country allow, and stays at 20 on `2g`. A number pins it, and the hotspot does not start if that width is not allowed |
+| `networking.wireless.hotspots.<name>.radarChannels` | bool | `false` | Lets `"max"` use channels shared with radar. The hotspot then waits a minute or more before it starts, and many USB adapters cannot do it. 160 MHz on `5g` needs them |
+| `networking.wireless.hotspots.<name>.security` | enum: `wpa3`/`wpa2-wpa3` | `"wpa3"` | `wpa3` lets in WPA3 devices only. `wpa2-wpa3` also lets older devices in. 6 GHz allows WPA3 only |
+| `networking.wireless.hotspots.<name>.address` | str | `"10.42.0.1/24"` | The hotspot's own address and subnet. Joining devices get an address in it and reach the internet through this machine. Two hotspots' subnets must not overlap |
+| `networking.wireless.hotspots.<name>.hostAccess` | bool | `false` | Lets devices on this hotspot reach this machine's own services, such as SSH, as devices on the uplink side can. Off, they reach only its DHCP server |
+| `networking.wireless.hotspots.<name>.passwordFile` | str | `"/var/lib/hotspot/<name>"` | File on the machine holding only this hotspot's password (8 to 63 characters, no `\|`), created by root with mode 0600. It is read when the hotspot starts and never copied into the Nix store |
+| `networking.wireless.hotspots.<name>.settings` | attrs | `{}` | Extra hostapd settings for this hotspot. They come last, so they win. Put width keys in `width`, not here, as `settings` skips its checks |
+| `networking.wireless.hotspots.<name>.extraConfig` | lines | `""` | Lines added to this hotspot's hostapd configuration as they are, after `settings` |
+| `networking.wireless.bluetooth.enable` | toggle | `false` | Bluetooth (bluez, blueman); also turns on all firmware. Needs `networking.enable`; off when `networking.wireless.enable` is off |
 | `networking.firewall.enable` | nullOr bool | `null` | `null` keeps the NixOS firewall at its default, which is on; `true`/`false` set it explicitly. `false` is rejected on a fleet host |
-| `networking.firewall.config` | attrs | `{}` | Merged into `networking.firewall` |
+| `networking.firewall.config` | attrs | `{}` | Merged into `networking.firewall`, for its options such as logging. `extraCommands` and `extraStopCommands` (iptables) are rejected |
+| `networking.firewall.inputRules` | lines | `""` | nftables rules of this host's own for new connections to it. They add access; they cannot remove what an open port allows |
+| `networking.firewall.forwardRules` | lines | `""` | nftables rules of this host's own for traffic passing through. Setting any turns on "forwarding denied unless allowed" |
+| `networking.firewall.tables` | attrs of { family; content } | `{}` | Whole nftables tables of this host's own. `family` defaults to `inet`. Names NixOS, Docker, podman, libvirt or systemd-networkd already use are rejected, and so is `hotspot-guard`, this flake's own |
 | `sharing.enable` | toggle | `false` | Services that expose this machine to the network. Gates `rdp`; `ssh` does not need it |
 | `sharing.ssh.enable` | toggle | `false` | SSH server, keys only, for members of `ssh-users`. Needs `networking.enable`. Set by the support account |
 | `sharing.ssh.config` | attrs | `{}` | Merged into `services.openssh` |
@@ -371,6 +398,142 @@ default.
 Topology — addresses, routes, VLANs, bridges, a DHCP server — is not wrapped.
 Write it as `networking.*` or `systemd.network.*` options in the host directory,
 for example in a `network.nix`.
+
+**The firewall** is nftables on every Linux host. iptables rules
+(`extraCommands`) are refused at build time. Docker still uses iptables
+underneath, which lands in nftables too; there is nothing to do.
+
+Rules of a host's own go in one of three options:
+
+- `inputRules`: new connections to the machine. They add access; they cannot
+  remove what an open port allows.
+- `forwardRules`: traffic passing through the machine. Setting any turns on
+  "forwarding denied unless allowed".
+- `tables`: a whole nftables table, for anything else. A `drop` is final, but
+  an `accept` only ends its own chain. So blocking needs a chain at an earlier
+  priority.
+
+```nix
+# SSH from the home network only
+conf.networking.firewall.inputRules = ''
+  ip saddr 192.168.1.0/24 tcp dport 22 accept
+'';
+```
+
+These options are only for one host's additions and exceptions. A module sets
+the rules its own feature needs, and a module that uses these options fails
+the build. Table names already used by NixOS, Docker, podman, libvirt or
+systemd-networkd are refused.
+
+Hosts with containers, VMs or a hotspot deny forwarded traffic unless it is
+allowed. Containers and VMs still reach the network and published ports still
+work. But the machine no longer routes between its other networks, which NixOS
+with Docker would otherwise do.
+
+**Interface names from the MAC** are off by default. With
+`networking.macNames = true`, every physical network interface is named after
+its bus and its MAC address, such as `wlu001a2b3c4d5e`. The name is `wl`
+(Wi-Fi) or `en` (wired), then a bus letter, then the MAC without colons. The
+bus letter is `u` for USB, `p` for PCI, `s` for SDIO (the Pi's built-in Wi-Fi
+is on SDIO) and `x` for anything else. The name is 15 characters, the most
+Linux allows.
+
+The same adapter then gets the same name on every boot and in any port. Kernel
+names like `wlan0` depend on the order in which adapters appear. The names
+change at the next boot. After that, anything in the host's configuration that
+names an interface must use the new name. To find a name, run `ip link` once
+the adapter is plugged in, or read the MAC printed on the adapter.
+
+Virtual interfaces (bridges, VLANs, VPNs, container networks), interfaces a
+program names itself, and adapters without a fixed MAC keep their names. This
+needs the systemd initrd, which is the default here.
+
+**Wi-Fi networks with `networkd`** are kept on the machine. With no
+interfaces named, one client serves every Wi-Fi interface, and the networks are
+in `/etc/wpa_supplicant/imperative.conf`. On a Raspberry Pi, the network from the
+card's `firstboot/wifi` file ends up there. To move to a new access point, add
+it while the old one still works, then remove the old one:
+
+```bash
+wpa_cli add_network                              # prints a number, say 1
+wpa_cli set_network 1 ssid '"New network"'
+wpa_cli set_network 1 psk '"its password"'
+wpa_cli enable_network 1
+wpa_cli save_config
+# later, once the machine uses the new network:
+wpa_cli list_networks                            # find the old one's number
+wpa_cli remove_network 0
+wpa_cli save_config
+```
+
+With `networking.wireless.wifi.interfaces` naming interfaces, each one has its
+own file, `/etc/wpa_supplicant/<name>.conf`. The first time, it is a copy of
+`imperative.conf`, so a machine on Wi-Fi stays online. Then remove the networks
+that interface should not join. `wpa_cli` takes `-i <name>`, and `save_config`
+writes only that interface's file:
+
+```bash
+wpa_cli -i <name> list_networks
+wpa_cli -i <name> remove_network 0
+wpa_cli -i <name> save_config
+```
+
+An adapter plugged in later starts its client by itself.
+
+**Hotspots** are named by their adapter's interface name. Turn on
+`networking.macNames` so the name is stable, plug the adapter in and read its
+name with `ip link`. Whenever there is a hotspot, name the Wi-Fi client's
+interfaces in `networking.wireless.wifi.interfaces`, so the client never takes a
+hotspot's adapter:
+
+```nix
+conf = {
+  networking.backend = "networkd";
+  networking.macNames = true;
+  networking.wireless = {
+    countryCode = "IN";
+    wifi.enable = true;
+    wifi.interfaces.wls001a2b3c4d5e = { };
+    hotspots.wlu00c0ca9c8d7e.enable = true;
+  };
+};
+```
+
+Put the hotspot's password in `/var/lib/hotspot/<name>`, as root:
+
+```bash
+sudo install -d -m 700 /var/lib/hotspot
+sudo sh -c 'umask 077; printf "%s\n" "the password" > /var/lib/hotspot/<name>'
+```
+
+Each hotspot has its own service, `hostapd-<name>`. It starts when its adapter
+appears and stops when it goes. The other hotspots carry on.
+`systemctl restart hostapd-<name>` applies a new password to that one. Devices
+on the same hotspot see each other. Each hotspot shares the uplink through NAT.
+Devices on one hotspot cannot reach devices on another, in either direction.
+They still reach the internet through the uplink. Devices on the uplink side
+cannot start connections to hotspot devices. Devices on a hotspot reach this
+machine itself only for DHCP, unless `hostAccess = true` for that hotspot (for
+your own hotspot, to reach SSH, say). Devices on the uplink's own network, such
+as a home LAN, stay reachable from the hotspots, as the internet is reached
+through it.
+
+Each hotspot uses the widest channel its adapter and the country allow. That is
+usually 80 MHz on 5 GHz, and up to 160 or 320 MHz on 6 GHz, depending on the
+adapter. 2.4 GHz stays at 20 MHz. The country is set first. If hostapd refuses
+a width, the next narrower one is tried. The choice is in the service's log:
+`journalctl -u hostapd-<name>`. `width = 80` (or any other number) pins it.
+Radar channels, which 160 MHz on 5 GHz needs, are off unless
+`radarChannels = true`. The hotspot then waits a minute or more before it
+starts, and many USB adapters cannot do it. In India, 160 MHz on 5 GHz is only
+on channels 100 to 128.
+
+For other hostapd settings, use `settings` and `extraConfig`. They are added
+last, so they win. Do not set `interface` or `ctrl_interface`. Do not put
+secrets in them, as they end up in the Nix store.
+
+`nix flake check` checks every host that has a declared hotspot that is off
+(`<host>-hotspot-ready`), so turning it on stays a one-line change.
 
 ### `conf.containers` and `conf.virtualisation`
 
@@ -629,7 +792,7 @@ A machine type contributes defaults across two levels:
 
 | Type | `conf.*` Options | System, Hardware & Security Posture (Linux) |
 |---|---|---|
-| `laptop` | `networking.wifi.enable`, `hardware.bluetooth.enable`, `hardware.powerManagement.enable` | `services.fwupd.enable = true`; `services.thermald.enable` on Intel (follows `hardware.cpu.intel.updateMicrocode`); `hardware.sensor.iio.enable = true`; `security.protectKernelImage = false` (kexec and hibernation stay available); a generated disk layout with `hardware.disk.encrypt = false` gives an evaluation warning |
+| `laptop` | `networking.wireless.wifi.enable`, `networking.wireless.bluetooth.enable`, `hardware.powerManagement.enable` | `services.fwupd.enable = true`; `services.thermald.enable` on Intel (follows `hardware.cpu.intel.updateMicrocode`); `hardware.sensor.iio.enable = true`; `security.protectKernelImage = false` (kexec and hibernation stay available); a generated disk layout with `hardware.disk.encrypt = false` gives an evaluation warning |
 | `desktop` | `hardware.powerManagement.enable` | `services.fwupd.enable = true`; `security.protectKernelImage = false` (kexec and hibernation stay available); Wi-Fi and Bluetooth stay off unless set |
 | `headless` | *(none)* | Hardened posture: `security.protectKernelImage = true` (no kexec, no hibernation); `nix.settings.allowed-users = [ "@wheel" ]` on NixOS; `networking.firewall.logRefusedConnections = true`; `services.fwupd.enable = false` |
 | `vm` | *(none)* | Guest integration: `services.qemuGuest.enable = true`; `services.spice-vdagentd.enable` follows `desktop.enable`; `security.protectKernelImage = true`; `services.fwupd.enable = false`. Power daemons still follow `desktop.enable` (see below), so a desktop-role VM gets them unless `hardware.powerManagement.enable = false` |
@@ -667,17 +830,19 @@ turn the implied option off.
 
 | Trigger | Cascading Implications |
 |---|---|
-| `conf.networking.enable`<br>*(all roles)* | • NetworkManager, with `systemd-resolved` doing opportunistic DNS-over-TLS and `DNSSEC = "allow-downgrade"`<br>• Prerequisite for `networking.wifi`, `hardware.bluetooth` and `sharing.ssh`: without it those three do nothing<br>• Account groups: `network-users` (join and switch networks only) for unprivileged accounts, `networkmanager` for privileged ones |
-| `conf.networking.wifi.enable`<br>*(laptop)* | • With `networking.enable`: `networking.wireless.enable` |
-| `conf.hardware.bluetooth.enable`<br>*(laptop)* | • With `networking.enable`: `hardware.bluetooth.enable`, `hardware.enableAllFirmware`, `hardware.alsa.enableBluetooth`, `services.blueman.enable` |
+| `conf.networking.enable`<br>*(all roles)* | • NetworkManager (or systemd-networkd with `networking.backend = "networkd"`), with `systemd-resolved` doing opportunistic DNS-over-TLS and `DNSSEC = "allow-downgrade"`<br>• Wi-Fi stays off, and NetworkManager leaves Wi-Fi devices alone, unless `networking.wireless.wifi.enable` is on<br>• Prerequisite for `networking.wireless.wifi`, `networking.wireless.bluetooth` and `sharing.ssh`: without it those three do nothing<br>• Account groups: with NetworkManager, `network-users` (join and switch networks only) for unprivileged accounts and `networkmanager` for privileged ones; with networkd, `wpa_supplicant` for privileged accounts (while Wi-Fi is on) and nothing for the others |
+| `conf.networking.wireless.wifi.enable`<br>*(laptop)* | • With `networking.enable` and `networking.wireless.enable`: wpa_supplicant, the Wi-Fi client (the NixOS option `networking.wireless.enable`)<br>• With named `networking.wireless.wifi.interfaces`: one wpa_supplicant per interface, each with its own file |
+| `conf.networking.wireless.bluetooth.enable`<br>*(laptop)* | • With `networking.enable` and `networking.wireless.enable`: `hardware.bluetooth.enable`, `hardware.enableAllFirmware`, `hardware.alsa.enableBluetooth`, `services.blueman.enable` |
+| `conf.networking.wireless.hotspots.<name>.enable` | • With `networking.enable`, `networking.wireless.enable` and the networkd backend: hostapd in a service of its own on that adapter, with WPA3 (on 6 GHz with protected management frames)<br>• systemd-networkd gives joining devices addresses and shares the uplink through NAT; DHCP is allowed through the firewall on that hotspot only<br>• Forwarded traffic is denied unless allowed; the hotspot reaches the uplink but not other hotspots, and reaches this machine only for DHCP unless `hostAccess`<br>• The widest channel width the adapter and the country allow, unless `width` pins it; the country is passed to the kernel at boot |
+| `conf.networking.macNames` | • A udev rule that renames physical network interfaces, at boot or when plugged in, after their bus and MAC address |
 | `conf.hardware.powerManagement.enable`<br>*(laptop, desktop, or `desktop.enable`)* | • `services.upower.enable`, `services.tuned.enable` |
 | `conf.desktop.enable`<br>*(workstation, developer, gaming)* | • Weakly enables `desktop.multimedia.enable`, `hardware.graphics.enable`, `hardware.powerManagement.enable` and `flatpak.enable`, whatever the role<br>• Polkit, GVFS, display manager with the ReGreet greeter, AccountsService, `udisks2` (removable-media automount)<br>• Account groups: `video` and `input` for every account<br>• On `machineType = "vm"`: `services.spice-vdagentd` |
-| `conf.containers.enable`<br>*(server, developer)* | • Docker (rootful daemon, plus rootless with `DOCKER_HOST` set for users) and Podman; Podman, skopeo and buildah accept only `containers.registries`<br>• Account groups: `docker` and `podman` for privileged accounts only |
-| `conf.virtualisation.enable`<br>*(server, developer)* | • `libvirtd` with swtpm, virt-manager<br>• Account groups: `kvm` for every account, `libvirtd` for privileged accounts only |
+| `conf.containers.enable`<br>*(server, developer)* | • Docker (rootful daemon, plus rootless with `DOCKER_HOST` set for users) and Podman; Podman, skopeo and buildah accept only `containers.registries`<br>• Forwarded traffic is denied unless allowed; the containers' own traffic is allowed<br>• Account groups: `docker` and `podman` for privileged accounts only |
+| `conf.virtualisation.enable`<br>*(server, developer)* | • `libvirtd` with swtpm, virt-manager<br>• Forwarded traffic is denied unless allowed; the VMs' own traffic is allowed<br>• Account groups: `kvm` for every account, `libvirtd` for privileged accounts only |
 | `conf.development.enable`<br>*(server, developer, embedded)* | • Weakly enables `programs.nix-ld.enable`, for running unpatched foreign binaries<br>• Enabled SDK, editor, tool, graphics, multimedia and virtualisation groups export their `nix-ldLibraries`; the curated base set needs `development.nixLd.enable` |
 | `conf.sharing.ssh.enable` | • With `networking.enable`: sshd on port 22, keys only, root login refused, `AllowGroups = [ "ssh-users" ]`<br>• Account groups: `ssh-users` for privileged accounts; others opt in through `groups` |
 | `conf.sharing.rdp.enable` | • With `sharing.enable`: GNOME Remote Desktop |
-| `conf.users.accounts.<name>.privileged` | • `wheel` (sudo), plus `networkmanager`, `ssh-users`, `docker`, `podman` and `libvirtd` for whichever of those services the host enables. These groups are rejected in `groups` |
+| `conf.users.accounts.<name>.privileged` | • `wheel` (sudo), plus `networkmanager` or `wpa_supplicant`, by backend, `ssh-users`, `docker`, `podman` and `libvirtd` for whichever of those services the host enables. These groups are rejected in `groups` |
 | `conf.fleet.repo.url` | • `fleet.autoUpdate.enable` on, `users.mutableUsers = false`<br>• Requires `fleet.signing.allowedSignersFile`; plain `http://` is rejected<br>• `networking.firewall.enable = false` is rejected; sshd password authentication gives a warning |
 | `conf.secrets.repo.url` | • `fleet.support.enable` on, which requires `fleet.support.sshKeys` and sets `sharing.ssh.enable = true` (sshd still needs `networking.enable`)<br>• sops-nix reads `<statePath>/secrets`; every account with `secrets.password` (the default) takes its hash from the secrets repository, so `initialHashedPassword` is an error<br>• Requires `fleet.repo.url` (`fleet-bootstrap` and `config-auto-update` refresh the secrets) and `fleet.signing.allowedSignersFile` (every fetched commit is verified against it); an HTTP(S) URL is rejected<br>• Accounts with `secrets.sshKey`: Home Manager points SSH and git signing at `/run/secrets/users/<name>/ssh_key` |
 | `conf.fleet.support.enable` | • A privileged `support` account with `fleet.support.sshKeys`, a locked password and passwordless sudo<br>• `sharing.ssh.enable = true` (a plain value, so it beats role defaults) |
