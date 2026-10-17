@@ -15,6 +15,22 @@
       '';
     };
 
+    macNames = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Name every physical network interface, Wi-Fi and wired, after what it
+        is, its bus and its MAC address: `wl` or `en`, then `u` (USB), `p`
+        (PCI), `s` (SDIO) or `x` (anything else), then the MAC without
+        colons, as in `wlu001a2b3c4d5e`. An adapter keeps its name on every
+        boot and in any port. Takes effect at the next boot. Virtual
+        interfaces, interfaces a program named itself, and adapters without
+        a burned-in MAC keep their names. Independent of every other switch;
+        needs the systemd initrd. Anything that names an interface must use
+        the new names.
+      '';
+    };
+
     # Radios only: wired networking follows `enable` alone, whatever is set here.
     wireless = {
       enable = lib.mkOption {

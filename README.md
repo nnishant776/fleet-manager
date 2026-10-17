@@ -365,6 +365,7 @@ default.
 |---|---|---|---|
 | `networking.enable` | toggle | `false` | Networking, managed by `networking.backend` |
 | `networking.backend` | enum: `networkmanager`/`networkd` | `"networkmanager"` | `networkmanager` is for machines where users pick networks. `networkd` is for appliances: DHCP on every wired and Wi-Fi interface, Wi-Fi through wpa_supplicant, and only privileged users can change networks |
+| `networking.macNames` | bool | `false` | Names every physical network interface, Wi-Fi and wired, after its bus and MAC (e.g. `wlu001a2b3c4d5e`), from the next boot |
 | `networking.wireless.enable` | bool | `true` | Master switch for every radio: Wi-Fi, the hotspot and Bluetooth. Set it to `false` to turn them all off at once. Wired networking keeps working |
 | `networking.wireless.countryCode` | nullOr str | `null` | Two capital letters, such as `DE`: the country whose radio rules apply. Without it the strict worldwide rules apply. Used by `networkd` |
 | `networking.wireless.wifi.enable` | toggle | `false` | Wi-Fi client. Needs `networking.enable`; off when `networking.wireless.enable` is off |
@@ -424,6 +425,24 @@ Hosts with containers or VMs deny forwarded traffic unless it is allowed.
 Containers and VMs still reach the network and published ports still work. But
 the machine no longer routes between its other networks, which NixOS with
 Docker would otherwise do.
+
+**Interface names from the MAC** are off by default. With
+`networking.macNames = true`, every physical network interface is named after
+its bus and its MAC address, such as `wlu001a2b3c4d5e`. The name is `wl`
+(Wi-Fi) or `en` (wired), then a bus letter, then the MAC without colons. The
+bus letter is `u` for USB, `p` for PCI, `s` for SDIO (the Pi's built-in Wi-Fi
+is on SDIO) and `x` for anything else. The name is 15 characters, the most
+Linux allows.
+
+The same adapter then gets the same name on every boot and in any port. Kernel
+names like `wlan0` depend on the order in which adapters appear. The names
+change at the next boot. After that, anything in the host's configuration that
+names an interface must use the new name. To find a name, run `ip link` once
+the adapter is plugged in, or read the MAC printed on the adapter.
+
+Virtual interfaces (bridges, VLANs, VPNs, container networks), interfaces a
+program names itself, and adapters without a fixed MAC keep their names. This
+needs the systemd initrd, which is the default here.
 
 **Wi-Fi networks with `networkd`** are kept on the machine, in
 `/etc/wpa_supplicant/imperative.conf`. On a Raspberry Pi, the network from the
@@ -766,6 +785,7 @@ turn the implied option off.
 | `conf.networking.wireless.wifi.enable`<br>*(laptop)* | • With `networking.enable` and `networking.wireless.enable`: wpa_supplicant, the Wi-Fi client (the NixOS option `networking.wireless.enable`) |
 | `conf.networking.wireless.bluetooth.enable`<br>*(laptop)* | • With `networking.enable` and `networking.wireless.enable`: `hardware.bluetooth.enable`, `hardware.enableAllFirmware`, `hardware.alsa.enableBluetooth`, `services.blueman.enable` |
 | `conf.networking.wireless.hotspot.enable` | • With `networking.enable`, `networking.wireless.enable` and the networkd backend: hostapd on the adapter, with WPA3 (on 6 GHz with protected management frames)<br>• systemd-networkd gives joining devices addresses by DHCP and shares the uplink through NAT; DHCP is allowed through the firewall on the hotspot only |
+| `conf.networking.macNames` | • A udev rule that renames physical network interfaces, at boot or when plugged in, after their bus and MAC address |
 | `conf.hardware.powerManagement.enable`<br>*(laptop, desktop, or `desktop.enable`)* | • `services.upower.enable`, `services.tuned.enable` |
 | `conf.desktop.enable`<br>*(workstation, developer, gaming)* | • Weakly enables `desktop.multimedia.enable`, `hardware.graphics.enable`, `hardware.powerManagement.enable` and `flatpak.enable`, whatever the role<br>• Polkit, GVFS, display manager with the ReGreet greeter, AccountsService, `udisks2` (removable-media automount)<br>• Account groups: `video` and `input` for every account<br>• On `machineType = "vm"`: `services.spice-vdagentd` |
 | `conf.containers.enable`<br>*(server, developer)* | • Docker (rootful daemon, plus rootless with `DOCKER_HOST` set for users) and Podman; Podman, skopeo and buildah accept only `containers.registries`<br>• Forwarded traffic is denied unless allowed; the containers' own traffic is allowed<br>• Account groups: `docker` and `podman` for privileged accounts only |
