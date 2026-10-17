@@ -153,7 +153,62 @@
       config = lib.mkOption {
         type = lib.types.attrs;
         default = { };
-        description = "Merged into `networking.firewall`.";
+        description = ''
+          Merged into `networking.firewall`, for its options such as logging.
+          The firewall is nftables; rules of the host's own go in
+          `inputRules`, `forwardRules` or `tables`, and `extraCommands` is
+          rejected.
+        '';
+      };
+
+      # The three options below are this host's own additions and exceptions.
+      # Rules that follow from what a host does (its role, its services, its
+      # containers, VMs or hotspots) are set by the module that sets that up;
+      # modules never use these (asserted in linux/networking/firewall.nix).
+      inputRules = lib.mkOption {
+        type = lib.types.lines;
+        default = "";
+        example = "ip saddr 192.168.1.0/24 tcp dport 22 accept";
+        description = ''
+          nftables rules of this host's own for new connections to it. They
+          come after the ports the firewall opens, so they add access (SSH
+          from one network only, say); they cannot take away what an open
+          port allows. For that, use `tables`.
+        '';
+      };
+      forwardRules = lib.mkOption {
+        type = lib.types.lines;
+        default = "";
+        description = ''
+          nftables rules of this host's own for new connections passing
+          through it. Setting any turns on "forwarding denied unless
+          allowed" for this host.
+        '';
+      };
+      tables = lib.mkOption {
+        type = lib.types.attrsOf (lib.types.submodule {
+          options = {
+            family = lib.mkOption {
+              type = lib.types.enum [ "ip" "ip6" "inet" "arp" "bridge" "netdev" ];
+              default = "inet";
+              description = "The table's family.";
+            };
+            content = lib.mkOption {
+              type = lib.types.lines;
+              description = "The table's chains, sets and maps.";
+            };
+          };
+        });
+        default = { };
+        description = ''
+          Whole nftables tables of this host's own, for what `inputRules`
+          and `forwardRules` cannot say: chains at any hook and priority,
+          address translation, sets, maps. In nftables a `drop` anywhere is
+          final, while an `accept` only ends its own chain and the other
+          tables still see the packet; so blocking something the firewall
+          allows takes a chain at an earlier priority (`filter - 1`). Names
+          other tables already use are rejected.
+        '';
       };
     };
   };

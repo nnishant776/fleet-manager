@@ -21,5 +21,12 @@ in {
       enable = true;
       defaultNetwork.settings.dns_enabled = true;
     };
+
+    # Forwarding is denied unless allowed (see docker.nix); podman's networks
+    # (podman0, podman1, ...) are allowed out, as Docker's are.
+    networking.firewall.filterForward = true;
+    networking.firewall.extraForwardRules = ''
+      iifname "podman*" accept comment "podman's networks"
+    '';
   };
 }

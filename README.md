@@ -381,7 +381,10 @@ default.
 | `networking.wireless.hotspot.settings` | attrs | `{}` | Extra hostapd settings for fine-tuning |
 | `networking.wireless.bluetooth.enable` | toggle | `false` | Bluetooth (bluez, blueman); also turns on all firmware. Needs `networking.enable`; off when `networking.wireless.enable` is off |
 | `networking.firewall.enable` | nullOr bool | `null` | `null` keeps the NixOS firewall at its default, which is on; `true`/`false` set it explicitly. `false` is rejected on a fleet host |
-| `networking.firewall.config` | attrs | `{}` | Merged into `networking.firewall` |
+| `networking.firewall.config` | attrs | `{}` | Merged into `networking.firewall`, for its options such as logging. `extraCommands` and `extraStopCommands` (iptables) are rejected |
+| `networking.firewall.inputRules` | lines | `""` | nftables rules of this host's own for new connections to it. They add access; they cannot remove what an open port allows |
+| `networking.firewall.forwardRules` | lines | `""` | nftables rules of this host's own for traffic passing through. Setting any turns on "forwarding denied unless allowed" |
+| `networking.firewall.tables` | attrs of { family; content } | `{}` | Whole nftables tables of this host's own. `family` defaults to `inet`. Names NixOS, Docker, podman, libvirt or systemd-networkd already use are rejected |
 | `sharing.enable` | toggle | `false` | Services that expose this machine to the network. Gates `rdp`; `ssh` does not need it |
 | `sharing.ssh.enable` | toggle | `false` | SSH server, keys only, for members of `ssh-users`. Needs `networking.enable`. Set by the support account |
 | `sharing.ssh.config` | attrs | `{}` | Merged into `services.openssh` |
@@ -390,6 +393,37 @@ default.
 Topology — addresses, routes, VLANs, bridges, a DHCP server — is not wrapped.
 Write it as `networking.*` or `systemd.network.*` options in the host directory,
 for example in a `network.nix`.
+
+**The firewall** is nftables on every Linux host. iptables rules
+(`extraCommands`) are refused at build time. Docker still uses iptables
+underneath, which lands in nftables too; there is nothing to do.
+
+Rules of a host's own go in one of three options:
+
+- `inputRules`: new connections to the machine. They add access; they cannot
+  remove what an open port allows.
+- `forwardRules`: traffic passing through the machine. Setting any turns on
+  "forwarding denied unless allowed".
+- `tables`: a whole nftables table, for anything else. A `drop` is final, but
+  an `accept` only ends its own chain. So blocking needs a chain at an earlier
+  priority.
+
+```nix
+# SSH from the home network only
+conf.networking.firewall.inputRules = ''
+  ip saddr 192.168.1.0/24 tcp dport 22 accept
+'';
+```
+
+These options are only for one host's additions and exceptions. A module sets
+the rules its own feature needs, and a module that uses these options fails
+the build. Table names already used by NixOS, Docker, podman, libvirt or
+systemd-networkd are refused.
+
+Hosts with containers or VMs deny forwarded traffic unless it is allowed.
+Containers and VMs still reach the network and published ports still work. But
+the machine no longer routes between its other networks, which NixOS with
+Docker would otherwise do.
 
 **Wi-Fi networks with `networkd`** are kept on the machine, in
 `/etc/wpa_supplicant/imperative.conf`. On a Raspberry Pi, the network from the
@@ -734,8 +768,8 @@ turn the implied option off.
 | `conf.networking.wireless.hotspot.enable` | • With `networking.enable`, `networking.wireless.enable` and the networkd backend: hostapd on the adapter, with WPA3 (on 6 GHz with protected management frames)<br>• systemd-networkd gives joining devices addresses by DHCP and shares the uplink through NAT; DHCP is allowed through the firewall on the hotspot only |
 | `conf.hardware.powerManagement.enable`<br>*(laptop, desktop, or `desktop.enable`)* | • `services.upower.enable`, `services.tuned.enable` |
 | `conf.desktop.enable`<br>*(workstation, developer, gaming)* | • Weakly enables `desktop.multimedia.enable`, `hardware.graphics.enable`, `hardware.powerManagement.enable` and `flatpak.enable`, whatever the role<br>• Polkit, GVFS, display manager with the ReGreet greeter, AccountsService, `udisks2` (removable-media automount)<br>• Account groups: `video` and `input` for every account<br>• On `machineType = "vm"`: `services.spice-vdagentd` |
-| `conf.containers.enable`<br>*(server, developer)* | • Docker (rootful daemon, plus rootless with `DOCKER_HOST` set for users) and Podman; Podman, skopeo and buildah accept only `containers.registries`<br>• Account groups: `docker` and `podman` for privileged accounts only |
-| `conf.virtualisation.enable`<br>*(server, developer)* | • `libvirtd` with swtpm, virt-manager<br>• Account groups: `kvm` for every account, `libvirtd` for privileged accounts only |
+| `conf.containers.enable`<br>*(server, developer)* | • Docker (rootful daemon, plus rootless with `DOCKER_HOST` set for users) and Podman; Podman, skopeo and buildah accept only `containers.registries`<br>• Forwarded traffic is denied unless allowed; the containers' own traffic is allowed<br>• Account groups: `docker` and `podman` for privileged accounts only |
+| `conf.virtualisation.enable`<br>*(server, developer)* | • `libvirtd` with swtpm, virt-manager<br>• Forwarded traffic is denied unless allowed; the VMs' own traffic is allowed<br>• Account groups: `kvm` for every account, `libvirtd` for privileged accounts only |
 | `conf.development.enable`<br>*(server, developer, embedded)* | • Weakly enables `programs.nix-ld.enable`, for running unpatched foreign binaries<br>• Enabled SDK, editor, tool, graphics, multimedia and virtualisation groups export their `nix-ldLibraries`; the curated base set needs `development.nixLd.enable` |
 | `conf.sharing.ssh.enable` | • With `networking.enable`: sshd on port 22, keys only, root login refused, `AllowGroups = [ "ssh-users" ]`<br>• Account groups: `ssh-users` for privileged accounts; others opt in through `groups` |
 | `conf.sharing.rdp.enable` | • With `sharing.enable`: GNOME Remote Desktop |
