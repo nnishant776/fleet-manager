@@ -29,7 +29,7 @@ in {
           // (if byUsb then { Property = "ID_BUS=usb"; } else { MACAddress = hs.adapter; });
         linkConfig.Name = hs.interface;
       };
-      systemd.network.links."11-wifi-uplink" = lib.mkIf (byUsb && w.wifi.interface == null) {
+      systemd.network.links."11-wifi-uplink" = lib.mkIf (byUsb && w.wifi.interfaces == { }) {
         matchConfig = { Type = "wlan"; Property = "!ID_BUS=usb"; };
         linkConfig.Name = "wlan-uplink";
       };
@@ -103,8 +103,8 @@ in {
           message = "conf.networking.wireless.hotspot on '${config.conf.host.name}' needs conf.networking.wireless.countryCode; the worldwide rules allow no hotspot on most channels.";
         }
         {
-          assertion = byUsb || hs.adapter == null || w.wifi.interface != null || !w.wifi.enable;
-          message = "conf.networking.wireless.hotspot.adapter on '${config.conf.host.name}' is a MAC address, so conf.networking.wireless.wifi.interface must name the Wi-Fi client's interface.";
+          assertion = byUsb || hs.adapter == null || w.wifi.interfaces != { } || !w.wifi.enable;
+          message = "conf.networking.wireless.hotspot.adapter on '${config.conf.host.name}' is a MAC address, so conf.networking.wireless.wifi.interfaces must name the Wi-Fi client's interfaces.";
         }
         {
           assertion = !(sixG && hs.security != "wpa3");

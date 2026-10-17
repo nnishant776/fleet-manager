@@ -369,9 +369,10 @@ default.
 | `networking.wireless.enable` | bool | `true` | Master switch for every radio: Wi-Fi, the hotspot and Bluetooth. Set it to `false` to turn them all off at once. Wired networking keeps working |
 | `networking.wireless.countryCode` | nullOr str | `null` | Two capital letters, such as `DE`: the country whose radio rules apply. Without it the strict worldwide rules apply. Used by `networkd` |
 | `networking.wireless.wifi.enable` | toggle | `false` | Wi-Fi client. Needs `networking.enable`; off when `networking.wireless.enable` is off |
-| `networking.wireless.wifi.interface` | nullOr str | `null` | With `networkd`: the one interface the Wi-Fi client uses. `null` uses every Wi-Fi interface not reserved for the hotspot |
+| `networking.wireless.wifi.interfaces` | attrs | `{}` | With `networkd`: the client's interfaces, by name. Each joins its own networks, kept in `/etc/wpa_supplicant/<name>.conf`. `{}` uses every Wi-Fi interface not reserved for the hotspot, sharing `imperative.conf` |
+| `networking.wireless.wifi.interfaces.<name>.routeMetric` | nullOr int | `null` | Which network carries internet traffic when several give a default route. The lowest wins. `null` is networkd's 1024, as for a wired network |
 | `networking.wireless.hotspot.enable` | toggle | `false` | A Wi-Fi hotspot that shares this machine's connection with other devices. Needs `networking.backend = "networkd"`, `networking.wireless.countryCode`, `adapter`, and the password file. Off when `networking.wireless.enable` is off |
-| `networking.wireless.hotspot.adapter` | nullOr str | `null` | Which Wi-Fi adapter runs the hotspot: `"usb"` for the machine's one USB Wi-Fi adapter, or the adapter's MAC address (then `networking.wireless.wifi.interface` must be set). Setting it reserves that adapter for the hotspot right away, even while the hotspot is off. With `"usb"`, the other Wi-Fi is named `wlan-uplink`. So turning the hotspot on later changes nothing else |
+| `networking.wireless.hotspot.adapter` | nullOr str | `null` | Which Wi-Fi adapter runs the hotspot: `"usb"` for the machine's one USB Wi-Fi adapter, or the adapter's MAC address (then `networking.wireless.wifi.interfaces` must name the client's interfaces). Setting it reserves that adapter for the hotspot right away, even while the hotspot is off. With `"usb"`, the other Wi-Fi is named `wlan-uplink`. So turning the hotspot on later changes nothing else |
 | `networking.wireless.hotspot.interface` | str | `"wlan-ap"` | Name given to the hotspot's adapter |
 | `networking.wireless.hotspot.ssid` | str | the host name | Network name the hotspot shows (1 to 32 bytes) |
 | `networking.wireless.hotspot.band` | enum: `2g`/`5g`/`6g` | `"5g"` | Frequency band. `6g` is Wi-Fi 6E and needs an adapter and a country that allow it (India allows indoor use since 2026) |
@@ -444,8 +445,9 @@ Virtual interfaces (bridges, VLANs, VPNs, container networks), interfaces a
 program names itself, and adapters without a fixed MAC keep their names. This
 needs the systemd initrd, which is the default here.
 
-**Wi-Fi networks with `networkd`** are kept on the machine, in
-`/etc/wpa_supplicant/imperative.conf`. On a Raspberry Pi, the network from the
+**Wi-Fi networks with `networkd`** are kept on the machine. With no
+interfaces named, one client serves every Wi-Fi interface, and the networks are
+in `/etc/wpa_supplicant/imperative.conf`. On a Raspberry Pi, the network from the
 card's `firstboot/wifi` file ends up there. To move to a new access point, add
 it while the old one still works, then remove the old one:
 
@@ -460,6 +462,20 @@ wpa_cli list_networks                            # find the old one's number
 wpa_cli remove_network 0
 wpa_cli save_config
 ```
+
+With `networking.wireless.wifi.interfaces` naming interfaces, each one has its
+own file, `/etc/wpa_supplicant/<name>.conf`. The first time, it is a copy of
+`imperative.conf`, so a machine on Wi-Fi stays online. Then remove the networks
+that interface should not join. `wpa_cli` takes `-i <name>`, and `save_config`
+writes only that interface's file:
+
+```bash
+wpa_cli -i <name> list_networks
+wpa_cli -i <name> remove_network 0
+wpa_cli -i <name> save_config
+```
+
+An adapter plugged in later starts its client by itself.
 
 **Turning on the hotspot** takes two steps. First, prepare once in the host's
 configuration. This reserves the USB adapter for the hotspot but leaves the
@@ -782,7 +798,7 @@ turn the implied option off.
 | Trigger | Cascading Implications |
 |---|---|
 | `conf.networking.enable`<br>*(all roles)* | • NetworkManager (or systemd-networkd with `networking.backend = "networkd"`), with `systemd-resolved` doing opportunistic DNS-over-TLS and `DNSSEC = "allow-downgrade"`<br>• Wi-Fi stays off, and NetworkManager leaves Wi-Fi devices alone, unless `networking.wireless.wifi.enable` is on<br>• Prerequisite for `networking.wireless.wifi`, `networking.wireless.bluetooth` and `sharing.ssh`: without it those three do nothing<br>• Account groups: with NetworkManager, `network-users` (join and switch networks only) for unprivileged accounts and `networkmanager` for privileged ones; with networkd, `wpa_supplicant` for privileged accounts (while Wi-Fi is on) and nothing for the others |
-| `conf.networking.wireless.wifi.enable`<br>*(laptop)* | • With `networking.enable` and `networking.wireless.enable`: wpa_supplicant, the Wi-Fi client (the NixOS option `networking.wireless.enable`) |
+| `conf.networking.wireless.wifi.enable`<br>*(laptop)* | • With `networking.enable` and `networking.wireless.enable`: wpa_supplicant, the Wi-Fi client (the NixOS option `networking.wireless.enable`)<br>• With named `networking.wireless.wifi.interfaces`: one wpa_supplicant per interface, each with its own file |
 | `conf.networking.wireless.bluetooth.enable`<br>*(laptop)* | • With `networking.enable` and `networking.wireless.enable`: `hardware.bluetooth.enable`, `hardware.enableAllFirmware`, `hardware.alsa.enableBluetooth`, `services.blueman.enable` |
 | `conf.networking.wireless.hotspot.enable` | • With `networking.enable`, `networking.wireless.enable` and the networkd backend: hostapd on the adapter, with WPA3 (on 6 GHz with protected management frames)<br>• systemd-networkd gives joining devices addresses by DHCP and shares the uplink through NAT; DHCP is allowed through the firewall on the hotspot only |
 | `conf.networking.macNames` | • A udev rule that renames physical network interfaces, at boot or when plugged in, after their bus and MAC address |

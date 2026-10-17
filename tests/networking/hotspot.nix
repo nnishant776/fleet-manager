@@ -19,8 +19,9 @@ let
     ssid = "home net";
     passphrase = "router-pass-1";
   };
-  # The uplink's network, as the networkd backend keeps it ("home net" in hex).
-  uplinkNetwork = pkgs.writeText "imperative.conf" ''
+  # The uplink's network, as the networkd backend keeps it ("home net" in hex),
+  # in the uplink interface's own file.
+  uplinkNetwork = pkgs.writeText "wlan1.conf" ''
     network={
     	ssid=686f6d65206e6574
     	psk="router-pass-1"
@@ -108,7 +109,7 @@ pkgs.testers.runNixOSTest {
             m.wait_for_unit("hostapd.service")
             m.wait_until_succeeds(f"iw dev wlan-ap info | grep -q '{channel}'", timeout=60)
 
-        m.succeed("install -m 0660 ${uplinkNetwork} /etc/wpa_supplicant/imperative.conf")
+        m.succeed("install -m 0660 ${uplinkNetwork} /etc/wpa_supplicant/wlan1.conf")
         m.succeed("systemctl restart wpa_supplicant-wlan1.service")
         m.succeed("hwsim-router")
         m.wait_until_succeeds("ip -4 -br addr show wlan1 | grep -q 192.168.77.", timeout=120)
