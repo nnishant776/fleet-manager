@@ -17,11 +17,6 @@ let
   named = cfg.wireless.wifi.interfaces;
   dir = "/etc/wpa_supplicant";
 
-  # Until hotspots are chosen by name: with a USB adapter reserved for the
-  # hotspot and no client interface named, the other Wi-Fi interface is
-  # renamed wlan-uplink (hotspot.nix) and keeps the shared file, as before.
-  uplink = named == { } && cfg.wireless.hotspot.adapter == "usb";
-
   device = name: "sys-subsystem-net-devices-${utils.escapeSystemdPath name}.device";
 
   # Before a named interface's wpa_supplicant starts: its file begins as a
@@ -95,7 +90,7 @@ in {
       (lib.mkIf wifi {
         networking.wireless = {
           enable = true;
-          interfaces = lib.attrNames named ++ lib.optional uplink "wlan-uplink";
+          interfaces = lib.attrNames named;
           # Networks in files on the machine, writable and kept across
           # rebuilds, alongside any declared ones.
           allowAuxiliaryImperativeNetworks = true;
@@ -115,13 +110,10 @@ in {
 
       (lib.mkIf (wifi && named == { }) {
         systemd.network.networks."90-wifi" = {
-          matchConfig = if uplink
-            then { Name = "wlan-uplink"; }
-            else { Type = "wlan"; WLANInterfaceType = "station"; };
+          matchConfig = { Type = "wlan"; WLANInterfaceType = "station"; };
           networkConfig.DHCP = "yes";
         };
-        systemd.services.${if uplink then "wpa_supplicant-wlan-uplink" else "wpa_supplicant"}
-          .serviceConfig.ExecStartPre = lib.mkAfter [
+        systemd.services.wpa_supplicant.serviceConfig.ExecStartPre = lib.mkAfter [
             "+${pkgs.coreutils}/bin/chmod 0660 ${dir}/imperative.conf"
           ];
       })

@@ -1,120 +1,269 @@
-# The hotspot of the `networkd` backend: hostapd on an adapter of its own,
-# systemd-networkd giving joining devices addresses and sharing the uplink
-# through NAT.
+# Hotspots of the `networkd` backend. Each adapter named in
+# conf.networking.wireless.hotspots runs a network of its own, in a hostapd
+# service of its own (hostapd-<name>), so one adapter missing or unplugged
+# stops only its own hotspot. systemd-networkd gives joining devices
+# addresses and shares the uplink through NAT.
 #
-# Setting `hotspot.adapter` reserves and names the adapter at once, whatever
-# `hotspot.enable` says, so that turning the hotspot on adds the hotspot and
-# changes nothing else: the Wi-Fi client keeps its interface and its name.
-{ config, lib, ... }:
+# This flake writes hostapd's configuration itself rather than through
+# NixOS's hostapd module, which runs every radio in one service bound to all
+# their adapters. What that module did is carried over: the password read at
+# start and never stored, the WPA3 and WPA2/WPA3 settings, 802.11d/h, the
+# control socket, the sandboxing and the regulatory database.
+{ config, lib, pkgs, utils, ... }:
 let
   cfg = config.conf.networking;
   w = cfg.wireless;
-  hs = w.hotspot;
-
+  hotspots = w.hotspots;
+  active = lib.filterAttrs (_: h: h.enable) hotspots;
   networkd = cfg.enable && cfg.backend == "networkd";
-  reserved = networkd && w.enable && hs.adapter != null;
-  on = reserved && hs.enable;
+  on = networkd && w.enable && active != { };
 
-  byUsb = hs.adapter == "usb";
-  sixG = hs.band == "6g";
-  channel = if hs.channel != null then hs.channel
-    else { "2g" = 6; "5g" = 36; "6g" = 37; }.${hs.band};
+  device = name: "sys-subsystem-net-devices-${utils.escapeSystemdPath name}.device";
+
+  # hostapd's key=value format, as NixOS's module writes it: true and false
+  # as 1 and 0, a list as the key once per item.
+  toHostapd = lib.generators.toKeyValue {
+    listsAsDuplicateKeys = true;
+    mkKeyValue = lib.generators.mkKeyValueDefault {
+      mkValueString = v:
+        if lib.isInt v then toString v
+        else if lib.isString v then v
+        else if v == true then "1"
+        else if v == false then "0"
+        else throw "hostapd setting of type ${builtins.typeOf v}";
+    } "=";
+  };
+
+  channelOf = h: if h.channel != null then h.channel
+    else { "2g" = 6; "5g" = 36; "6g" = 37; }.${h.band};
+
+  # What the flake sets for every hotspot.
+  settingsOf = name: h:
+    let sixG = h.band == "6g"; in {
+      interface = name;
+      driver = "nl80211";
+      ctrl_interface = "/run/hostapd-${name}";
+      ctrl_interface_group = "wheel";
+      logger_syslog = -1;
+      logger_syslog_level = 2;
+      logger_stdout = -1;
+      logger_stdout_level = 2;
+
+      ssid = h.ssid;
+      utf8_ssid = true;
+      hw_mode = if h.band == "2g" then "g" else "a";
+      channel = channelOf h;
+      country_code = w.countryCode;
+      # Announce the country, and handle radar where the rules require it.
+      ieee80211d = true;
+      ieee80211h = true;
+      # HT and VHT do not exist on 6 GHz, and VHT not on 2.4 GHz.
+      ieee80211n = !sixG;
+      ieee80211ac = h.band == "5g";
+      ieee80211ax = true;
+      wmm_enabled = true;
+      auth_algs = 1;
+      # Devices on the same hotspot see each other: a requirement.
+      ap_isolate = false;
+
+      wpa = 2;
+      rsn_pairwise = "CCMP";
+      # Protected management frames: required on 6 GHz and with WPA3 alone.
+      ieee80211w = if sixG || h.security == "wpa3" then 2 else 1;
+      sae_require_mfp = true;
+      # Both ways of deriving the SAE password element.
+      sae_pwe = 2;
+    }
+    // (if h.security == "wpa3" then {
+      wpa_key_mgmt = "SAE";
+      # Tells WPA3 devices to stop offering anything older.
+      transition_disable = "0x01";
+    } else {
+      # WPA2 devices with and without protected management frames.
+      wpa_key_mgmt = "WPA-PSK WPA-PSK-SHA256 SAE";
+    })
+    # 6 GHz channels are named by operating class; India and Europe allow
+    # indoor (low-power) access points there.
+    // lib.optionalAttrs sixG { op_class = 131; he_6ghz_reg_pwr_type = 0; };
+
+  # Built with the system: the flake's settings first, the host's own last.
+  baseFile = name: h: pkgs.writeText "hostapd-${name}.conf" (toHostapd (settingsOf name h));
+  customFile = name: h: pkgs.writeText "hostapd-${name}-custom.conf"
+    (toHostapd h.settings + lib.optionalString (h.extraConfig != "") "\n${h.extraConfig}\n");
+
+  # Before hostapd starts: its configuration in its runtime directory,
+  # root-only, with the password read from its file in between. hostapd
+  # keeps the last value it reads for a key, so the host's own settings win.
+  prepare = name: h: pkgs.writeShellScript "hostapd-${name}-prepare" ''
+    set -eu
+    password=$(${pkgs.coreutils}/bin/cat ${lib.escapeShellArg h.passwordFile})
+    case ''${#password} in
+      [8-9]|[1-5][0-9]|6[0-3]) ;;
+      *) echo "${h.passwordFile}: the password must be 8 to 63 characters" >&2; exit 1 ;;
+    esac
+    case $password in
+      *'|'*) echo "${h.passwordFile}: the password must not contain |" >&2; exit 1 ;;
+    esac
+    conf=/run/hostapd-${name}/hostapd.conf
+    {
+      ${pkgs.coreutils}/bin/cat ${baseFile name h}
+      printf 'sae_password=%s\n' "$password"
+      ${lib.optionalString (h.security != "wpa3") ''printf 'wpa_passphrase=%s\n' "$password"''}
+      ${pkgs.coreutils}/bin/cat ${customFile name h}
+    } > "$conf"
+  '';
+
+  service = name: h: {
+    description = "Wi-Fi hotspot ${h.ssid} on ${name}";
+    # Started by its adapter, at boot or whenever it is plugged in, and
+    # stopped when it goes; a missing adapter holds up nothing else.
+    wantedBy = [ (device name) ];
+    bindsTo = [ (device name) ];
+    after = [ (device name) ];
+    serviceConfig = {
+      ExecStartPre = prepare name h;
+      ExecStart = "${pkgs.hostapd}/bin/hostapd /run/hostapd-${name}/hostapd.conf";
+      ExecReload = "${pkgs.coreutils}/bin/kill -HUP $MAINPID";
+      Restart = "on-failure";
+      # Its own: systemd deletes a runtime directory when its service stops.
+      RuntimeDirectory = "hostapd-${name}";
+
+      # As NixOS's hostapd service.
+      LockPersonality = true;
+      MemoryDenyWriteExecute = true;
+      DevicePolicy = "closed";
+      DeviceAllow = "/dev/rfkill rw";
+      NoNewPrivileges = true;
+      PrivateUsers = false; # hostapd needs real root.
+      PrivateTmp = false; # hostapd_cli opens a socket in /tmp.
+      ProtectClock = true;
+      ProtectControlGroups = true;
+      ProtectHome = true;
+      ProtectHostname = true;
+      ProtectKernelLogs = true;
+      ProtectKernelModules = true;
+      ProtectKernelTunables = true;
+      ProtectProc = "invisible";
+      ProcSubset = "pid";
+      ProtectSystem = "strict";
+      RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_NETLINK" "AF_UNIX" "AF_PACKET" ];
+      RestrictNamespaces = true;
+      RestrictRealtime = true;
+      RestrictSUIDSGID = true;
+      SystemCallArchitectures = "native";
+      SystemCallFilter = [ "@system-service" "~@privileged" "@chown" ];
+      UMask = "0077";
+    };
+  };
+
+  network = name: h: {
+    matchConfig.Name = name;
+    address = [ h.address ];
+    networkConfig = {
+      DHCPServer = true;
+      # Devices on the hotspot reach the uplink through this machine.
+      IPMasquerade = "ipv4";
+      ConfigureWithoutCarrier = true;
+      IPv6AcceptRA = false;
+    };
+    # DNS servers handed out are the uplink's.
+    dhcpServerConfig = {
+      EmitDNS = true;
+      PoolOffset = 10;
+    };
+    linkConfig.RequiredForOnline = "no";
+  };
+
+  # Overlapping subnets, checked on the addresses as numbers.
+  ipToInt = s: lib.foldl (acc: o: acc * 256 + lib.toInt o) 0 (lib.splitString "." s);
+  pow2 = n: lib.foldl (x: _: x * 2) 1 (lib.range 1 n);
+  span = a:
+    let
+      parts = lib.splitString "/" a;
+      size = pow2 (32 - lib.toInt (lib.elemAt parts 1));
+      ip = ipToInt (lib.head parts);
+      start = ip - lib.mod ip size;
+    in { inherit start; end = start + size - 1; };
+  pairs = l: lib.concatLists (lib.imap0 (i: a: map (b: [ a b ]) (lib.drop (i + 1) l)) l);
+  activeList = lib.mapAttrsToList (name: h: h // { inherit name; }) active;
+  overlapping = lib.filter (p:
+    let a = span (lib.elemAt p 0).address; b = span (lib.elemAt p 1).address;
+    in a.start <= b.end && b.start <= a.end) (pairs activeList);
+  sameSsid = lib.filter (p: (lib.elemAt p 0).ssid == (lib.elemAt p 1).ssid) (pairs activeList);
+  names = p: "${(lib.elemAt p 0).name} and ${(lib.elemAt p 1).name}";
+
+  # Keys the service depends on: its adapter and its control socket.
+  owned = [ "interface" "ctrl_interface" ];
+  ownedIn = h: lib.intersectLists owned (lib.attrNames h.settings)
+    ++ lib.filter (k: builtins.match "(.*\n)?[[:space:]]*${k}=.*" h.extraConfig != null) owned;
+
+  odd = lib.filter (n: builtins.match "wl[upsx][0-9a-f]{12}" n == null) (lib.attrNames hotspots);
+  host = config.conf.host.name;
 in {
   config = lib.mkMerge [
-    (lib.mkIf reserved {
-      # Names outside the kernel's wlanN pattern cannot clash with whatever
-      # name the kernel hands out at boot, in whichever order adapters appear.
-      systemd.network.links."10-hotspot" = {
-        matchConfig = { Type = "wlan"; }
-          // (if byUsb then { Property = "ID_BUS=usb"; } else { MACAddress = hs.adapter; });
-        linkConfig.Name = hs.interface;
-      };
-      systemd.network.links."11-wifi-uplink" = lib.mkIf (byUsb && w.wifi.interfaces == { }) {
-        matchConfig = { Type = "wlan"; Property = "!ID_BUS=usb"; };
-        linkConfig.Name = "wlan-uplink";
-      };
-    })
-
     (lib.mkIf on {
-      services.hostapd = {
-        enable = true;
-        radios.${hs.interface} = {
-          inherit (hs) band;
-          inherit channel;
-          inherit (w) countryCode;
-          # HT and VHT do not exist on 6 GHz, and VHT not on 2.4 GHz.
-          wifi4.enable = !sixG;
-          wifi5.enable = hs.band == "5g";
-          wifi6.enable = true;
-          # 6 GHz channels are named by operating class; India and Europe allow
-          # indoor (low-power) access points there.
-          settings = lib.optionalAttrs sixG { op_class = 131; he_6ghz_reg_pwr_type = 0; }
-            // hs.settings;
-          networks.${hs.interface} = {
-            inherit (hs) ssid;
-            authentication = if hs.security == "wpa3" then {
-              mode = "wpa3-sae";
-              saePasswordsFile = hs.passwordFile;
-            } else {
-              mode = "wpa3-sae-transition";
-              saePasswordsFile = hs.passwordFile;
-              wpaPasswordFile = hs.passwordFile;
-            };
-            # 6 GHz requires protected management frames.
-            settings = lib.optionalAttrs sixG { ieee80211w = 2; };
-          };
-        };
-      };
-
-      systemd.network.networks."40-hotspot" = {
-        matchConfig.Name = hs.interface;
-        address = [ hs.address ];
-        networkConfig = {
-          DHCPServer = true;
-          # Devices on the hotspot reach the uplink through this machine.
-          IPMasquerade = "ipv4";
-          ConfigureWithoutCarrier = true;
-          IPv6AcceptRA = false;
-        };
-        # DNS servers handed out are the uplink's.
-        dhcpServerConfig = {
-          EmitDNS = true;
-          PoolOffset = 10;
-        };
-        linkConfig.RequiredForOnline = "no";
-      };
+      systemd.services = lib.mapAttrs' (name: h: lib.nameValuePair "hostapd-${name}" (service name h)) active;
+      systemd.network.networks = lib.mapAttrs' (name: h: lib.nameValuePair "40-hotspot-${name}" (network name h)) active;
       systemd.network.config.networkConfig.IPv4Forwarding = true;
-
-      networking.firewall.interfaces.${hs.interface}.allowedUDPPorts = [ 67 ];
+      networking.firewall.interfaces = lib.mapAttrs (_: _: { allowedUDPPorts = [ 67 ]; }) active;
+      hardware.wirelessRegulatoryDatabase = true;
+      environment.systemPackages = [ pkgs.hostapd ];
     })
 
     {
-      assertions = lib.optionals (hs.enable || hs.adapter != null) [
-        {
-          assertion = !hs.enable || hs.adapter != null;
-          message = "conf.networking.wireless.hotspot on '${config.conf.host.name}': set `adapter` (\"usb\" or the adapter's MAC address).";
-        }
-        {
-          assertion = !cfg.enable || cfg.backend == "networkd";
-          message = "conf.networking.wireless.hotspot on '${config.conf.host.name}' needs conf.networking.backend = \"networkd\".";
-        }
-        {
-          assertion = !hs.enable || w.countryCode != null;
-          message = "conf.networking.wireless.hotspot on '${config.conf.host.name}' needs conf.networking.wireless.countryCode; the worldwide rules allow no hotspot on most channels.";
-        }
-        {
-          assertion = byUsb || hs.adapter == null || w.wifi.interfaces != { } || !w.wifi.enable;
-          message = "conf.networking.wireless.hotspot.adapter on '${config.conf.host.name}' is a MAC address, so conf.networking.wireless.wifi.interfaces must name the Wi-Fi client's interfaces.";
-        }
-        {
-          assertion = !(sixG && hs.security != "wpa3");
-          message = "conf.networking.wireless.hotspot on '${config.conf.host.name}': 6 GHz allows WPA3 only; set security = \"wpa3\".";
-        }
-        {
-          assertion = lib.stringLength hs.ssid >= 1 && lib.stringLength hs.ssid <= 32;
-          message = "conf.networking.wireless.hotspot.ssid on '${config.conf.host.name}' must be 1 to 32 bytes.";
-        }
-      ];
+      assertions =
+        [
+          {
+            assertion = hotspots == { } || !w.wifi.enable || w.wifi.interfaces != { };
+            message = "conf.networking.wireless.hotspots on '${host}': name the Wi-Fi client's interfaces in conf.networking.wireless.wifi.interfaces, so the client never takes a hotspot's adapter.";
+          }
+          {
+            assertion = lib.intersectLists (lib.attrNames hotspots) (lib.attrNames w.wifi.interfaces) == [ ];
+            message = "conf.networking.wireless on '${host}': ${lib.concatStringsSep ", " (lib.intersectLists (lib.attrNames hotspots) (lib.attrNames w.wifi.interfaces))} is both a Wi-Fi client interface and a hotspot.";
+          }
+          {
+            assertion = overlapping == [ ];
+            message = "conf.networking.wireless.hotspots on '${host}': the subnets of ${lib.concatMapStringsSep "; " names overlapping} overlap.";
+          }
+          {
+            assertion = sameSsid == [ ];
+            message = "conf.networking.wireless.hotspots on '${host}': ${lib.concatMapStringsSep "; " names sameSsid} show the same SSID; give each its own.";
+          }
+        ]
+        ++ lib.concatLists (lib.mapAttrsToList (name: h: [
+          {
+            assertion = lib.stringLength name <= 15;
+            message = "conf.networking.wireless.hotspots.${name} on '${host}': interface names are at most 15 characters.";
+          }
+          {
+            assertion = ownedIn h == [ ];
+            message = "conf.networking.wireless.hotspots.${name} on '${host}': settings and extraConfig cannot set ${lib.concatStringsSep " or " (ownedIn h)}; the hotspot's service is tied to them.";
+          }
+        ]) hotspots)
+        ++ lib.concatLists (lib.mapAttrsToList (name: h: [
+          {
+            assertion = !cfg.enable || cfg.backend == "networkd";
+            message = "conf.networking.wireless.hotspots.${name} on '${host}' needs conf.networking.backend = \"networkd\".";
+          }
+          {
+            assertion = w.countryCode != null;
+            message = "conf.networking.wireless.hotspots.${name} on '${host}' needs conf.networking.wireless.countryCode; the worldwide rules allow no hotspot on most channels.";
+          }
+          {
+            assertion = !(h.band == "6g" && h.security != "wpa3");
+            message = "conf.networking.wireless.hotspots.${name} on '${host}': 6 GHz allows WPA3 only; set security = \"wpa3\".";
+          }
+          {
+            assertion = lib.stringLength h.ssid >= 1 && lib.stringLength h.ssid <= 32;
+            message = "conf.networking.wireless.hotspots.${name}.ssid on '${host}' must be 1 to 32 bytes.";
+          }
+        ]) active);
+
+      warnings = lib.optional (cfg.macNames && odd != [ ])
+        ("conf.networking.wireless.hotspots on '${host}' names "
+          + lib.concatStringsSep ", " odd + ", which conf.networking.macNames would not give a"
+          + " Wi-Fi interface (wl, a bus letter, 12 hex digits). Fine for an adapter it leaves"
+          + " alone; otherwise a leftover kernel name such as wlan0 that no longer exists.");
     }
   ];
 }

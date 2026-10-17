@@ -125,7 +125,7 @@
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
       };
     }
-    # One `<host>-hotspot-ready` per host that has prepared a hotspot but not
+    # One `<host>-hotspot-ready` per host that has declared a hotspot but not
     # turned it on, so turning it on stays a one-line change.
     // lib.mapAttrs'
       (name: host: lib.nameValuePair "${name}-hotspot-ready"
@@ -134,7 +134,7 @@
           pkgs = nixpkgs.legacyPackages.x86_64-linux;
         }))
       (lib.filterAttrs
-        (_: host: let hs = host.config.conf.networking.wireless.hotspot; in hs.adapter != null && !hs.enable)
+        (_: host: lib.any (h: !h.enable) (lib.attrValues host.config.conf.networking.wireless.hotspots))
         nixosConfigurations);
   in {
     inherit nixosConfigurations darwinConfigurations homeConfigurations apps checks;
