@@ -435,8 +435,9 @@ with Docker would otherwise do.
 its bus and its MAC address, such as `wlu001a2b3c4d5e`. The name is `wl`
 (Wi-Fi) or `en` (wired), then a bus letter, then the MAC without colons. The
 bus letter is `u` for USB, `p` for PCI, `s` for SDIO (the Pi's built-in Wi-Fi
-is on SDIO) and `x` for anything else. The name is 15 characters, the most
-Linux allows.
+is on SDIO), `o` for onboard devices the board itself describes (such as the
+Pi 5's built-in Ethernet) and `x` for anything else. The name is 15
+characters, the most Linux allows.
 
 The same adapter then gets the same name on every boot and in any port. Kernel
 names like `wlan0` depend on the order in which adapters appear. The names

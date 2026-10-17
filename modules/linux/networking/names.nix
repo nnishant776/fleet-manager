@@ -3,8 +3,9 @@
 # name on every boot and in any port:
 #
 #   wl / en    Wi-Fi / wired
-#   u p s x    USB, PCI, SDIO, anything else (simulated radios, some boards'
-#              built-in Ethernet)
+#   u p s o x  USB, PCI, SDIO, onboard (a device the board describes, such
+#              as the Pi 5's built-in Ethernet), anything else (simulated
+#              radios)
 #   the MAC    without colons: wlu001a2b3c4d5e (15 characters, Linux's limit)
 #
 # Left alone: virtual interfaces (bridges, bonds, VLANs, veth, tap, VPNs,
@@ -49,7 +50,9 @@ in {
       LABEL="mac_names_bus"
       # The bus, from the device's ancestors. Later lines win, so a USB adapter
       # behind a PCI controller ends up "u", and SDIO behind PCI ends up "s".
+      # Onboard comes first: PCI, SDIO and USB controllers sit on the board too.
       ENV{MAC_NAME_BUS}="x"
+      SUBSYSTEMS=="platform", ENV{MAC_NAME_BUS}="o"
       SUBSYSTEMS=="pci", ENV{MAC_NAME_BUS}="p"
       SUBSYSTEMS=="sdio", ENV{MAC_NAME_BUS}="s"
       SUBSYSTEMS=="usb", ENV{MAC_NAME_BUS}="u"

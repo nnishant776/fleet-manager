@@ -211,7 +211,7 @@ let
   ownedIn = h: lib.intersectLists owned (lib.attrNames h.settings)
     ++ lib.filter (k: builtins.match "(.*\n)?[[:space:]]*${k}=.*" h.extraConfig != null) owned;
 
-  odd = lib.filter (n: builtins.match "wl[upsx][0-9a-f]{12}" n == null) (lib.attrNames hotspots);
+  odd = lib.filter (n: builtins.match "wl[upsox][0-9a-f]{12}" n == null) (lib.attrNames hotspots);
   host = config.conf.host.name;
 in {
   config = lib.mkMerge [
