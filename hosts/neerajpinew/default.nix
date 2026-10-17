@@ -22,18 +22,23 @@
     # The same network setup as the card: systemd-networkd and wpa_supplicant.
     networking = {
       backend = "networkd";
+      # Interfaces are named after their bus and MAC from the next boot: the
+      # built-in Wi-Fi becomes wls<MAC>, the Ethernet enp<MAC>. `ip link`
+      # shows them.
+      macNames = true;
       wireless = {
         countryCode = "IN";
         # This Pi's network is Wi-Fi; headless machines leave it off by default.
+        # With no interfaces named, it uses every Wi-Fi interface, from
+        # /etc/wpa_supplicant/imperative.conf.
         wifi.enable = true;
-        # Ready, but off. The hotspot is the USB Wi-Fi adapter, and the
-        # built-in Wi-Fi stays the uplink, named wlan-uplink. To turn it on:
-        # plug in the adapter, put the password in /var/lib/hotspot/password
-        # (root, mode 0600) and set enable = true.
-        hotspot = {
-          enable = false;
-          adapter = "usb";
-        };
+        # To add a hotspot on a USB adapter: plug it in and read its name
+        # with `ip link` (wlu<MAC>). Name the client's interface, so it never
+        # takes the hotspot's adapter, and put the hotspot's password in
+        # /var/lib/hotspot/<name> (root, mode 0600):
+        #
+        #   wifi.interfaces.wls<MAC of the built-in Wi-Fi> = { };
+        #   hotspots.wlu<MAC of the adapter> = { enable = true; };
       };
     };
 
