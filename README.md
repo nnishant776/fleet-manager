@@ -376,10 +376,12 @@ default.
 | `networking.wireless.hotspots.<name>.ssid` | str | the host name | Network name the hotspot shows (1 to 32 bytes). Each hotspot needs its own |
 | `networking.wireless.hotspots.<name>.band` | enum: `2g`/`5g`/`6g` | `"5g"` | Frequency band. `6g` is Wi-Fi 6E and needs an adapter and a country that allow it (India allows indoor use since 2026) |
 | `networking.wireless.hotspots.<name>.channel` | nullOr int | `null` | Channel. `null` picks 6, 36 or 37 for `2g`, `5g`, `6g` |
+| `networking.wireless.hotspots.<name>.width` | `"max"` or 20/40/80/160/320 | `"max"` | Channel width in MHz. `"max"` takes the widest the adapter and the country allow, and stays at 20 on `2g`. A number pins it, and the hotspot does not start if that width is not allowed |
+| `networking.wireless.hotspots.<name>.radarChannels` | bool | `false` | Lets `"max"` use channels shared with radar. The hotspot then waits a minute or more before it starts, and many USB adapters cannot do it. 160 MHz on `5g` needs them |
 | `networking.wireless.hotspots.<name>.security` | enum: `wpa3`/`wpa2-wpa3` | `"wpa3"` | `wpa3` lets in WPA3 devices only. `wpa2-wpa3` also lets older devices in. 6 GHz allows WPA3 only |
 | `networking.wireless.hotspots.<name>.address` | str | `"10.42.0.1/24"` | The hotspot's own address and subnet. Joining devices get an address in it and reach the internet through this machine. Two hotspots' subnets must not overlap |
 | `networking.wireless.hotspots.<name>.passwordFile` | str | `"/var/lib/hotspot/<name>"` | File on the machine holding only this hotspot's password (8 to 63 characters, no `\|`), created by root with mode 0600. It is read when the hotspot starts and never copied into the Nix store |
-| `networking.wireless.hotspots.<name>.settings` | attrs | `{}` | Extra hostapd settings for this hotspot. They come last, so they win |
+| `networking.wireless.hotspots.<name>.settings` | attrs | `{}` | Extra hostapd settings for this hotspot. They come last, so they win. Put width keys in `width`, not here, as `settings` skips its checks |
 | `networking.wireless.hotspots.<name>.extraConfig` | lines | `""` | Lines added to this hotspot's hostapd configuration as they are, after `settings` |
 | `networking.wireless.bluetooth.enable` | toggle | `false` | Bluetooth (bluez, blueman); also turns on all firmware. Needs `networking.enable`; off when `networking.wireless.enable` is off |
 | `networking.firewall.enable` | nullOr bool | `null` | `null` keeps the NixOS firewall at its default, which is on; `true`/`false` set it explicitly. `false` is rejected on a fleet host |
@@ -507,6 +509,16 @@ Each hotspot has its own service, `hostapd-<name>`. It starts when its adapter
 appears and stops when it goes. The other hotspots carry on.
 `systemctl restart hostapd-<name>` applies a new password to that one. Devices
 on the same hotspot see each other. Each hotspot shares the uplink through NAT.
+
+Each hotspot uses the widest channel its adapter and the country allow. That is
+usually 80 MHz on 5 GHz, and up to 160 or 320 MHz on 6 GHz, depending on the
+adapter. 2.4 GHz stays at 20 MHz. The country is set first. If hostapd refuses
+a width, the next narrower one is tried. The choice is in the service's log:
+`journalctl -u hostapd-<name>`. `width = 80` (or any other number) pins it.
+Radar channels, which 160 MHz on 5 GHz needs, are off unless
+`radarChannels = true`. The hotspot then waits a minute or more before it
+starts, and many USB adapters cannot do it. In India, 160 MHz on 5 GHz is only
+on channels 100 to 128.
 
 For other hostapd settings, use `settings` and `extraConfig`. They are added
 last, so they win. Do not set `interface` or `ctrl_interface`. Do not put
@@ -813,7 +825,7 @@ turn the implied option off.
 | `conf.networking.enable`<br>*(all roles)* | • NetworkManager (or systemd-networkd with `networking.backend = "networkd"`), with `systemd-resolved` doing opportunistic DNS-over-TLS and `DNSSEC = "allow-downgrade"`<br>• Wi-Fi stays off, and NetworkManager leaves Wi-Fi devices alone, unless `networking.wireless.wifi.enable` is on<br>• Prerequisite for `networking.wireless.wifi`, `networking.wireless.bluetooth` and `sharing.ssh`: without it those three do nothing<br>• Account groups: with NetworkManager, `network-users` (join and switch networks only) for unprivileged accounts and `networkmanager` for privileged ones; with networkd, `wpa_supplicant` for privileged accounts (while Wi-Fi is on) and nothing for the others |
 | `conf.networking.wireless.wifi.enable`<br>*(laptop)* | • With `networking.enable` and `networking.wireless.enable`: wpa_supplicant, the Wi-Fi client (the NixOS option `networking.wireless.enable`)<br>• With named `networking.wireless.wifi.interfaces`: one wpa_supplicant per interface, each with its own file |
 | `conf.networking.wireless.bluetooth.enable`<br>*(laptop)* | • With `networking.enable` and `networking.wireless.enable`: `hardware.bluetooth.enable`, `hardware.enableAllFirmware`, `hardware.alsa.enableBluetooth`, `services.blueman.enable` |
-| `conf.networking.wireless.hotspots.<name>.enable` | • With `networking.enable`, `networking.wireless.enable` and the networkd backend: hostapd in a service of its own on that adapter, with WPA3 (on 6 GHz with protected management frames)<br>• systemd-networkd gives joining devices addresses and shares the uplink through NAT; DHCP is allowed through the firewall on that hotspot only |
+| `conf.networking.wireless.hotspots.<name>.enable` | • With `networking.enable`, `networking.wireless.enable` and the networkd backend: hostapd in a service of its own on that adapter, with WPA3 (on 6 GHz with protected management frames)<br>• systemd-networkd gives joining devices addresses and shares the uplink through NAT; DHCP is allowed through the firewall on that hotspot only<br>• The widest channel width the adapter and the country allow, unless `width` pins it; the country is passed to the kernel at boot |
 | `conf.networking.macNames` | • A udev rule that renames physical network interfaces, at boot or when plugged in, after their bus and MAC address |
 | `conf.hardware.powerManagement.enable`<br>*(laptop, desktop, or `desktop.enable`)* | • `services.upower.enable`, `services.tuned.enable` |
 | `conf.desktop.enable`<br>*(workstation, developer, gaming)* | • Weakly enables `desktop.multimedia.enable`, `hardware.graphics.enable`, `hardware.powerManagement.enable` and `flatpak.enable`, whatever the role<br>• Polkit, GVFS, display manager with the ReGreet greeter, AccountsService, `udisks2` (removable-media automount)<br>• Account groups: `video` and `input` for every account<br>• On `machineType = "vm"`: `services.spice-vdagentd` |

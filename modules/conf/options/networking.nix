@@ -124,6 +124,33 @@ in {
               description = "Channel within `band`; `null` picks 6 on `2g`, 36 on `5g` and 37 on `6g`.";
             };
 
+            width = lib.mkOption {
+              type = lib.types.either (lib.types.enum [ "max" ]) (lib.types.enum [ 20 40 80 160 320 ]);
+              default = "max";
+              example = 80;
+              description = ''
+                Channel width in MHz. `"max"` takes the widest the adapter can
+                run as an access point on this band, where every channel of
+                the block around `channel` allows it under the country's
+                rules; if hostapd still refuses it, the next narrower. It
+                stays at 20 on `2g`, where 40 MHz crowds out neighbours. A
+                number pins the width; the hotspot does not start if that
+                width is not allowed. The service's log says what it chose.
+              '';
+            };
+
+            radarChannels = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+              description = ''
+                Let `"max"` use channels shared with radar (most of 5 GHz
+                outside 36 to 48 and 149 to 165). An access point there must
+                listen for radar for a minute or more before it starts, and
+                move away when radar appears; many USB adapters cannot do
+                that. 160 MHz on 5 GHz always needs them.
+              '';
+            };
+
             security = lib.mkOption {
               type = lib.types.enum [ "wpa3" "wpa2-wpa3" ];
               default = "wpa3";
@@ -163,7 +190,9 @@ in {
                 flake's: they come last, so they win. `true`/`false` become
                 1/0; a list writes the key once per item. Not `interface` or
                 `ctrl_interface`, which the service depends on. Not for
-                secrets: this ends up in the Nix store.
+                secrets: this ends up in the Nix store. Setting hostapd's
+                width keys here overrides `width` without its checks; set
+                `width` instead.
               '';
             };
 

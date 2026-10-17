@@ -1,8 +1,9 @@
 # Hotspots of the `networkd` backend. Each adapter named in
 # conf.networking.wireless.hotspots runs a network of its own, in a hostapd
 # service of its own (hostapd-<name>), so one adapter missing or unplugged
-# stops only its own hotspot. systemd-networkd gives joining devices
-# addresses and shares the uplink through NAT.
+# stops only its own hotspot. Each uses the widest channel its adapter and
+# the country allow (`width = "max"`, hotspot-start.nix). systemd-networkd
+# gives joining devices addresses and shares the uplink through NAT.
 #
 # This flake writes hostapd's configuration itself rather than through
 # NixOS's hostapd module, which runs every radio in one service bound to all
@@ -82,18 +83,19 @@ let
       # WPA2 devices with and without protected management frames.
       wpa_key_mgmt = "WPA-PSK WPA-PSK-SHA256 SAE";
     })
-    # 6 GHz channels are named by operating class; India and Europe allow
-    # indoor (low-power) access points there.
-    // lib.optionalAttrs sixG { op_class = 131; he_6ghz_reg_pwr_type = 0; };
+    # India and Europe allow indoor (low-power) access points on 6 GHz. Its
+    # operating class follows the width (hotspot-start.nix).
+    // lib.optionalAttrs sixG { he_6ghz_reg_pwr_type = 0; };
 
   # Built with the system: the flake's settings first, the host's own last.
   baseFile = name: h: pkgs.writeText "hostapd-${name}.conf" (toHostapd (settingsOf name h));
   customFile = name: h: pkgs.writeText "hostapd-${name}-custom.conf"
     (toHostapd h.settings + lib.optionalString (h.extraConfig != "") "\n${h.extraConfig}\n");
 
-  # Before hostapd starts: its configuration in its runtime directory,
-  # root-only, with the password read from its file in between. hostapd
-  # keeps the last value it reads for a key, so the host's own settings win.
+  # Before hostapd starts: the flake's settings and the password, read from
+  # its file, in the runtime directory, root-only. The start script adds the
+  # width and then the host's own settings; hostapd keeps the last value it
+  # reads for a key, so those win.
   prepare = name: h: pkgs.writeShellScript "hostapd-${name}-prepare" ''
     set -eu
     password=$(${pkgs.coreutils}/bin/cat ${lib.escapeShellArg h.passwordFile})
@@ -104,14 +106,19 @@ let
     case $password in
       *'|'*) echo "${h.passwordFile}: the password must not contain |" >&2; exit 1 ;;
     esac
-    conf=/run/hostapd-${name}/hostapd.conf
     {
       ${pkgs.coreutils}/bin/cat ${baseFile name h}
       printf 'sae_password=%s\n' "$password"
       ${lib.optionalString (h.security != "wpa3") ''printf 'wpa_passphrase=%s\n' "$password"''}
-      ${pkgs.coreutils}/bin/cat ${customFile name h}
-    } > "$conf"
+    } > /run/hostapd-${name}/base.conf
   '';
+
+  start = name: h: import ./hotspot-start.nix {
+    inherit pkgs lib name h;
+    channel = channelOf h;
+    customFile = customFile name h;
+    inherit (w) countryCode;
+  };
 
   service = name: h: {
     description = "Wi-Fi hotspot ${h.ssid} on ${name}";
@@ -122,7 +129,10 @@ let
     after = [ (device name) ];
     serviceConfig = {
       ExecStartPre = prepare name h;
-      ExecStart = "${pkgs.hostapd}/bin/hostapd /run/hostapd-${name}/hostapd.conf";
+      # Picks the width and starts hostapd, which then runs in the background.
+      Type = "forking";
+      ExecStart = start name h;
+      PIDFile = "/run/hostapd-${name}/hostapd.pid";
       ExecReload = "${pkgs.coreutils}/bin/kill -HUP $MAINPID";
       Restart = "on-failure";
       # Its own: systemd deletes a runtime directory when its service stops.
@@ -207,6 +217,10 @@ in {
       systemd.network.config.networkConfig.IPv4Forwarding = true;
       networking.firewall.interfaces = lib.mapAttrs (_: _: { allowedUDPPorts = [ 67 ]; }) active;
       hardware.wirelessRegulatoryDatabase = true;
+      # The country from boot on, before anything sets it: the search for the
+      # widest channel reads the rules in force (hotspot-start.nix).
+      boot.kernelParams = lib.optional (w.countryCode != null)
+        "cfg80211.ieee80211_regdom=${w.countryCode}";
       environment.systemPackages = [ pkgs.hostapd ];
     })
 

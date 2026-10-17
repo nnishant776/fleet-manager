@@ -1,12 +1,16 @@
 # Test of several hotspots on a host built from this flake's modules
 # (tests/networking/hotspot-host), each on an adapter of its own and in a
-# service of its own. Nine simulated radios: a router in its own network
+# service of its own. Ten simulated radios: a router in its own network
 # namespace (tests/lib/hwsim-router.nix), the host's Wi-Fi uplink, hotspots A
-# (5 GHz), B (6 GHz, one device at a time) and E (a custom line hostapd
-# rejects), and four "phones", each in a namespace of its own. Hotspot C is
-# turned on for an adapter that is not there. The test checks that:
+# (5 GHz), B (6 GHz, one device at a time), E (a custom line hostapd rejects)
+# and F (5 GHz, a pinned width), and four "phones", each in a namespace of
+# its own. Hotspot C is turned on for an adapter that is not there. The test
+# checks that:
 # - each hotspot runs alone: C waits for its adapter, E fails, and neither
 #   holds up A or B; stopping A leaves B's phone connected;
+# - each takes the widest channel its radio and India allow: 80 MHz for A,
+#   as 160 would need radar channels; for B whatever the radio offers on
+#   6 GHz; and F the 40 MHz it is pinned to;
 # - phones join with WPA3 (on 6 GHz with protected management frames, under
 #   India's rules), get an address by DHCP and reach the router through NAT,
 #   which has no route back to the hotspots' subnets;
@@ -24,6 +28,7 @@ let
   hotspotB = radio 3;
   hotspotC = "wlx020000009900";
   hotspotE = radio 8;
+  hotspotF = radio 9;
   uplink = radio 1;
 
   router = import ../lib/hwsim-router.nix { inherit pkgs; } {
@@ -102,7 +107,7 @@ pkgs.testers.runNixOSTest {
       boot.loader.grub.enable = lib.mkForce false;
 
       boot.kernelModules = [ "mac80211_hwsim" ];
-      boot.extraModprobeConfig = "options mac80211_hwsim radios=9";
+      boot.extraModprobeConfig = "options mac80211_hwsim radios=10";
       # The VM module turns Wi-Fi off in every test VM (mkVMOverride,
       # priority 10); this one has radios.
       networking.wireless.enable = lib.mkOverride 9 true;
@@ -111,11 +116,13 @@ pkgs.testers.runNixOSTest {
       # Stands in for the root-only files an admin creates before turning
       # the hotspots on.
       systemd.tmpfiles.rules = map (h: "f /var/lib/hotspot/${h} 0600 root root - ${password}")
-        [ hotspotA hotspotB hotspotC hotspotE ];
+        [ hotspotA hotspotB hotspotC hotspotE hotspotF ];
     }];
   };
 
   testScript = ''
+    import itertools
+
     m = hotspots
 
     def join(name, subnet):
@@ -134,10 +141,25 @@ pkgs.testers.runNixOSTest {
 
     with subtest("each hotspot runs in a service of its own"):
         # Polled: each service's start job comes with its adapter's device.
-        for h in ["${hotspotA}", "${hotspotB}"]:
+        for h in ["${hotspotA}", "${hotspotB}", "${hotspotF}"]:
             m.wait_until_succeeds(f"systemctl is-active hostapd-{h}.service", timeout=60)
         m.wait_until_succeeds("iw dev ${hotspotA} info | grep -q 'channel 36 (5180 MHz)'", timeout=60)
         m.wait_until_succeeds("iw dev ${hotspotB} info | grep -q 'channel 37 (6135 MHz)'", timeout=60)
+
+    with subtest("each hotspot takes the widest channel its radio and India allow"):
+        # A, channel 36: 160 MHz would need radar channels (52 to 64), so 80.
+        m.succeed("iw dev ${hotspotA} info | grep -q 'width: 80 MHz'")
+        m.succeed("journalctl -u hostapd-${hotspotA}.service | grep -q 'channel 36, 80 MHz'")
+        # B, channel 37: whatever the simulated radio offers on 6 GHz (iw's
+        # band 4), which India allows up to 320 MHz.
+        phy = m.succeed("cat /sys/class/net/${hotspotB}/phy80211/name").strip()
+        lines = m.succeed(f"iw phy {phy} info").split("\tBand 4:")[1].splitlines()[1:]
+        six = "\n".join(itertools.takewhile(lambda l: l.startswith("\t\t"), lines))
+        widest = "320" if "320MHz in 6GHz Supported" in six else "160" if "HE160/5GHz" in six else "80"
+        print(f"6 GHz: the radio offers {widest} MHz")
+        m.succeed(f"iw dev ${hotspotB} info | grep -q 'width: {widest} MHz'")
+        # F: pinned to 40 MHz.
+        m.succeed("iw dev ${hotspotF} info | grep -q 'width: 40 MHz'")
 
     with subtest("a hotspot whose adapter is missing waits, holding up nothing"):
         m.succeed('test "$(systemctl show -P ActiveState hostapd-${hotspotC}.service)" = inactive')
