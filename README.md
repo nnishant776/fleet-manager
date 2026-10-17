@@ -380,6 +380,7 @@ default.
 | `networking.wireless.hotspots.<name>.radarChannels` | bool | `false` | Lets `"max"` use channels shared with radar. The hotspot then waits a minute or more before it starts, and many USB adapters cannot do it. 160 MHz on `5g` needs them |
 | `networking.wireless.hotspots.<name>.security` | enum: `wpa3`/`wpa2-wpa3` | `"wpa3"` | `wpa3` lets in WPA3 devices only. `wpa2-wpa3` also lets older devices in. 6 GHz allows WPA3 only |
 | `networking.wireless.hotspots.<name>.address` | str | `"10.42.0.1/24"` | The hotspot's own address and subnet. Joining devices get an address in it and reach the internet through this machine. Two hotspots' subnets must not overlap |
+| `networking.wireless.hotspots.<name>.hostAccess` | bool | `false` | Lets devices on this hotspot reach this machine's own services, such as SSH, as devices on the uplink side can. Off, they reach only its DHCP server |
 | `networking.wireless.hotspots.<name>.passwordFile` | str | `"/var/lib/hotspot/<name>"` | File on the machine holding only this hotspot's password (8 to 63 characters, no `\|`), created by root with mode 0600. It is read when the hotspot starts and never copied into the Nix store |
 | `networking.wireless.hotspots.<name>.settings` | attrs | `{}` | Extra hostapd settings for this hotspot. They come last, so they win. Put width keys in `width`, not here, as `settings` skips its checks |
 | `networking.wireless.hotspots.<name>.extraConfig` | lines | `""` | Lines added to this hotspot's hostapd configuration as they are, after `settings` |
@@ -388,7 +389,7 @@ default.
 | `networking.firewall.config` | attrs | `{}` | Merged into `networking.firewall`, for its options such as logging. `extraCommands` and `extraStopCommands` (iptables) are rejected |
 | `networking.firewall.inputRules` | lines | `""` | nftables rules of this host's own for new connections to it. They add access; they cannot remove what an open port allows |
 | `networking.firewall.forwardRules` | lines | `""` | nftables rules of this host's own for traffic passing through. Setting any turns on "forwarding denied unless allowed" |
-| `networking.firewall.tables` | attrs of { family; content } | `{}` | Whole nftables tables of this host's own. `family` defaults to `inet`. Names NixOS, Docker, podman, libvirt or systemd-networkd already use are rejected |
+| `networking.firewall.tables` | attrs of { family; content } | `{}` | Whole nftables tables of this host's own. `family` defaults to `inet`. Names NixOS, Docker, podman, libvirt or systemd-networkd already use are rejected, and so is `hotspot-guard`, this flake's own |
 | `sharing.enable` | toggle | `false` | Services that expose this machine to the network. Gates `rdp`; `ssh` does not need it |
 | `sharing.ssh.enable` | toggle | `false` | SSH server, keys only, for members of `ssh-users`. Needs `networking.enable`. Set by the support account |
 | `sharing.ssh.config` | attrs | `{}` | Merged into `services.openssh` |
@@ -424,10 +425,10 @@ the rules its own feature needs, and a module that uses these options fails
 the build. Table names already used by NixOS, Docker, podman, libvirt or
 systemd-networkd are refused.
 
-Hosts with containers or VMs deny forwarded traffic unless it is allowed.
-Containers and VMs still reach the network and published ports still work. But
-the machine no longer routes between its other networks, which NixOS with
-Docker would otherwise do.
+Hosts with containers, VMs or a hotspot deny forwarded traffic unless it is
+allowed. Containers and VMs still reach the network and published ports still
+work. But the machine no longer routes between its other networks, which NixOS
+with Docker would otherwise do.
 
 **Interface names from the MAC** are off by default. With
 `networking.macNames = true`, every physical network interface is named after
@@ -509,6 +510,13 @@ Each hotspot has its own service, `hostapd-<name>`. It starts when its adapter
 appears and stops when it goes. The other hotspots carry on.
 `systemctl restart hostapd-<name>` applies a new password to that one. Devices
 on the same hotspot see each other. Each hotspot shares the uplink through NAT.
+Devices on one hotspot cannot reach devices on another, in either direction.
+They still reach the internet through the uplink. Devices on the uplink side
+cannot start connections to hotspot devices. Devices on a hotspot reach this
+machine itself only for DHCP, unless `hostAccess = true` for that hotspot (for
+your own hotspot, to reach SSH, say). Devices on the uplink's own network, such
+as a home LAN, stay reachable from the hotspots, as the internet is reached
+through it.
 
 Each hotspot uses the widest channel its adapter and the country allow. That is
 usually 80 MHz on 5 GHz, and up to 160 or 320 MHz on 6 GHz, depending on the
@@ -825,7 +833,7 @@ turn the implied option off.
 | `conf.networking.enable`<br>*(all roles)* | • NetworkManager (or systemd-networkd with `networking.backend = "networkd"`), with `systemd-resolved` doing opportunistic DNS-over-TLS and `DNSSEC = "allow-downgrade"`<br>• Wi-Fi stays off, and NetworkManager leaves Wi-Fi devices alone, unless `networking.wireless.wifi.enable` is on<br>• Prerequisite for `networking.wireless.wifi`, `networking.wireless.bluetooth` and `sharing.ssh`: without it those three do nothing<br>• Account groups: with NetworkManager, `network-users` (join and switch networks only) for unprivileged accounts and `networkmanager` for privileged ones; with networkd, `wpa_supplicant` for privileged accounts (while Wi-Fi is on) and nothing for the others |
 | `conf.networking.wireless.wifi.enable`<br>*(laptop)* | • With `networking.enable` and `networking.wireless.enable`: wpa_supplicant, the Wi-Fi client (the NixOS option `networking.wireless.enable`)<br>• With named `networking.wireless.wifi.interfaces`: one wpa_supplicant per interface, each with its own file |
 | `conf.networking.wireless.bluetooth.enable`<br>*(laptop)* | • With `networking.enable` and `networking.wireless.enable`: `hardware.bluetooth.enable`, `hardware.enableAllFirmware`, `hardware.alsa.enableBluetooth`, `services.blueman.enable` |
-| `conf.networking.wireless.hotspots.<name>.enable` | • With `networking.enable`, `networking.wireless.enable` and the networkd backend: hostapd in a service of its own on that adapter, with WPA3 (on 6 GHz with protected management frames)<br>• systemd-networkd gives joining devices addresses and shares the uplink through NAT; DHCP is allowed through the firewall on that hotspot only<br>• The widest channel width the adapter and the country allow, unless `width` pins it; the country is passed to the kernel at boot |
+| `conf.networking.wireless.hotspots.<name>.enable` | • With `networking.enable`, `networking.wireless.enable` and the networkd backend: hostapd in a service of its own on that adapter, with WPA3 (on 6 GHz with protected management frames)<br>• systemd-networkd gives joining devices addresses and shares the uplink through NAT; DHCP is allowed through the firewall on that hotspot only<br>• Forwarded traffic is denied unless allowed; the hotspot reaches the uplink but not other hotspots, and reaches this machine only for DHCP unless `hostAccess`<br>• The widest channel width the adapter and the country allow, unless `width` pins it; the country is passed to the kernel at boot |
 | `conf.networking.macNames` | • A udev rule that renames physical network interfaces, at boot or when plugged in, after their bus and MAC address |
 | `conf.hardware.powerManagement.enable`<br>*(laptop, desktop, or `desktop.enable`)* | • `services.upower.enable`, `services.tuned.enable` |
 | `conf.desktop.enable`<br>*(workstation, developer, gaming)* | • Weakly enables `desktop.multimedia.enable`, `hardware.graphics.enable`, `hardware.powerManagement.enable` and `flatpak.enable`, whatever the role<br>• Polkit, GVFS, display manager with the ReGreet greeter, AccountsService, `udisks2` (removable-media automount)<br>• Account groups: `video` and `input` for every account<br>• On `machineType = "vm"`: `services.spice-vdagentd` |

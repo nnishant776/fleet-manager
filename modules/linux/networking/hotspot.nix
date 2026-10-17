@@ -19,6 +19,10 @@ let
   networkd = cfg.enable && cfg.backend == "networkd";
   on = networkd && w.enable && active != { };
 
+  # Hotspots whose devices may reach only DHCP on this machine.
+  guarded = lib.attrNames (lib.filterAttrs (_: h: !h.hostAccess) active);
+  nftSet = names: "{ ${lib.concatMapStringsSep ", " (n: ''"${n}"'') names} }";
+
   device = name: "sys-subsystem-net-devices-${utils.escapeSystemdPath name}.device";
 
   # hostapd's key=value format, as NixOS's module writes it: true and false
@@ -216,6 +220,34 @@ in {
       systemd.network.networks = lib.mapAttrs' (name: h: lib.nameValuePair "40-hotspot-${name}" (network name h)) active;
       systemd.network.config.networkConfig.IPv4Forwarding = true;
       networking.firewall.interfaces = lib.mapAttrs (_: _: { allowedUDPPorts = [ 67 ]; }) active;
+
+      # Each hotspot is its own network: its devices go out to the uplink (any
+      # interface that is not a hotspot), never to another hotspot's devices.
+      # Answers come back through connection tracking; connections started
+      # from the uplink side towards hotspot devices are dropped. Devices on
+      # the same hotspot reach each other through the access point itself,
+      # which this never sees.
+      networking.firewall.filterForward = true;
+      networking.firewall.extraForwardRules = lib.concatMapStrings (name: ''
+        iifname "${name}" oifname != ${nftSet (lib.attrNames active)} accept comment "hotspot ${name} to the uplink"
+      '') (lib.attrNames active);
+
+      # Devices on a hotspot reach this machine only for DHCP, unless its
+      # hostAccess is on. The firewall's own input rules cannot say "except on
+      # these interfaces": its open ports come first. A chain checked before
+      # them can, as a drop in any nftables chain is final.
+      networking.nftables.tables.hotspot-guard = lib.mkIf (guarded != [ ]) {
+        family = "inet";
+        content = ''
+          chain input {
+            type filter hook input priority filter - 1; policy accept;
+            iifname ${nftSet guarded} ct state established,related accept
+            iifname ${nftSet guarded} udp dport 67 accept comment "DHCP"
+            iifname ${nftSet guarded} drop
+          }
+        '';
+      };
+
       hardware.wirelessRegulatoryDatabase = true;
       # The country from boot on, before anything sets it: the search for the
       # widest channel reads the rules in force (hotspot-start.nix).
