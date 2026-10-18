@@ -52,8 +52,10 @@
       fullName = "Administrator";
       email = "admin@example.com";
       privileged = true;
-      # mkpasswd format; a placeholder here, as in hosts/example.
+      # No password, from the secrets repository or anywhere else: admin logs
+      # in and gets sudo by SSH key only.
       initialHashedPassword = null;
+      secrets.password = false;
       # Password login over SSH is off. The image's `nixos` user and its keys
       # go away on the switch, so put a key here first or the Pi is reachable
       # from its console only.
@@ -61,8 +63,9 @@
         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAVFepUnXSeStB3vOnVM4poqOy1ETJEgyH0UAbP5dF0e Home Network SSH Key"
       ];
       # admin has no password, so sudo takes this key instead, from the agent
-      # brought along with `ssh -A`. The login key for now; a separate,
-      # stronger key (a hardware one) can replace it here alone.
+      # brought along with `ssh -A`. The login key for now; a separate key can
+      # replace it here alone. Not a hardware key: the sudo check
+      # (pam_ssh_agent_auth) does not support them.
       sudoSshKeys = [
         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAVFepUnXSeStB3vOnVM4poqOy1ETJEgyH0UAbP5dF0e Home Network SSH Key"
       ];
@@ -72,5 +75,23 @@
       enable = true;
       ssh.enable = true;
     };
+
+    # A fleet host: it updates itself from signed commits on main, and takes its
+    # secrets from the private repository, fetched with its own deploy key.
+    fleet = {
+      repo.url = "https://github.com/nnishant776/fleet-manager.git";
+      signing.allowedSignersFile = ../../fleet/allowed_signers;
+      # The maintainer's way in: key only, with sudo and no password. The same
+      # key as admin's for now, until a separate one replaces it.
+      support.sshKeys = [
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAVFepUnXSeStB3vOnVM4poqOy1ETJEgyH0UAbP5dF0e Home Network SSH Key"
+      ];
+    };
+    secrets.repo.url = "git@github.com:nnishant776/fleet-secrets.git";
   };
+
+  # Root fetches the secrets over SSH and has no known_hosts of its own, so
+  # GitHub's host key is pinned here (checked against `gh api meta`).
+  programs.ssh.knownHosts."github.com".publicKey =
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl";
 }
