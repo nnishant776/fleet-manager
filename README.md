@@ -252,19 +252,41 @@ compiled, which under emulation takes hours.
 ### Signing commits for a fleet
 
 A fleet host refuses to build anything it fetched unless the commit is signed by
-a key in `conf.fleet.signing.allowedSignersFile`. Signing with an SSH key takes
-three settings on each committing machine:
+a key in `conf.fleet.signing.allowedSignersFile`. This repository keeps that
+list in `fleet/allowed_signers`, one key per line:
 
-```bash
-git config --global gpg.format ssh
-git config --global user.signingkey ~/.ssh/id_ed25519.pub
-git config --global commit.gpgsign true
+```
+<label> namespaces="git" <key-type> <key>
 ```
 
-The signers file lists one `<principal> <key-type> <key>` per line, with the
-public keys only, and is committed to the repository so every machine carries
-it. Rotating a key means adding the new one, waiting for the fleet to converge,
-then removing the old one. A lost or stolen key is removed the same way, in a
+The label is free text. Git does not compare it with the commit's author, so it
+does not have to be an email address. The file holds public keys only, and it
+is committed so every machine carries it. A host uses it with
+`conf.fleet.signing.allowedSignersFile = ../../fleet/allowed_signers;`.
+
+To sign your commits to this repository only, run this in the checkout:
+
+```bash
+git config gpg.format ssh
+git config user.signingKey ~/.ssh/<signing key>.pub   # the private key must be in your agent
+git config commit.gpgSign true
+git config tag.gpgSign true
+git config gpg.ssh.allowedSignersFile fleet/allowed_signers   # so git log --show-signature can check
+```
+
+While the key is in your agent, any program running as you can sign with it.
+`ssh-add -c` makes the agent ask you before each signature, and `ssh-add -t`
+removes the key after a set time.
+
+Merge pull requests on your own machine and push the result, for example with
+`git merge --ff-only`. GitHub's merge buttons either drop your signature or
+replace it with GitHub's own, and the fleet does not trust GitHub's key.
+
+A host checks a new commit against the file in the configuration it already
+runs, not the one it just fetched, so a pushed commit cannot add a key and
+approve itself. Rotating a key means adding the new one in a commit signed by a
+key already trusted, waiting for the fleet to converge, then removing the old
+one. A lost or stolen key is removed the same way, in a
 commit signed by a key still trusted. Do not rely on `valid-before` for that:
 Git checks it against the commit's own date, which the signer chooses, so a
 stolen key can still sign backdated commits; the option only suits retiring a

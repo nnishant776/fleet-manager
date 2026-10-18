@@ -1,0 +1,2 @@
+# Keys whose signatures the fleet accepts on commits. One per line: <label> namespaces="git" <key-type> <key>
+35606136+nnishant776@users.noreply.github.com namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICU6kRXZ/8F4NPGp18ftpbgrswsTTkSFDy9a1nPqZzfq
