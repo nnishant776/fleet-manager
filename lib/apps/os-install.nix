@@ -71,8 +71,11 @@ pkgs.writeShellApplication {
     export NIX_CONFIG="experimental-features = nix-command flakes"
 
     # path: so Nix reads the store copy as a plain directory; a bare store path
-    # is taken for a git repository, which root-owned store paths fail as.
-    flake="path:${self}"
+    # is taken for a git repository, which root-owned store paths fail as. A
+    # path: flake has no revision of its own, so it is passed along: the
+    # installed system records it, and the first-boot clone checks it out.
+    ownFlake="path:${self}${pkgs.lib.optionalString (self ? rev) "?rev=${self.rev}"}"
+    flake="$ownFlake"
     host=""
     assumeYes=false
     confirm=""
@@ -101,6 +104,13 @@ pkgs.writeShellApplication {
       esac
     done
 
+    ${pkgs.lib.optionalString (!(self ? rev)) ''
+    if [ "$flake" = "$ownFlake" ]; then
+      echo "os-install: this flake has uncommitted changes, so the installed system" >&2
+      echo "  records no revision, and its configuration checkout starts at the tip" >&2
+      echo "  of the tracked branch, which may not match what is installed." >&2
+    fi
+    ''}
     if [ -n "$identity" ]; then
       # Made absolute because the init step below runs from another directory.
       identity="$(realpath -e -- "$identity")" \

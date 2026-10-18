@@ -1157,8 +1157,11 @@ to reading any file on the host as root, so it is only granted to privileged
 users.
 
 **Installing from a working tree with uncommitted changes cannot pin the
-checkout.** `os-install` warns and leaves `/etc/nixos` at the tip of the tracked
-ref, which may not match the system it just installed.
+checkout.** A committed flake passes its revision to the installed system,
+which records it in `/etc/org/revision`, and the first-boot clone checks that
+revision out. Uncommitted changes have no revision: `os-install` warns, and the
+clone stays at the tip of the tracked ref, which may not match the system it
+just installed.
 
 ## Inputs
 
