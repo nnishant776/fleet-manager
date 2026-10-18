@@ -341,10 +341,25 @@ Host myhost
 How it behaves:
 
 - sudo checks the key held by your agent against `sudoSshKeys`, which are kept in `/etc/ssh/sudo_keys.d/<user>` (owned by root).
-- Login keys in `sshKeys` do not unlock sudo unless they are listed in `sudoSshKeys` too, so the sudo key can be a separate, stronger one, such as a hardware security key. Keys in `~/.ssh/authorized_keys` never count.
+- Login keys in `sshKeys` do not unlock sudo unless they are listed in `sudoSshKeys` too, so the sudo key can be a separate one that you load only when you need it. Keys in `~/.ssh/authorized_keys` never count.
+- Hardware security keys (`sk-ssh-ed25519`) do not work for sudo. The PAM module that checks the key only knows RSA, ECDSA and Ed25519 keys.
 - Without one of these keys, or without the agent, sudo asks for the password as before. `sudo -n`, as scripts use it, works with the key too.
 - Only sudo changes. Console login and `su` still need the password, and root login stays off.
-- Forward your agent only to machines you trust: while you are connected, root on that machine can use your agent too.
+- Other users on the machine cannot use your agent. Root can, and so can any program running as you. While you are connected, they can use it to run sudo, or to log in to other machines with your key. Forward your agent only to machines you trust.
+
+To limit that, add the key to your agent with a confirmation, a time limit, or both:
+
+```sh
+ssh-add -c ~/.ssh/id_ed25519          # ask each time the key is used
+ssh-add -t 10m ~/.ssh/id_ed25519      # remove the key from the agent after 10 minutes
+ssh-add -c -t 10m ~/.ssh/id_ed25519   # both
+```
+
+With `-c`, every sudo shows a prompt on the machine you connected from, and
+nothing happens until you accept it there. This needs an askpass program on
+that machine. macOS does not ship one, so install and set one up first. With
+`-t`, the key leaves the agent when the time runs out, and you add it again
+the next time you need sudo.
 
 A user's home configuration is assembled from the baseline in `modules/user/`,
 anything in `users/<username>/default.nix`, their `homeConfig`, and — only for a
