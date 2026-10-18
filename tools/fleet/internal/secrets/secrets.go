@@ -177,10 +177,6 @@ func ReadEnrollment() engine.Step {
 				}
 				field[key] = strings.TrimSpace(res.Stdout)
 			}
-			if x.Options.DryRun {
-				x.Values["recipient"], x.Values["deploy_key"] = "<age recipient>", "<deploy key>"
-				return nil
-			}
 			if field["version"] != "1" {
 				return fmt.Errorf("unsupported enrollment file version '%s'", field["version"])
 			}
@@ -229,10 +225,6 @@ func Render() engine.Step {
 				return err
 			}
 			hosts := strings.Fields(res.Stdout)
-			if x.Options.DryRun {
-				x.UI.Skip("dry run: not written")
-				return nil
-			}
 			if !strings.HasPrefix(maintainer, "age1") {
 				return errors.New("fleet.yaml has no maintainer recipient")
 			}

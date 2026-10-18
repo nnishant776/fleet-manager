@@ -30,7 +30,7 @@ func main() {
 			"says what it will do and why, shows the exact command, asks before changing\n" +
 			"anything, and checks the result. Run it without arguments for a menu.\n\n" +
 			"Every question has a flag, so any command also runs without prompts; --yes\n" +
-			"skips the confirmations and --dry-run shows every command without running it.",
+			"skips the confirmations, and --dry-run shows every command and changes nothing.",
 		SilenceUsage: true,
 	}
 	engine.Mount(root, flows.All(), flows.Groups)

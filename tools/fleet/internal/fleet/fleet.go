@@ -98,3 +98,61 @@ func OnHost(script string) *engine.Command {
 		script,
 	)
 }
+
+// OnAdmin runs a script on the host as the admin account, forwarding only the
+// one-key agent StartAgent made: admin's sudo checks that key through the
+// forwarded agent. Use it only until the host has support (OnHost).
+func OnAdmin(script string) *engine.Command {
+	return engine.Cmd("ssh",
+		"-A",
+		"-o", "BatchMode=yes",
+		"-o", "ConnectTimeout=10",
+		"{{.admin}}@{{.address}}",
+		script,
+	).Env("SSH_AUTH_SOCK={{.agent}}")
+}
+
+// StartAgent starts an ssh-agent holding only the key in the value "key",
+// for an hour at most, and keeps its socket as "agent". Your own agent, with
+// your other keys, is never forwarded. StopAgent stops it.
+func StartAgent(x *engine.Ctx) error {
+	dir, err := os.MkdirTemp("", "fleet-agent-")
+	if err != nil {
+		return err
+	}
+	x.Values["agent_dir"] = dir
+	x.Values["agent"] = filepath.Join(dir, "agent.sock")
+	res, err := engine.Cmd("ssh-agent", "-s", "-t", "3600", "-a", "{{.agent}}").ReadOnly().Quiet().
+		OK("started; it forgets its key within the hour").Run(x)
+	if err != nil {
+		return err
+	}
+	for _, field := range strings.Split(res.Stdout, ";") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(field), "SSH_AGENT_PID="); ok {
+			x.Values["agent_pid"] = v
+		}
+	}
+	_, err = engine.Cmd("ssh-add", "{{.key}}").Env("SSH_AUTH_SOCK={{.agent}}").ReadOnly().Prompts().
+		OK("holds {{.key}} only").Run(x)
+	return err
+}
+
+// StopAgent stops the agent StartAgent made, if it did.
+func StopAgent(x *engine.Ctx) {
+	if pid := x.Value("agent_pid"); pid != "" {
+		_, _ = x.Runner.Run(x.Context, engine.Spec{Name: "kill", Args: []string{pid}})
+		x.UI.Skip("stopped the one-key agent")
+	}
+	if dir := x.Value("agent_dir"); dir != "" {
+		_ = os.RemoveAll(dir)
+	}
+}
+
+// Self is how a flow runs another fleet command, so that the step shows a
+// command a person could type.
+func Self() string {
+	if p, err := os.Executable(); err == nil {
+		return p
+	}
+	return "fleet"
+}

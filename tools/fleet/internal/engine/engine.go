@@ -2,7 +2,8 @@
 // engine takes each input from its flag or, on a terminal, from a prompt,
 // then runs the steps one by one: heading, why, the exact command, a question
 // before anything changes (unless --yes), the command's output, and ✓ or ✗.
-// --dry-run shows every step and command without running any.
+// --dry-run shows every step and command, and still runs the read-only ones
+// (it looks), but changes nothing.
 package engine
 
 import (
@@ -63,7 +64,10 @@ type Flow struct {
 	// Report marks a read-only flow: every step runs, and the flow fails at
 	// the end if any found a problem, instead of stopping at the first.
 	Report bool
-	Steps  []Step
+	// Cleanup runs when the flow ends, however it ends: to stop an agent the
+	// flow started, for example.
+	Cleanup func(*Ctx)
+	Steps   []Step
 }
 
 // Options are the switches every flow shares.
@@ -129,6 +133,9 @@ func Run(c *Ctx, f *Flow) error {
 	if c.Values == nil {
 		c.Values = map[string]string{}
 	}
+	if f.Cleanup != nil {
+		defer f.Cleanup(c)
+	}
 	if c.LookPath == nil {
 		c.LookPath = exec.LookPath
 	}
@@ -136,10 +143,17 @@ func Run(c *Ctx, f *Flow) error {
 		return err
 	}
 	c.UI.Header(f.Title)
+	var used []string
 	for _, in := range f.Inputs {
 		if err := resolve(c, in); err != nil {
 			return err
 		}
+		if v, ok := c.Values[in.Name]; ok && !in.Secret && v != "" {
+			used = append(used, in.Name+" "+v)
+		}
+	}
+	if len(used) > 0 {
+		c.UI.Using(used)
 	}
 	c.total = len(f.Steps)
 	problems := 0
@@ -208,10 +222,15 @@ func resolve(c *Ctx, in Input) error {
 		def = d
 	}
 	if !given {
+		// Only what has no good answer is asked for: a value with a default,
+		// or one that may be empty, is taken as it is, and shown with the
+		// others under the header, so a flag can override it.
 		switch {
-		case !c.UI.Interactive() && def != "":
+		case def != "" || in.Optional || in.Bool:
 			value = def
-		case !c.UI.Interactive() && in.Optional:
+			if in.Bool && value == "" {
+				value = "false"
+			}
 		case !c.UI.Interactive():
 			flag := "--" + in.Name
 			if in.Secret {

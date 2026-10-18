@@ -21,7 +21,7 @@ type Groups map[string]string
 func Mount(root *cobra.Command, flows []*Flow, groups Groups) {
 	opts := &Options{}
 	root.PersistentFlags().BoolVarP(&opts.Yes, "yes", "y", false, "run changes without asking first")
-	root.PersistentFlags().BoolVar(&opts.DryRun, "dry-run", false, "show every step and command, run nothing")
+	root.PersistentFlags().BoolVar(&opts.DryRun, "dry-run", false, "show every step and command; look, but change nothing")
 	root.PersistentFlags().BoolVar(&opts.Verbose, "verbose", false, "show all of each command's output")
 
 	for _, f := range flows {

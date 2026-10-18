@@ -268,3 +268,25 @@ func wrap(s string, width int) []string {
 	}
 	return lines
 }
+
+// Using shows the values a command runs with, once, under its header: what
+// was given and what was assumed, so that a flag can change it.
+func (u *UI) Using(values []string) {
+	// Lines break between values, never inside one.
+	line := ""
+	for _, v := range values {
+		switch {
+		case line == "":
+			line = v
+		case len([]rune(line))+3+len([]rune(v)) > 76:
+			u.println("  " + u.dim.Render(line))
+			line = v
+		default:
+			line += " · " + v
+		}
+	}
+	if line != "" {
+		u.println("  " + u.dim.Render(line))
+	}
+	u.println("")
+}

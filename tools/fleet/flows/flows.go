@@ -16,6 +16,7 @@ func All() []*engine.Flow {
 	return []*engine.Flow{
 		HostCheck,
 		HostSecret,
+		HostEnrol,
 		SecretsHostEnroll,
 		SecretsHostRekey,
 		SecretsHostRetire,

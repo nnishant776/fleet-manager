@@ -118,7 +118,9 @@ func (c *Command) exec(x *Ctx, asQuietCheck bool) (Result, error) {
 		return Result{}, err
 	}
 	x.UI.Command(c.shown(x, s))
-	if x.Options.DryRun {
+	// A dry run still looks, so that it shows what would really happen; it
+	// only leaves out what changes something.
+	if x.Options.DryRun && !c.readOnly {
 		if c.capture != "" {
 			x.Values[c.capture] = "<" + c.capture + ">"
 		}
@@ -217,9 +219,6 @@ func (cs checks) run(x *Ctx) error {
 			return err
 		}
 		res, err := p.Cmd.ReadOnly().Quiet().exec(x, true)
-		if x.Options.DryRun {
-			continue
-		}
 		detail := ""
 		if err == nil && p.Expect != nil {
 			detail, err = p.Expect(res.Stdout)
@@ -297,3 +296,14 @@ func (c *Command) Run(x *Ctx) (Result, error) { return c.exec(x, false) }
 // RunQuiet runs a read-only command from Go code and returns its result
 // without reporting ✓; for reading state.
 func (c *Command) RunQuiet(x *Ctx) (Result, error) { return c.ReadOnly().Quiet().exec(x, true) }
+
+// WaitFor is Wait from Go code.
+func WaitFor(x *Ctx, question string) error { return wait(question).run(x) }
+
+// Silently runs a read-only command through the runner without showing it,
+// for facts a step decides on (whether it runs at all), not for the steps'
+// own work, which is always shown. It returns the trimmed output.
+func Silently(x *Ctx, env []string, name string, args ...string) (string, error) {
+	res, err := x.Runner.Run(x.Context, Spec{Name: name, Args: args, Env: env, Hidden: x.Hidden})
+	return strings.TrimSpace(res.Stdout), err
+}

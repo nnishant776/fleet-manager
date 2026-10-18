@@ -320,3 +320,41 @@ func TestTemplatesTakeHyphenatedNames(t *testing.T) {
 		t.Fatal("a missing hyphenated value expanded without an error")
 	}
 }
+
+func TestDryRunStillLooks(t *testing.T) {
+	x, fake, out := newCtx(Options{DryRun: true}, func(s Spec) (Result, error) {
+		return Result{Stdout: "main\n"}, nil
+	})
+	f := &Flow{Title: "t", Steps: []Step{
+		{Title: "look", Do: Cmd("git", "branch", "--show-current").ReadOnly().Capture("branch")},
+		{Title: "change", Do: Cmd("git", "push", "origin", "{{.branch}}")},
+	}}
+	if err := RunWith(x, f, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := fake.Commands(); len(got) != 1 || got[0] != "git branch --show-current" {
+		t.Fatalf("a dry run ran %q; it should run only the read-only command", got)
+	}
+	if !strings.Contains(out.String(), "$ git push origin main") {
+		t.Errorf("the change was not shown with the looked-up value:\n%s", out)
+	}
+}
+
+func TestDefaultsAreUsedAndShownNotAsked(t *testing.T) {
+	x, _, out := newCtx(Options{Yes: true}, nil)
+	f := &Flow{Title: "t", Inputs: []Input{
+		hostInput,
+		{Name: "user", Prompt: "Account", Default: func(*Ctx) (string, error) { return "support", nil }},
+		{Name: "note", Prompt: "Note", Optional: true},
+		{Name: "sync", Prompt: "Sync?", Bool: true},
+	}, Steps: []Step{{Do: Cmd("true")}}}
+	if err := RunWith(x, f, map[string]string{"host": "pi"}); err != nil {
+		t.Fatal(err)
+	}
+	if x.Value("user") != "support" || x.Value("sync") != "false" {
+		t.Fatalf("user %q, sync %q", x.Value("user"), x.Value("sync"))
+	}
+	if !strings.Contains(out.String(), "host pi · user support · sync false") {
+		t.Errorf("the values used are not shown:\n%s", out)
+	}
+}

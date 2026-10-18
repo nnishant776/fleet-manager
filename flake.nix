@@ -149,6 +149,10 @@
         inherit inputs;
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
       };
+      fleet-enrol = import ./tests/fleet/enrol.nix {
+        inherit inputs self;
+        pkgs = nixpkgs.legacyPackages.x86_64-linux;
+      };
       fleet-sync-status = import ./tests/fleet/sync-status.nix {
         inherit inputs;
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
