@@ -326,7 +326,7 @@
       # Where the configuration checkout lives on the machine.
       localPath = "/etc/nixos";
       # repo = {
-      #   url = "https://github.com/org/nixos-config.git";
+      #   url = "https://github.com/org/fleet-manager.git";
       #   # Branch or tag to track.
       #   ref = "main";
       #   # Key in the host's secrets file (`hosts/<host>.yaml`) for a private

@@ -4,7 +4,7 @@
       url = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
         default = null;
-        example = "https://github.com/org/nixos-config.git";
+        example = "https://github.com/org/fleet-manager.git";
         description = ''
           Git remote this machine's configuration is deployed from.
           `os-install` clones it to `conf.fleet.localPath` and `autoUpdate`

@@ -1,7 +1,7 @@
 #!/bin/sh
 # One command from a bare machine to one configured by this flake:
 #
-#   curl -sSfL https://raw.githubusercontent.com/nnishant776/nixos-config/main/bootstrap | sh -s -- [HOST] [ARGS...]
+#   curl -sSfL https://raw.githubusercontent.com/nnishant776/fleet-manager/main/bootstrap | sh -s -- [HOST] [ARGS...]
 #
 # Installing Nix is the one step Nix cannot do for itself, so it lives here;
 # everything after it is the flake's own tooling.
@@ -16,7 +16,7 @@
 # POSIX sh on purpose: macOS ships bash 3.2.
 set -eu
 
-flake="${FLAKE:-github:nnishant776/nixos-config}"
+flake="${FLAKE:-github:nnishant776/fleet-manager}"
 nixFlags="--extra-experimental-features nix-command --extra-experimental-features flakes"
 
 say() { printf 'bootstrap: %s\n' "$*" >&2; }

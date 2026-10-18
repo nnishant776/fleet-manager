@@ -232,7 +232,7 @@ in
 
     systemd.services.config-auto-update = {
       description = "Sync ${cfg.localPath} from ${cfg.repo.ref} and rebuild";
-      documentation = [ "https://github.com/nnishant776/nixos-config" ];
+      documentation = [ "https://github.com/nnishant776/fleet-manager" ];
 
       after = [ "network-online.target" ];
       wants = [ "network-online.target" ];

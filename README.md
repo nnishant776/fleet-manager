@@ -46,7 +46,7 @@ imports its parts; each part sets its own options under its own `mkIf`.
 On a machine this flake does not configure yet, one command does everything:
 
 ```bash
-curl -sSfL https://raw.githubusercontent.com/nnishant776/nixos-config/main/bootstrap | sh -s -- <hostname>
+curl -sSfL https://raw.githubusercontent.com/nnishant776/fleet-manager/main/bootstrap | sh -s -- <hostname>
 ```
 
 `bootstrap` installs Nix where it is missing — the one step Nix cannot do for
