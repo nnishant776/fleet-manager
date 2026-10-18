@@ -1,0 +1,118 @@
+# fleet, the guided command-line tool in tools/fleet.
+#
+# On pull requests it is checked: formatting, go vet and the tests, then the
+# flake's own check, which also catches a vendorHash that no longer matches
+# go.sum.
+#
+# On pushes to main that change it, the static binaries for machines without
+# Nix are built and published as a release named after the commit, marked
+# latest, so that bootstrap on the stock installer ISO can fetch
+# releases/latest/download/fleet-linux-<arch>. The release carries SHA256SUMS,
+# which bootstrap checks, and a GitHub artifact attestation per binary, which
+# anyone can check with:
+#
+#   gh attestation verify fleet-linux-amd64 --repo nnishant776/fleet-manager
+#
+# Only GitHub's own actions are used here.
+name: fleet
+
+on:
+  pull_request:
+    paths:
+      - "tools/fleet/**"
+      - ".github/workflows/fleet.yml"
+  push:
+    branches: [main]
+    paths:
+      - "tools/fleet/**"
+      - ".github/workflows/fleet.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/fleet/go.mod
+          cache-dependency-path: tools/fleet/go.sum
+
+      - name: Format, vet and test
+        working-directory: tools/fleet
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+          go vet ./...
+          go test ./...
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: The flake's check
+        run: nix build --no-link --print-build-logs .#checks.x86_64-linux.fleet
+
+  release:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # One release at a time, in push order.
+    concurrency:
+      group: fleet-release
+      cancel-in-progress: false
+    permissions:
+      contents: write     # create the release
+      id-token: write     # sign the attestations
+      attestations: write # store them
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/fleet/go.mod
+          cache-dependency-path: tools/fleet/go.sum
+
+      - name: Build the static binaries
+        working-directory: tools/fleet
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          # The version package.nix gives, and the commit.
+          base="$(sed -n 's/^ *version ? "\(.*\)",$/\1/p' package.nix)"
+          version="$base+${GITHUB_SHA:0:12}"
+          mkdir -p ../../dist
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            GOOS="${target%/*}" GOARCH="${target#*/}" go build -trimpath \
+              -ldflags "-s -w -X main.version=$version" \
+              -o "../../dist/fleet-${target%/*}-${target#*/}" .
+          done
+          cd ../../dist
+          sha256sum fleet-* > SHA256SUMS
+          cat SHA256SUMS
+
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "dist/fleet-*"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          short="${GITHUB_SHA:0:12}"
+          gh release create "fleet-$short" dist/* \
+            --target "$GITHUB_SHA" \
+            --title "fleet $short" \
+            --latest \
+            --notes "fleet built from $GITHUB_SHA. Check a download against SHA256SUMS, or its attestation with: gh attestation verify <file> --repo $GITHUB_REPOSITORY"
