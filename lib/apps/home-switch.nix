@@ -18,9 +18,19 @@ pkgs.writeShellApplication {
 
     target="$user@$host"
 
-    keys="$(nix eval --impure --json "$flakePath#homeConfigurations" \
-              --apply builtins.attrNames 2>/dev/null \
-            | tr -d '[]"' | tr ',' '\n')"
+    # nix's messages are kept for a failure only, so a flake that cannot be
+    # read (such as a checkout git does not trust) says why, while warnings
+    # on success stay quiet.
+    err="$(mktemp)"
+    if ! names="$(nix eval --impure --json "$flakePath#homeConfigurations" \
+                    --apply builtins.attrNames 2>"$err")"; then
+      echo "home-switch: cannot evaluate the flake at $flakePath:" >&2
+      cat "$err" >&2
+      rm -f "$err"
+      exit 1
+    fi
+    rm -f "$err"
+    keys="$(printf '%s' "$names" | tr -d '[]"' | tr ',' '\n')"
 
     if ! printf '%s\n' "$keys" | grep -qxF "$target"; then
       # A system-managed home has no published configuration by design, so
