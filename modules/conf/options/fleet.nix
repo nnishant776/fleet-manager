@@ -43,7 +43,9 @@
         means a bare `nixos-rebuild switch` works.
 
         It is a git checkout rather than a copy, so `git -C <path> rev-parse
-        HEAD` states which revision the machine should be running.
+        HEAD` states which revision the machine should be running. On NixOS
+        it is trusted in /etc/gitconfig (`safe.directory`), so every account
+        can use it although root owns it.
       '';
     };
 

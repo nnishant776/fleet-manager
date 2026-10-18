@@ -109,6 +109,12 @@ home-switch <username> <flake path> <host>     # explicit
 home-manager switch --flake /etc/nixos --impure   # the bare CLI resolves <user>@<host> itself
 ```
 
+`/etc/nixos` belongs to root, and git refuses to work in a repository that
+another user owns. On NixOS the system tells git to trust this one checkout for
+every account (`safe.directory` in `/etc/gitconfig`). So these commands work
+without anything in your own git configuration, even before your home
+configuration exists. Other root-owned repositories are not trusted.
+
 ### Installing a machine
 
 ```bash
@@ -673,7 +679,7 @@ accept `configPath` for a local path and `configRepo` for a remote one.
 | `fleet.repo.url` | nullOr str | `null` | Git remote the machine is deployed from |
 | `fleet.repo.ref` | str | `"main"` | Branch or tag to track |
 | `fleet.repo.deployKeySecret` | nullOr str | `null` | Key in `hosts/<host>.yaml` of the secrets repository with a read-only SSH deploy key for a private remote. Requires `conf.secrets.repo.url` |
-| `fleet.localPath` | str | `"/etc/nixos"` | Where the configuration checkout lives |
+| `fleet.localPath` | str | `"/etc/nixos"` | Where the configuration checkout lives. On NixOS every account's git trusts it (`safe.directory`) |
 | `fleet.signing.allowedSignersFile` | nullOr path | `null` | SSH allowed-signers file every fetched commit must be signed by. Required when `repo.url` is set |
 | `fleet.support.enable` | nullOr bool | `null` | Create an account for the maintainer to reach the host with. `null` means on when `conf.secrets.repo.url` is set. NixOS only; macOS hosts get no support account yet. Sets `sharing.ssh.enable` |
 | `fleet.support.user` | str | `"support"` | Name of the support account |

@@ -128,6 +128,10 @@
         inherit inputs;
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
       };
+      fleet-safe-directory = import ./tests/fleet/safe-directory.nix {
+        inherit inputs;
+        pkgs = nixpkgs.legacyPackages.x86_64-linux;
+      };
     }
     # One `<host>-hotspot-ready` per host that has declared a hotspot but not
     # turned it on, so turning it on stays a one-line change.
