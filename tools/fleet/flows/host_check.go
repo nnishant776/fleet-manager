@@ -1,0 +1,173 @@
+package flows
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/nnishant776/fleet-manager/tools/fleet/internal/engine"
+	"github.com/nnishant776/fleet-manager/tools/fleet/internal/fleet"
+)
+
+// HostCheck looks at one host without changing anything.
+var HostCheck = &engine.Flow{
+	Path:  []string{"host", "check"},
+	Title: "Check a host",
+	Short: "Check a host: configuration, sync, secrets and health, without changing anything",
+	Long: "Logs in to the host as support, with nothing forwarded, and reports what it\n" +
+		"runs, whether its last sync succeeded, whether a problem is recorded for\n" +
+		"everyone to see, what its secrets snapshot holds, and whether any unit failed.\n" +
+		"It changes nothing, so it never asks.",
+	Example: "  fleet host check neerajpinew\n  fleet host check pi-gw --address 192.168.0.9",
+	Args:    []string{"host"},
+	Inputs:  fleet.HostInputs(),
+	Needs:   []string{"ssh", "nix"},
+	Report:  true,
+	Steps: []engine.Step{
+		{
+			Title: "Reach {{.host}}",
+			Why:   "As {{.user}}, with no agent forwarded, and only to a host whose key this machine already knows.",
+			Do: engine.Checks(engine.Probe{
+				What: "logged in as {{.user}} at {{.address}}",
+				Cmd:  fleet.OnHost("id -un; hostname"),
+				Expect: func(out string) (string, error) {
+					lines := strings.Fields(out)
+					if len(lines) < 2 {
+						return "", errors.New("unexpected answer: " + out)
+					}
+					return "hostname " + lines[1], nil
+				},
+			}),
+		},
+		{
+			Title: "Configuration and sync",
+			Why:   "The running system should be the revision its checkout holds, and the last sync should have succeeded.",
+			Do: engine.Checks(
+				engine.Probe{
+					What: "running revision",
+					Cmd:  fleet.OnHost(`r=$(cat /etc/org/revision); h=$(git -C /etc/nixos rev-parse HEAD 2>/dev/null || echo none); echo "$r $h"`),
+					Expect: func(out string) (string, error) {
+						f := strings.Fields(out)
+						if len(f) != 2 {
+							return "", errors.New("unexpected answer: " + out)
+						}
+						switch {
+						case f[0] == "unknown":
+							return "", errors.New("the system records no revision (installed from uncommitted changes?)")
+						case f[1] == "none":
+							return short(f[0]) + ", with no checkout in /etc/nixos", nil
+						case f[0] != f[1]:
+							return "", fmt.Errorf("runs %s but its checkout is at %s", short(f[0]), short(f[1]))
+						}
+						return short(f[0]) + ", the same as its checkout", nil
+					},
+				},
+				engine.Probe{
+					What: "checkout",
+					Cmd:  fleet.OnHost(`test -d /etc/nixos/.git || { echo none; exit 0; }; git -C /etc/nixos status --porcelain | wc -l`),
+					Expect: func(out string) (string, error) {
+						switch out = strings.TrimSpace(out); out {
+						case "none":
+							return "none (not a fleet host)", nil
+						case "0":
+							return "no local changes", nil
+						}
+						return "", fmt.Errorf("%s local changes, which the next sync discards", out)
+					},
+				},
+				engine.Probe{
+					What: "last sync",
+					Cmd:  fleet.OnHost(`systemctl show -p LoadState,Result,ExecMainExitTimestamp --value config-auto-update.service`),
+					Expect: func(out string) (string, error) {
+						f := strings.SplitN(strings.TrimSpace(out), "\n", 3)
+						if len(f) < 3 || f[0] == "not-found" {
+							return "no sync on this host", nil
+						}
+						if f[1] != "success" {
+							return "", fmt.Errorf("%s, at %s", f[1], orNever(f[2]))
+						}
+						return "succeeded, at " + orNever(f[2]), nil
+					},
+				},
+				engine.Probe{
+					What: "problems recorded for everyone",
+					Cmd:  fleet.OnHost(`cat /var/lib/fleet-sync/status 2>/dev/null || true`),
+					Expect: func(out string) (string, error) {
+						if strings.TrimSpace(out) == "" {
+							return "none", nil
+						}
+						fields := map[string]string{}
+						for _, line := range strings.Split(out, "\n") {
+							if k, v, ok := strings.Cut(line, "="); ok {
+								fields[k] = v
+							}
+						}
+						return "", fmt.Errorf("%s since %s: %s", fields["kind"], fields["since"], fields["message"])
+					},
+				},
+			),
+		},
+		{
+			Title: "Secrets",
+			Why:   "The snapshot names the secrets commit the host last accepted; /run/secrets holds what activation decrypted.",
+			Do: engine.Checks(
+				engine.Probe{
+					What: "secrets snapshot",
+					Cmd:  fleet.OnHost(`sudo -n test -d /var/lib/fleet || { echo none; exit 0; }; sudo -n readlink /var/lib/fleet/secrets || echo missing`),
+					Expect: func(out string) (string, error) {
+						switch out = strings.TrimSpace(out); {
+						case out == "none":
+							return "none (this host takes no secrets)", nil
+						case out == "missing":
+							return "", errors.New("an identity but no snapshot yet: not enrolled, or its deploy key is not registered")
+						}
+						return "commit " + short(strings.TrimPrefix(out, "snapshots/")), nil
+					},
+				},
+				engine.Probe{
+					What: "decrypted secrets",
+					Cmd:  fleet.OnHost(`sudo -n find -H /run/secrets /run/secrets-for-users -mindepth 1 -maxdepth 1 -printf '%f\n' 2>/dev/null | sort -u`),
+					Expect: func(out string) (string, error) {
+						names := strings.Fields(out)
+						if len(names) == 0 {
+							return "none", nil
+						}
+						return strings.Join(names, ", "), nil
+					},
+				},
+			),
+		},
+		{
+			Title: "Health",
+			Why:   "A failed unit is worth knowing about before changing anything else.",
+			Do: engine.Checks(engine.Probe{
+				What: "system state",
+				Cmd:  fleet.OnHost(`systemctl is-system-running || true; systemctl --failed --no-legend --plain | cut -d' ' -f1`),
+				Expect: func(out string) (string, error) {
+					f := strings.Fields(out)
+					if len(f) == 0 {
+						return "", errors.New("no answer")
+					}
+					if f[0] == "running" {
+						return "running, no failed units", nil
+					}
+					return "", fmt.Errorf("%s; failed: %s", f[0], strings.Join(f[1:], ", "))
+				},
+			}),
+		},
+	},
+}
+
+func short(rev string) string {
+	if len(rev) > 12 {
+		return rev[:12]
+	}
+	return rev
+}
+
+func orNever(ts string) string {
+	if ts = strings.TrimSpace(ts); ts == "" || ts == "n/a" {
+		return "never"
+	}
+	return ts
+}

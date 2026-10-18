@@ -6,11 +6,14 @@ package flows
 import "github.com/nnishant776/fleet-manager/tools/fleet/internal/engine"
 
 // Groups describes the intermediate commands.
-var Groups = engine.Groups{}
+var Groups = engine.Groups{
+	"host": "Work on one host: check it, its secrets, its enrolment",
+}
 
 // All is every flow, in the order the menu shows them.
 func All() []*engine.Flow {
 	return []*engine.Flow{
+		HostCheck,
 		Doctor,
 	}
 }

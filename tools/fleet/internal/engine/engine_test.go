@@ -244,3 +244,41 @@ func detail(err error) string {
 	}
 	return err.Error()
 }
+
+func TestReportRunsEveryStepThenFails(t *testing.T) {
+	x, fake, _ := newCtx(Options{}, func(s Spec) (Result, error) {
+		if s.Args[0] == "bad" {
+			return Result{Code: 1}, errors.New("exited with code 1")
+		}
+		return Result{}, nil
+	})
+	f := &Flow{Title: "t", Report: true, Steps: []Step{
+		{Title: "one", Do: Checks(Probe{What: "a", Cmd: Cmd("probe", "bad")})},
+		{Title: "two", Do: Checks(Probe{What: "b", Cmd: Cmd("probe", "good")})},
+	}}
+	err := RunWith(x, f, nil)
+	if err == nil || !strings.Contains(err.Error(), "1 of 2 steps") {
+		t.Fatalf("got %v", err)
+	}
+	if len(fake.Ran) != 2 {
+		t.Fatalf("a report stopped early: ran %q", fake.Commands())
+	}
+}
+
+func TestMissingToolsStopBeforeTheFirstStep(t *testing.T) {
+	x, fake, _ := newCtx(Options{Yes: true}, nil)
+	x.LookPath = func(t string) (string, error) {
+		if t == "sops" {
+			return "", errors.New("not found")
+		}
+		return "/bin/" + t, nil
+	}
+	f := &Flow{Title: "t", Needs: []string{"git", "sops"}, Steps: []Step{{Do: Cmd("git", "status")}}}
+	err := RunWith(x, f, nil)
+	if err == nil || !strings.Contains(err.Error(), "not on PATH: sops") {
+		t.Fatalf("got %v", err)
+	}
+	if len(fake.Ran) != 0 {
+		t.Fatal("ran a step although a tool was missing")
+	}
+}

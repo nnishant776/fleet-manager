@@ -55,7 +55,10 @@ type Flow struct {
 	Args    []string // inputs that may also be given as positional arguments, in order
 	Inputs  []Input
 	Needs   []string // tools on PATH the flow cannot work without
-	Steps   []Step
+	// Report marks a read-only flow: every step runs, and the flow fails at
+	// the end if any found a problem, instead of stopping at the first.
+	Report bool
+	Steps  []Step
 }
 
 // Options are the switches every flow shares.
@@ -73,6 +76,8 @@ type Ctx struct {
 	Options Options
 	Values  map[string]string
 	Stdin   io.Reader // for --NAME-stdin inputs
+	// LookPath finds a tool on PATH; exec.LookPath unless a test replaces it.
+	LookPath func(string) (string, error)
 
 	flags map[string]string // from the command line
 	n     int
@@ -108,7 +113,10 @@ func Run(c *Ctx, f *Flow) error {
 	if c.Values == nil {
 		c.Values = map[string]string{}
 	}
-	if err := checkTools(f.Needs); err != nil {
+	if c.LookPath == nil {
+		c.LookPath = exec.LookPath
+	}
+	if err := checkTools(c.LookPath, f.Needs); err != nil {
 		return err
 	}
 	c.UI.Header(f.Title)
@@ -118,6 +126,7 @@ func Run(c *Ctx, f *Flow) error {
 		}
 	}
 	c.total = len(f.Steps)
+	problems := 0
 	for i, s := range f.Steps {
 		c.n = i + 1
 		title, err := c.Expand(s.Title)
@@ -142,12 +151,20 @@ func Run(c *Ctx, f *Flow) error {
 				return err
 			}
 			c.UI.Fail(err.Error())
+			if f.Report {
+				problems++
+				c.UI.Blank()
+				continue
+			}
 			return &StepError{N: c.n, Title: title, Err: err}
 		}
 		c.UI.Blank()
 	}
 	if c.Options.DryRun {
 		c.UI.Note("Dry run: nothing was run.")
+	}
+	if problems > 0 {
+		return fmt.Errorf("%d of %d steps found a problem", problems, c.total)
 	}
 	return nil
 }
@@ -229,10 +246,10 @@ func check(in Input, v string) error {
 
 // checkTools fails before the first step when a tool the flow needs is not
 // on PATH, rather than halfway through.
-func checkTools(tools []string) error {
+func checkTools(lookPath func(string) (string, error), tools []string) error {
 	var missing []string
 	for _, t := range tools {
-		if _, err := exec.LookPath(t); err != nil {
+		if _, err := lookPath(t); err != nil {
 			missing = append(missing, t)
 		}
 	}
