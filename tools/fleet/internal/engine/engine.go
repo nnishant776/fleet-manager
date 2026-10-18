@@ -191,7 +191,7 @@ func Run(c *Ctx, f *Flow) error {
 		c.UI.Blank()
 	}
 	if c.Options.DryRun {
-		c.UI.Note("Dry run: nothing was run.")
+		c.UI.Note("Dry run: nothing was changed.")
 	}
 	if problems > 0 {
 		return fmt.Errorf("%d of %d steps found a problem", problems, c.total)
