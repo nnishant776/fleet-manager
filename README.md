@@ -1034,7 +1034,9 @@ and a repeat check replaces the existing notification instead of stacking a
 second one. Whether a dismissed notification is kept in a history panel is the
 daemon's choice.
 Organisation-managed homes are skipped, since the rebuild already activated
-them. This is a nudge, not enforcement: a user with sudo can mask the unit.
+them. This is a nudge, not enforcement: a user with sudo can mask the unit. It only
+runs on hosts with `conf.desktop.enable`, in graphical sessions; a headless
+host or an SSH-only session gets no check and no notification.
 
 **Revoking `selfManagedHome` is destructive.** The next rebuild activates the
 organisation's home, and files the user's own generation placed are removed.
@@ -1062,8 +1064,10 @@ rest. `conf.desktop`, `conf.sharing`, `conf.networking`, `conf.flatpak` and
 `conf.fleet` have no Darwin implementation today.
 
 **Hardened defaults are defaults.** Every Linux host gets a kernel and service
-posture from `modules/linux/baseline/` and the concern modules, all
-`lib.mkDefault`, so a plain assignment in the host file overrides any of it.
+posture from `modules/linux/baseline/` and the concern modules. Most are
+`lib.mkDefault`, so a plain assignment in the host file overrides them; a few
+are plain values, such as sshd's `PermitRootLogin = "no"` and
+`security.sudo.execWheelOnly`, and changing those needs `lib.mkForce`.
 The ones most likely to be noticed: `kernel.yama.ptrace_scope = 1` (a debugger
 attaches to its own children; attaching to another process of yours needs
 `sudo`); the systemd-boot menu does not allow editing the kernel command line
@@ -1083,7 +1087,10 @@ configuration lives outside the flake.
 **root is locked, and stays locked.** `users.users.root.hashedPassword` is `"!"`
 and is re-applied on every activation, so a password set with `passwd` does not
 survive the next rebuild. Rescue is an administrator with sudo, an earlier
-generation from the boot menu, or installer media and `nixos-enter`. The
+generation from the boot menu (with the boot splash on, the menu is hidden:
+hold Space on systemd-boot or press Esc on GRUB while booting to show it; with
+`grubPasswordHash` set, GRUB asks for the password for older generations), or
+installer media and `nixos-enter`. The
 initrd emergency shell is already closed by NixOS's default
 `boot.initrd.systemd.emergencyAccess`.
 
@@ -1099,10 +1106,22 @@ building if `localPath` is not root-owned or is group- or world-writable. An
 `ssh://` remote additionally needs the Git host in `programs.ssh.knownHosts`,
 since root has no `known_hosts` of its own.
 
+**Only the newest commit is checked, and GitHub's merge buttons break it.**
+The sync verifies the tip of the tracked branch. GitHub's rebase, squash and
+merge buttons drop your signature or replace it with GitHub's own, so after
+such a merge every host stops updating, with only a journal line (`refusing:
+commit … is not signed by an allowed signer`). Merge locally and push instead.
+
+**On headless hosts only `wheel` may use the Nix daemon**
+(`nix.settings.allowed-users`), so an unprivileged account with
+`selfManagedHome` cannot build or run `home-switch` there unless the host
+widens that setting.
+
 **Fleet hosts have immutable accounts.** `users.mutableUsers` is false whenever
 `fleet.repo.url` is set: activation rewrites `/etc/passwd` and `/etc/shadow`, so
 a locally added user or a changed password does not survive the next sync.
-Passwords then come from the secrets repository; an account without one is locked.
+Passwords come from the secrets repository when `conf.secrets.repo.url` is set,
+otherwise from `initialHashedPassword`; an account with neither is locked.
 
 **Every Linux host audits.** `auditd` records commands run as root by a
 logged-in person, and writes to the configuration checkout, the system
@@ -1146,11 +1165,14 @@ ref, which may not match the system it just installed.
 | Input | Ref | Purpose |
 |---|---|---|
 | `nixpkgs` | nixos-26.05 | base packages and modules |
-| `nixpkgs-unstable` | nixos-unstable | occasional newer packages |
+| `nixpkgs-unstable` | nixos-unstable | declared, not used by any module |
 | `nix-darwin` | nix-darwin-26.05 | macOS support |
 | `home-manager` | release-26.05 | per-user environments |
 | `dms` | stable | DankMaterialShell |
 | `noctalia` | main | Noctalia shell |
 | `caelestia-shell` | main | Caelestia shell |
 | `disko` | master | declarative disk partitioning |
-| `apple-fonts` | main | SF Pro and SF Mono |
+| `apple-fonts` | master | SF Pro and SF Mono |
+| `sops-nix` | master | secrets, decrypted with sops at activation |
+| `nixos-raspberrypi` | develop | Raspberry Pi board support, for Pi hosts and `rpi-image` |
+| `microvm` | main | microVM guests on `pi-gw` |
