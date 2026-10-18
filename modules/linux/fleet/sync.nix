@@ -43,7 +43,25 @@ let
       ref=${lib.escapeShellArg cfg.repo.ref}
       host=${lib.escapeShellArg config.conf.host.name}
 
-      log() { echo "config-auto-update: $*"; }${lib.optionalString secretsOn ''
+      log() { echo "config-auto-update: $*"; }
+
+      # Why the last run stopped, for the notice every account gets
+      # (fleet/sync-status.nix): what went wrong, in words for whoever is at
+      # the machine, and since when. A run that ends well removes it. A fetch
+      # that fails leaves it as it is, since the next run simply retries.
+      status=/var/lib/fleet-sync/status
+      target=""
+      stop() {  # stop KIND MESSAGE: record the problem and end the run
+        since="$(date -Is)"
+        if [ -r "$status" ] && grep -qxF "kind=$1" "$status" && grep -qxF "commit=$target" "$status"; then
+          since="$(sed -n 's/^since=//p' "$status")"
+        fi
+        tmp="$(mktemp "$status.XXXXXX")"
+        printf 'kind=%s\ncommit=%s\nsince=%s\nmessage=%s\n' "$1" "$target" "$since" "$2" > "$tmp"
+        chmod 0644 "$tmp"
+        mv -f "$tmp" "$status"
+        exit 1
+      }${lib.optionalString secretsOn ''
 
         # Secrets first: a host whose snapshot cannot be refreshed or verified
         # must not go on to build and activate against a stale one.
@@ -54,14 +72,18 @@ let
           --signers ${signers} || rc=$?
         if [ "$rc" -ne 0 ]; then
           log "secrets sync failed with code $rc"
-          exit 1
+          case "$rc" in
+            10) exit 1 ;;  # the fetch failed; the next run retries
+            11) stop secrets-signature "The latest change to this machine's secrets is not signed by a trusted key, so the machine is not updating. It keeps running its current configuration." ;;
+            *)  stop secrets "This machine could not refresh or verify its secrets, so it is not updating. It keeps running its current configuration." ;;
+          esac
         fi
       ''}
 
       if [ ! -d "$repo/.git" ]; then
         log "no git checkout at $repo — refusing to sync"
         log "os-install populates it; see conf.fleet.repo"
-        exit 1
+        stop checkout "The configuration checkout at $repo is missing, so this machine cannot update."
       fi
 
       # The checkout is evaluated as root; whoever can write it owns the machine.
@@ -69,7 +91,7 @@ let
       mode="$(stat -c %a "$repo")"
       if [ "$owner" != root ] || [ $(( 8#$mode & 8#022 )) -ne 0 ]; then
         log "refusing: $repo is owned by $owner with mode $mode; it must be root-owned and not group- or world-writable"
-        exit 1
+        stop checkout "The configuration checkout at $repo has the wrong owner or permissions, so this machine will not update from it."
       fi
 
       # Fleet machines pull. The push URL is set to something that cannot
@@ -98,7 +120,7 @@ let
       # carries an SSH signature from the signers file this configuration ships.
       if ! git -C "$repo" -c gpg.ssh.allowedSignersFile=${signers} verify-commit "$target" >/dev/null 2>&1; then
         log "refusing: commit $target on $ref is not signed by an allowed signer"
-        exit 1
+        stop signature "The latest configuration change is not signed by a trusted key, so this machine is not applying it. It keeps running its current configuration."
       fi
 
       ${if au.resetLocalChanges then ''
@@ -107,7 +129,7 @@ let
         if ! git -C "$repo" merge --ff-only "$target"; then
           log "$repo has diverged from origin/$ref and cannot fast-forward"
           log "this machine is parked on a revision no upstream describes"
-          exit 1
+          stop diverged "The configuration checkout at $repo has changes of its own and cannot follow $ref, so this machine is not updating. It keeps running its current configuration."
         fi
       ''}
 
@@ -120,19 +142,20 @@ let
         ${lib.getExe secretsSync.sync} check ${secretsArgs} --config "$repo" || rc=$?
         if [ "$rc" -ne 0 ]; then
           log "secrets check failed with code $rc"
-          exit 1
+          stop secrets-missing "The latest configuration needs a secret this machine does not have, so it is not being applied. The machine keeps running its current configuration."
         fi
       ''}
 
       if ! newSystem="$(nix build --no-link --print-out-paths \
             "$repo#nixosConfigurations.$host.config.system.build.toplevel")"; then
         log "build of $after failed — running system left untouched"
-        exit 1
+        stop build "The latest configuration does not build on this machine, so it keeps running its current one."
       fi
 
       running="$(readlink -f /run/current-system)"
       if [ "$newSystem" = "$running" ]; then
         log "already running the configuration at $after"
+        rm -f "$status"
         exit 0
       fi
 
@@ -152,15 +175,18 @@ let
              && "$systemProfile/bin/switch-to-configuration" switch; then
             log "rolled back to generation $previousGen; this machine no longer"
             log "matches $after and will show as drift until upstream is fixed"
+            stop activation "The latest configuration failed to start, so this machine went back to its previous one."
           else
             log "ROLLBACK FAILED; the system may be in a mixed state"
+            stop activation "The latest configuration failed to start, and going back to the previous one failed too. This machine may be partly updated."
           fi
         '' else ''
           log "activation failed at $after and rollbackOnFailure is off —"
           log "leaving the system as it is, which may be partially activated"
+          stop activation "The latest configuration failed to start. This machine may be partly updated."
         ''}
-        exit 1
       fi
+      rm -f "$status"
 
       # Reported, not acted on: rolling back on any degraded state would put a
       # machine with one pre-existing failed unit into a rollback loop on every
@@ -250,6 +276,10 @@ in
         Type = "oneshot";
         PrivateTmp = true;
         ExecStart = lib.getExe syncScript;
+        # /var/lib/fleet-sync, readable by every account, holds the status
+        # file the notice in fleet/sync-status.nix reads.
+        StateDirectory = "fleet-sync";
+        StateDirectoryMode = "0755";
       };
     };
 

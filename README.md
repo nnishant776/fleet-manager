@@ -1110,8 +1110,18 @@ since root has no `known_hosts` of its own.
 **Only the newest commit is checked, and GitHub's merge buttons break it.**
 The sync verifies the tip of the tracked branch. GitHub's rebase, squash and
 merge buttons drop your signature or replace it with GitHub's own, so after
-such a merge every host stops updating, with only a journal line (`refusing:
-commit … is not signed by an allowed signer`). Merge locally and push instead.
+such a merge every host stops updating, and everyone at those hosts sees the
+notice below. Merge locally and push instead.
+
+**Everyone at a fleet host sees it when updates stop.** When a sync run stops
+on something a person has to fix, such as an unsigned commit, a configuration
+that does not build, a missing secret or a failed activation, it records why in
+`/var/lib/fleet-sync/status`. Every account then sees it: a persistent
+notification in a graphical session, shown again on every run that stops and
+taken down by the first one that succeeds, and a few lines at every shell
+login, which covers SSH and headless hosts. `fleet-sync-status` prints it on
+demand. A fetch that fails, usually the network, is retried on the next run and
+shows nothing.
 
 **On headless hosts only `wheel` may use the Nix daemon**
 (`nix.settings.allowed-users`), so an unprivileged account with
