@@ -105,7 +105,36 @@ func OnHost(script string) *engine.Command {
 		"-o", "ConnectTimeout=10",
 		"{{.user}}@{{.address}}",
 		script,
-	)
+	).Explain(SSHTrouble("{{.user}}"))
+}
+
+// SSHTrouble explains a failure of ssh itself, which exits with 255, from
+// its message: the reason in plain words and what to try. login is the
+// account, templated. A failure of the command on the host is left as it is.
+func SSHTrouble(login string) func(engine.Result) string {
+	return func(r engine.Result) string {
+		if r.Code != 255 {
+			return ""
+		}
+		e := r.Stderr
+		switch {
+		case strings.Contains(e, "Could not resolve hostname"):
+			return "the name {{.address}} does not resolve to an address: give its IP address with --address"
+		case strings.Contains(e, "REMOTE HOST IDENTIFICATION HAS CHANGED"):
+			return "{{.address}} shows a different host key from the one this machine knows. If it was reinstalled, " +
+				"remove the old key with ssh-keygen -R {{.address}} and check the new one; if not, stop here"
+		case strings.Contains(e, "Host key verification failed"):
+			return "this machine does not know {{.address}}'s host key yet: log in once with ssh " + login +
+				"@{{.address}}, check the fingerprint, and run this again"
+		case strings.Contains(e, "Connection refused"):
+			return "nothing at {{.address}} accepts SSH: is it the right address, and is sshd running there?"
+		case strings.Contains(e, "timed out"), strings.Contains(e, "No route to host"), strings.Contains(e, "Network is unreachable"):
+			return "{{.address}} does not answer: is it on, and on a network this machine can reach?"
+		case strings.Contains(e, "Permission denied"):
+			return login + "@{{.address}} refused the keys this machine offered: is the key in the host's configuration, and loaded (ssh-add -l)?"
+		}
+		return ""
+	}
 }
 
 // OnAdmin runs a script on the host as the admin account, forwarding only the
@@ -118,7 +147,7 @@ func OnAdmin(script string) *engine.Command {
 		"-o", "ConnectTimeout=10",
 		"{{.admin}}@{{.address}}",
 		script,
-	).Env("SSH_AUTH_SOCK={{.agent}}")
+	).Env("SSH_AUTH_SOCK={{.agent}}").Explain(SSHTrouble("{{.admin}}"))
 }
 
 // StartAgent starts an ssh-agent holding only the key in the value "key",

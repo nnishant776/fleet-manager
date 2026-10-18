@@ -17,7 +17,7 @@ func asSupport(keyValue, script string) *engine.Command {
 		"-o", "IdentitiesOnly=yes", "-o", "IdentityAgent=none",
 		"-i", "{{."+keyValue+"}}",
 		"support@{{.address}}", script,
-	)
+	).Explain(fleet.SSHTrouble("support"))
 }
 
 // SupportKeyRotate replaces the key that opens the support account.

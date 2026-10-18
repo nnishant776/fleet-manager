@@ -3,6 +3,7 @@ package flows
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -58,7 +59,7 @@ func TestHostCheckOnAHealthyHost(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 	for _, want := range []string{
-		"✓ logged in as support at neerajpinew: hostname neerajpinew",
+		"✓ support at neerajpinew: logged in, hostname neerajpinew",
 		"✓ running revision: eccde35047cb, the same as its checkout",
 		"✓ checkout: no local changes",
 		"✓ last sync: succeeded, at Sun 2026-10-18 18:21:40 IST",
@@ -116,5 +117,33 @@ func TestHostCheckOnAHostWithoutSecrets(t *testing.T) {
 	}
 	if !strings.Contains(out, "✓ secrets snapshot: none (this host takes no secrets)") {
 		t.Errorf("output:\n%s", out)
+	}
+}
+
+func TestHostCheckStopsWhenTheHostCannotBeReached(t *testing.T) {
+	var out bytes.Buffer
+	fake := &engine.Fake{Respond: func(engine.Spec) (engine.Result, error) {
+		return engine.Result{Code: 255, Stderr: "ssh: Could not resolve hostname example: Name or service not known\n"},
+			errors.New("exited with code 255")
+	}}
+	x := &engine.Ctx{
+		Context: context.Background(), UI: ui.NewWith(&out, nil), Runner: fake,
+		Values: map[string]string{}, Stdin: strings.NewReader(""),
+		LookPath: func(t string) (string, error) { return "/fake/bin/" + t, nil },
+	}
+	err := engine.RunWith(x, HostCheck, map[string]string{"host": "example", "flake": "/etc/nixos"})
+	if err == nil || !strings.Contains(err.Error(), "stopped at step 1") {
+		t.Fatalf("got %v\n%s", err, &out)
+	}
+	for _, want := range []string{
+		"✗ support at example: the name example does not resolve to an address: give its IP address with --address",
+		"the steps after this one need it, so they were not run",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, &out)
+		}
+	}
+	if len(fake.Ran) != 1 || strings.Contains(out.String(), "[2/4]") {
+		t.Errorf("went on after the host could not be reached: ran %d commands\n%s", len(fake.Ran), &out)
 	}
 }

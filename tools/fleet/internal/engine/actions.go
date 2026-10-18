@@ -25,7 +25,13 @@ type Command struct {
 	secret      bool   // its output is never shown
 	captureEnv  string // keep the output as hidden environment: NAME=output
 	stdinNote   string // what the shown command says about its stdin
+	explain     func(Result) string
 }
+
+// Explain sets how a failure of the command is said: given the result, the
+// reason in plain words and what to try, templated like the rest, or "" to
+// keep the plain error.
+func (c *Command) Explain(f func(Result) string) *Command { c.explain = f; return c }
 
 // Cmd starts a command step.
 func Cmd(name string, args ...string) *Command { return &Command{name: name, args: args} }
@@ -152,7 +158,11 @@ func (c *Command) exec(x *Ctx, asQuietCheck bool) (Result, error) {
 		if x.Options.Verbose {
 			max = 0
 		}
-		shown := strings.TrimRight(res.Stdout, "\n") + "\n" + res.Stderr
+		shown := strings.TrimRight(res.Stdout, "\n")
+		if shown != "" && res.Stderr != "" {
+			shown += "\n"
+		}
+		shown += res.Stderr
 		if c.secret {
 			shown = res.Stderr
 		}
@@ -160,6 +170,13 @@ func (c *Command) exec(x *Ctx, asQuietCheck bool) (Result, error) {
 	}
 	if err == nil && c.expect != nil {
 		err = c.expect(res)
+	}
+	if err != nil && c.explain != nil {
+		if why := c.explain(res); why != "" {
+			if why, xerr := x.Expand(why); xerr == nil {
+				err = errors.New(why)
+			}
+		}
 	}
 	if err != nil {
 		return res, err
@@ -234,7 +251,12 @@ func (cs checks) run(x *Ctx) error {
 		x.UI.OK(what)
 	}
 	if failed > 0 {
-		return fmt.Errorf("%d of %d checks failed", failed, len(cs))
+		err := fmt.Errorf("%d of %d checks failed", failed, len(cs))
+		if len(cs) == 1 {
+			// The one ✗ above says it all.
+			return alreadyShown{err}
+		}
+		return err
 	}
 	return nil
 }
@@ -307,3 +329,9 @@ func Silently(x *Ctx, env []string, name string, args ...string) (string, error)
 	res, err := x.Runner.Run(x.Context, Spec{Name: name, Args: args, Env: env, Hidden: x.Hidden})
 	return strings.TrimSpace(res.Stdout), err
 }
+
+// alreadyShown is an error the step has already shown in full, so that
+// Run does not show it again.
+type alreadyShown struct{ error }
+
+func (e alreadyShown) Unwrap() error { return e.error }

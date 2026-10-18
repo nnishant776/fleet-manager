@@ -46,6 +46,9 @@ type Step struct {
 	// When, if set, decides whether the step runs; the reason is shown when
 	// it does not.
 	When func(*Ctx) (bool, string)
+	// Required marks a step the ones after it cannot do without, such as
+	// reaching the host: when it fails, even a Report flow stops there.
+	Required bool
 }
 
 // Action is what a step does.
@@ -190,11 +193,16 @@ func Run(c *Ctx, f *Flow) error {
 				c.UI.Skip("stopped here; nothing after this step was run")
 				return err
 			}
-			c.UI.Fail(err.Error())
-			if f.Report {
+			if !errors.As(err, new(alreadyShown)) {
+				c.UI.Fail(err.Error())
+			}
+			if f.Report && !s.Required {
 				problems++
 				c.UI.Blank()
 				continue
+			}
+			if f.Report && i+1 < len(f.Steps) {
+				c.UI.Skip("the steps after this one need it, so they were not run")
 			}
 			return &StepError{N: c.n, Title: title, Err: err}
 		}

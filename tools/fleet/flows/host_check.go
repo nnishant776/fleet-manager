@@ -25,17 +25,18 @@ var HostCheck = &engine.Flow{
 	Report:  true,
 	Steps: []engine.Step{
 		{
-			Title: "Reach {{.host}}",
-			Why:   "As {{.user}}, with no agent forwarded, and only to a host whose key this machine already knows.",
+			Title:    "Reach {{.host}}",
+			Why:      "As {{.user}}, with no agent forwarded, and only to a host whose key this machine already knows.",
+			Required: true,
 			Do: engine.Checks(engine.Probe{
-				What: "logged in as {{.user}} at {{.address}}",
+				What: "{{.user}} at {{.address}}",
 				Cmd:  fleet.OnHost("id -un; hostname"),
 				Expect: func(out string) (string, error) {
 					lines := strings.Fields(out)
 					if len(lines) < 2 {
 						return "", errors.New("unexpected answer: " + out)
 					}
-					return "hostname " + lines[1], nil
+					return "logged in, hostname " + lines[1], nil
 				},
 			}),
 		},
