@@ -26,7 +26,8 @@ let
     inherit version;
     src = lib.fileset.toSource {
       root = ./.;
-      fileset = lib.fileset.unions [ ./go.mod ./go.sum ./main.go ./flows ./internal ];
+      # runbooks for the test that they are current.
+      fileset = lib.fileset.unions [ ./go.mod ./go.sum ./main.go ./flows ./internal ./runbooks ];
     };
     vendorHash = "sha256-nlulmgHFiI8/r6t5Dh6Ze0OxEW91Be4YfE5X2Id6+UM=";
     env.CGO_ENABLED = "0";

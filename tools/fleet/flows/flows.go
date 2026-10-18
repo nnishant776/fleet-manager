@@ -26,6 +26,7 @@ func All() []*engine.Flow {
 		SupportKeyRotate,
 		Setup,
 		Install,
+		Docs,
 		Doctor,
 	}
 }

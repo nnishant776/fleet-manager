@@ -17,7 +17,7 @@ a common configuration module rather than being per host.
 ├── fleet/
 │   └── allowed_signers              # keys the fleet accepts on commits; see Signing commits for a fleet
 ├── lib/
-│   ├── apps/                        # os-install, system-switch, home-switch, check-purity, fleet-secrets; rpi-image and secrets-harness on Linux; darwin-rebuild on macOS
+│   ├── apps/                        # os-install, system-switch, home-switch, check-purity, fleet-secrets, fleet; rpi-image and secrets-harness on Linux; darwin-rebuild on macOS
 │   ├── mkHost.nix                   # host factory (NixOS / nix-darwin)
 │   ├── secrets-sync.nix             # fleet-secrets-sync and fleet-identity, used by the sync and os-install
 │   ├── buildUser.nix                # assembles a user's Home Manager modules
@@ -32,6 +32,7 @@ a common configuration module rather than being per host.
 ├── tests/                           # VM and evaluation checks wired into the flake's `checks`
 │   │                                # one folder per area: fleet, networking, pi-gw, rpi-image, secrets, users
 │   └── secrets/                     # also holds secrets-harness, the local stand-in for the secrets repository
+├── tools/fleet/                     # fleet, the guided command-line tool; runbooks/ has a page per command
 └── modules/
     ├── conf/                        # the conf.* vocabulary: options/<concern>.nix, role.nix, machineType.nix
     ├── common/                      # configuration valid on both platforms
@@ -304,6 +305,40 @@ commit signed by a key still trusted. Do not rely on `valid-before` for that:
 Git checks it against the commit's own date, which the signer chooses, so a
 stolen key can still sign backdated commits; the option only suits retiring a
 key on a planned date.
+
+### The `fleet` tool
+
+`fleet` walks through the fleet's procedures one step at a time: installing a
+machine, enrolling a host, secrets, the support key, and checks. Each step says
+what it does and why, shows the exact command, asks before it changes
+anything, and checks the result. `fleet` alone shows a menu, and
+`fleet <command> --help` explains a command.
+
+It is on the PATH of every privileged account whose home this flake manages,
+and on the Raspberry Pi image. Elsewhere:
+
+```bash
+nix run .#fleet -- host check neerajpinew      # once
+nix profile install .#fleet                    # to keep it
+```
+
+Every question has a flag, so a command also runs without prompts. `--dry-run`
+shows every step and command for a real host, and runs only the ones that
+look; `--yes` makes the changes without asking.
+
+Each command has a page in [`tools/fleet/runbooks`](tools/fleet/runbooks/README.md)
+with its flags and its steps. `fleet docs` writes the pages from the commands
+themselves, and the tests fail when they are out of date.
+
+On the NixOS installer, `bootstrap` runs `fleet install` (see
+[First run](#first-run)). For that, every push to `main` that changes the tool
+publishes static binaries for Linux and macOS as the latest release, with
+`SHA256SUMS` and an attestation for each; `gh attestation verify <file> --repo
+nnishant776/fleet-manager` checks where a binary came from. `.#fleet-static` builds
+it with Nix instead.
+
+`fleet secrets …` does what `fleet-secrets` does, with the same files and
+commit messages. `nix run .#fleet-secrets` is still the shell version.
 
 ### Checking the flake
 

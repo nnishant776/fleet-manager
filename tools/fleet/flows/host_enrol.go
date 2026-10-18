@@ -136,7 +136,7 @@ var HostEnrol = &engine.Flow{
 			Title: "Check {{.host}}",
 			Why:   "fleet host check, as support with nothing forwarded: this also shows support works.",
 			When:  wantSync,
-			Do: engine.Cmd(fleet.Self(), "host", "check", "{{.host}}", "--address", "{{.address}}", "--flake", "{{.flake}}").
+			Do: engine.Cmd("fleet", "host", "check", "{{.host}}", "--address", "{{.address}}", "--flake", "{{.flake}}").
 				ReadOnly().Interactive(),
 		},
 	},
@@ -294,7 +294,7 @@ func runHostEnroll(x *engine.Ctx) error {
 	if x.Options.Yes {
 		args = append(args, "--yes")
 	}
-	_, err := engine.Cmd(fleet.Self(), args...).ReadOnly().Interactive().OK("enrolled").Run(x)
+	_, err := engine.Cmd("fleet", args...).ReadOnly().Interactive().OK("enrolled").Run(x)
 	return err
 }
 

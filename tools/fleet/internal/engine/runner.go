@@ -54,7 +54,15 @@ type Runner interface {
 type Exec struct{}
 
 func (Exec) Run(ctx context.Context, s Spec) (Result, error) {
-	cmd := exec.CommandContext(ctx, s.Name, s.Args...)
+	name := s.Name
+	// A flow runs another fleet command as "fleet", which is how it is shown
+	// and typed; this binary runs it, whether or not it is on the PATH.
+	if name == "fleet" {
+		if self, err := os.Executable(); err == nil {
+			name = self
+		}
+	}
+	cmd := exec.CommandContext(ctx, name, s.Args...)
 	cmd.Dir = s.Dir
 	if len(s.Env) > 0 || len(s.Hidden) > 0 {
 		cmd.Env = append(append(os.Environ(), s.Env...), s.Hidden...)

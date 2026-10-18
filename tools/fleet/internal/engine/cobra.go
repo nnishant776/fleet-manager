@@ -112,11 +112,7 @@ func command(f *Flow, opts *Options) *cobra.Command {
 		},
 	}
 	for _, in := range f.Inputs {
-		// The flag says what the value is; prompts are questions.
-		help := in.Prompt
-		if in.Help != "" {
-			help = in.Help
-		}
+		help := flagHelp(in)
 		if in.Secret {
 			b := false
 			stdin[in.Name] = &b
@@ -163,4 +159,13 @@ func runFlow(ctx context.Context, f *Flow, opts Options, flags map[string]string
 func RunWith(x *Ctx, f *Flow, flags map[string]string) error {
 	x.flags = flags
 	return Run(x, f)
+}
+
+// flagHelp is what a flag says about its value: its help, else its prompt.
+// The flag says what the value is; prompts are questions.
+func flagHelp(in Input) string {
+	if in.Help != "" {
+		return in.Help
+	}
+	return in.Prompt
 }

@@ -156,12 +156,3 @@ func StopAgent(x *engine.Ctx) {
 		_ = os.RemoveAll(dir)
 	}
 }
-
-// Self is how a flow runs another fleet command, so that the step shows a
-// command a person could type.
-func Self() string {
-	if p, err := os.Executable(); err == nil {
-		return p
-	}
-	return "fleet"
-}
