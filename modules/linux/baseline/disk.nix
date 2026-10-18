@@ -213,6 +213,9 @@ in {
                 boot = lib.mkIf (config.conf.hardware.boot.mode == "uefi") {
                   size = disk.espSize;
                   type = "EF00";
+                  # U-Boot looks for extlinux.conf on partitions marked
+                  # legacy BIOS bootable (GPT attribute 2).
+                  attributes = lib.optionals (config.conf.hardware.boot.loader == "uboot") [ 2 ];
                   content = {
                     type = "filesystem";
                     format = "vfat";

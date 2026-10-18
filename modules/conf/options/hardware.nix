@@ -116,7 +116,12 @@
       loader = lib.mkOption {
         type = lib.types.nullOr (lib.types.enum [ "systemd-boot" "grub" "uboot" ]);
         default = "systemd-boot";
-        description = "Bootloader to install. Defaults to GRUB when `mode` is `bios`.";
+        description = ''
+          Bootloader to install. Defaults to GRUB when `mode` is `bios`.
+          `uboot` writes `/boot/extlinux/extlinux.conf` for the U-Boot already on
+          the board to read. `null` turns no loader on, for a board module that
+          brings its own, such as the Raspberry Pi's.
+        '';
       };
       efiVariables = lib.mkEnableOption "letting the bootloader write EFI variables";
       tpm2Unlock = lib.mkEnableOption "unlocking LUKS volumes with the TPM at boot (systemd-cryptenroll; the passphrase remains as fallback)";

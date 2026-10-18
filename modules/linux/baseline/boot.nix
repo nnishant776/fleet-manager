@@ -2,6 +2,17 @@
 let
   hwdCfg = config.conf.hardware;
 
+  # The NixOS loader each conf.hardware.boot.loader value turns on; null turns
+  # on none, for a board module that brings its own. U-Boot boots NixOS from
+  # the /boot/extlinux/extlinux.conf that generic-extlinux-compatible writes.
+  loaderModule =
+    if hwdCfg.boot.loader == null then null
+    else {
+      systemd-boot = "systemd-boot";
+      grub = "grub";
+      uboot = "generic-extlinux-compatible";
+    }.${hwdCfg.boot.loader};
+
   earlyKms = {
     intel = [ "i915" ];
     amd = [ "amdgpu" ];
@@ -9,7 +20,7 @@ let
 in {
   config = lib.mkMerge [
     {
-      boot.loader.${hwdCfg.boot.loader}.enable = true;
+      boot.loader.${loaderModule}.enable = true;
       boot.loader.efi.canTouchEfiVariables = hwdCfg.boot.efiVariables;
     }
 
@@ -22,10 +33,32 @@ in {
       boot.loader.systemd-boot.editor = lib.mkDefault false;
       boot.loader.systemd-boot.configurationLimit = lib.mkDefault 10;
       boot.loader.grub.configurationLimit = lib.mkDefault 10;
+      boot.loader.generic-extlinux-compatible.configurationLimit = lib.mkDefault 10;
     }
 
     (lib.mkIf (hwdCfg.boot.mode == "bios") {
       conf.hardware.boot.loader = lib.mkDefault "grub";
+    })
+
+    # U-Boot must already be on the board (its flash, or the card's boot
+    # area); this only writes the menu it reads. NixOS turns GRUB on by
+    # default, and generic-extlinux-compatible, unlike systemd-boot, does not
+    # turn it off.
+    (lib.mkIf (hwdCfg.boot.loader == "uboot") {
+      boot.loader.grub.enable = lib.mkDefault false;
+      assertions = [
+        {
+          assertion = hwdCfg.boot.mode != "bios";
+          message = "conf.hardware.boot.loader = \"uboot\" on '${config.conf.host.name}' needs"
+            + " conf.hardware.boot.mode = \"uefi\" (the default): that gives conf.hardware.disk"
+            + " the FAT /boot partition U-Boot reads extlinux.conf from, and \"bios\" has none.";
+        }
+        {
+          assertion = !hwdCfg.boot.efiVariables;
+          message = "conf.hardware.boot.efiVariables on '${config.conf.host.name}' has nothing to"
+            + " write with loader = \"uboot\", which boots from extlinux.conf, not an EFI entry.";
+        }
+      ];
     })
 
     # GRUB's counterpart to systemd-boot's editor = false. GRUB cannot turn its
@@ -68,7 +101,8 @@ in {
         # The generation menu is hidden; it is still one key away. On
         # systemd-boot, press Space (or any key) repeatedly as the machine
         # starts. On GRUB, hold Shift or press Esc during the second it waits.
-        # A host that wants the menu back sets boot.loader.timeout.
+        # On U-Boot a timeout of 0 turns the menu off and boots the newest
+        # generation. A host that wants the menu back sets boot.loader.timeout.
         loader.timeout = lib.mkDefault (if hwdCfg.boot.loader == "grub" then 1 else 0);
         loader.grub.timeoutStyle = lib.mkDefault "hidden";
       };
