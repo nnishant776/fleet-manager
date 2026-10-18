@@ -29,16 +29,14 @@
       wireless = {
         countryCode = "IN";
         # This Pi's network is Wi-Fi; headless machines leave it off by default.
-        # With no interfaces named, it uses every Wi-Fi interface, from
-        # /etc/wpa_supplicant/imperative.conf.
         wifi.enable = true;
-        # To add a hotspot on a USB adapter: plug it in and read its name
-        # with `ip link` (wlu<MAC>). Name the client's interface, so it never
-        # takes the hotspot's adapter, and put the hotspot's password in
-        # /var/lib/hotspot/<name> (root, mode 0600):
-        #
-        #   wifi.interfaces.wls<MAC of the built-in Wi-Fi> = { };
-        #   hotspots.wlu<MAC of the adapter> = { enable = true; };
+        # The client is on the USB adapter, with its networks in
+        # /etc/wpa_supplicant/wlu14ebb668e7d7.conf, and the built-in Wi-Fi
+        # is a hotspot, its password in /var/lib/hotspot/wls2ccf67579ff5
+        # (root, mode 0600). Names come from `ip link`; naming the client's
+        # interface keeps it off the hotspot's adapter.
+        wifi.interfaces.wlu14ebb668e7d7 = { };
+        hotspots.wls2ccf67579ff5 = { enable = true; };
       };
     };
 
