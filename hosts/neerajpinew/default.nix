@@ -32,11 +32,14 @@
         wifi.enable = true;
         # The client is on the USB adapter, with its networks in
         # /etc/wpa_supplicant/wlu14ebb668e7d7.conf, and the built-in Wi-Fi
-        # is a hotspot, its password in /var/lib/hotspot/wls2ccf67579ff5
-        # (root, mode 0600). Names come from `ip link`; naming the client's
-        # interface keeps it off the hotspot's adapter.
+        # is a hotspot, its password from the secrets repository (below).
+        # Names come from `ip link`; naming the client's interface keeps it
+        # off the hotspot's adapter.
         wifi.interfaces.wlu14ebb668e7d7 = { };
-        hotspots.wls2ccf67579ff5 = { enable = true; };
+        hotspots.wls2ccf67579ff5 = {
+          enable = true;
+          passwordFile = config.sops.secrets."hotspot-wls2ccf67579ff5".path;
+        };
       };
     };
 
@@ -92,4 +95,9 @@
   # GitHub's host key is pinned here (checked against `gh api meta`).
   programs.ssh.knownHosts."github.com".publicKey =
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl";
+
+  # The hotspot's password, from hosts/neerajpinew.yaml in the secrets
+  # repository. sops writes it to /run/secrets (root, 0400) at activation, and
+  # the hotspot restarts whenever it changes.
+  sops.secrets."hotspot-wls2ccf67579ff5".restartUnits = [ "hostapd-wls2ccf67579ff5.service" ];
 }
