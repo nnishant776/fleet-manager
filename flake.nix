@@ -103,6 +103,11 @@
     checks.x86_64-linux = {
       # Builds fleet, which runs its unit tests.
       fleet = self.packages.x86_64-linux.fleet;
+      # The fleet-secrets port against the shell tool, command by command.
+      fleet-secrets-parity = import ./tests/fleet/secrets-parity.nix {
+        pkgs = nixpkgs.legacyPackages.x86_64-linux;
+        fleet = self.packages.x86_64-linux.fleet;
+      };
       secrets-sync = import ./tests/secrets/vm-test.nix {
         inherit inputs self;
         pkgs = nixpkgs.legacyPackages.x86_64-linux;

@@ -282,3 +282,28 @@ func TestMissingToolsStopBeforeTheFirstStep(t *testing.T) {
 		t.Fatal("ran a step although a tool was missing")
 	}
 }
+
+func TestSecretOutputAndHiddenEnvAreNeverShown(t *testing.T) {
+	x, fake, out := newCtx(Options{Yes: true, Verbose: true}, func(s Spec) (Result, error) {
+		if s.Name == "age" {
+			return Result{Stdout: "AGE-SECRET-KEY-1SECRET\n"}, nil
+		}
+		return Result{Stdout: "ok"}, nil
+	})
+	f := &Flow{Title: "t", Steps: []Step{
+		{Title: "unlock", Do: Cmd("age", "-d", "recovery.age").ReadOnly().Prompts().CaptureEnv("SOPS_AGE_KEY")},
+		{Title: "use", Do: Cmd("sops", "updatekeys", "f.yaml")},
+	}}
+	if err := RunWith(x, f, nil); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "SECRET") {
+		t.Fatalf("the identity was shown:\n%s", out)
+	}
+	if got := fake.Ran[1].Hidden; len(got) != 1 || got[0] != "SOPS_AGE_KEY=AGE-SECRET-KEY-1SECRET" {
+		t.Fatalf("the later command got hidden env %q", got)
+	}
+	if strings.Contains(fake.Ran[1].String(), "SOPS_AGE_KEY") {
+		t.Fatal("the hidden environment is part of the shown command")
+	}
+}

@@ -62,7 +62,7 @@ func HostInputs() []engine.Input {
 		{
 			Name:   "user",
 			Prompt: "Account to log in as",
-			Help:   "support has sudo without a password, so nothing needs forwarding",
+			Help:   "The account to log in as; support by default, which has sudo without a password, so nothing needs forwarding",
 			Default: func(*engine.Ctx) (string, error) {
 				return "support", nil
 			},

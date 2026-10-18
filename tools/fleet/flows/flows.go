@@ -7,13 +7,19 @@ import "github.com/nnishant776/fleet-manager/tools/fleet/internal/engine"
 
 // Groups describes the intermediate commands.
 var Groups = engine.Groups{
-	"host": "Work on one host: check it, its secrets, its enrolment",
+	"host":    "Work on one host: check it, its secrets, its enrolment",
+	"secrets": "The secrets repository: hosts, users' passwords and keys (the fleet-secrets port)",
 }
 
 // All is every flow, in the order the menu shows them.
 func All() []*engine.Flow {
 	return []*engine.Flow{
 		HostCheck,
+		SecretsHostEnroll,
+		SecretsHostRekey,
+		SecretsHostRetire,
+		SecretsUserPassword,
+		SecretsUserKey,
 		Doctor,
 	}
 }

@@ -18,6 +18,12 @@ type Spec struct {
 	Env         []string // extra KEY=value entries
 	Stdin       string
 	Interactive bool // attached to the terminal, for commands that ask themselves
+	// Prompts: the command asks on the terminal by itself (age for a
+	// passphrase) while its output is still captured, so no spinner runs.
+	Prompts bool
+	// Hidden is extra environment that is passed on but never shown, such as
+	// an unlocked identity.
+	Hidden []string
 }
 
 // String renders the command the way a person would type it.
@@ -50,8 +56,8 @@ type Exec struct{}
 func (Exec) Run(ctx context.Context, s Spec) (Result, error) {
 	cmd := exec.CommandContext(ctx, s.Name, s.Args...)
 	cmd.Dir = s.Dir
-	if len(s.Env) > 0 {
-		cmd.Env = append(os.Environ(), s.Env...)
+	if len(s.Env) > 0 || len(s.Hidden) > 0 {
+		cmd.Env = append(append(os.Environ(), s.Env...), s.Hidden...)
 	}
 	var out, errOut bytes.Buffer
 	if s.Interactive {

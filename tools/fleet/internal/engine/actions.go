@@ -21,6 +21,10 @@ type Command struct {
 	quiet       bool
 	ok          string
 	expect      func(Result) error
+	prompts     bool   // asks on the terminal by itself; no spinner
+	secret      bool   // its output is never shown
+	captureEnv  string // keep the output as hidden environment: NAME=output
+	stdinNote   string // what the shown command says about its stdin
 }
 
 // Cmd starts a command step.
@@ -37,9 +41,24 @@ func (c *Command) Quiet() *Command                      { c.quiet = true; return
 func (c *Command) OK(msg string) *Command               { c.ok = msg; return c }
 func (c *Command) Expect(f func(Result) error) *Command { c.expect = f; return c }
 
+// Prompts marks a command that asks on the terminal itself, such as age
+// asking for a passphrase, while its output is still captured.
+func (c *Command) Prompts() *Command { c.prompts = true; return c }
+
+// CaptureSecret keeps the output as a value, like Capture, but never shows
+// it, not even with --verbose.
+func (c *Command) CaptureSecret(name string) *Command { c.capture, c.secret = name, true; return c }
+
+// CaptureEnv keeps the output as environment for every later command,
+// passed on but never shown: an unlocked identity, for example.
+func (c *Command) CaptureEnv(name string) *Command { c.captureEnv, c.secret = name, true; return c }
+
+// StdinNote says what goes to stdin, for the shown command.
+func (c *Command) StdinNote(note string) *Command { c.stdinNote = note; return c }
+
 // spec expands the command against the values.
 func (c *Command) spec(x *Ctx) (Spec, error) {
-	s := Spec{Interactive: c.interactive}
+	s := Spec{Interactive: c.interactive, Prompts: c.prompts, Hidden: x.Hidden}
 	var err error
 	if s.Name, err = x.Expand(c.name); err != nil {
 		return s, err
@@ -77,7 +96,10 @@ func (c *Command) shown(x *Ctx, s Spec) string {
 	if s.Dir != "" {
 		line = "cd " + quote(s.Dir) + " && " + line
 	}
-	if c.stdinFrom != "" {
+	switch {
+	case c.stdinNote != "":
+		line += "   # " + c.stdinNote + " on stdin"
+	case c.stdinFrom != "":
 		line += "   # " + c.stdinFrom + " on stdin"
 	}
 	return line
@@ -118,7 +140,7 @@ func (c *Command) exec(x *Ctx, asQuietCheck bool) (Result, error) {
 		}
 	}
 	stop := func() {}
-	if !s.Interactive {
+	if !s.Interactive && !s.Prompts {
 		stop = x.UI.Spinner(s.Name)
 	}
 	res, err := x.Runner.Run(x.Context, s)
@@ -128,7 +150,11 @@ func (c *Command) exec(x *Ctx, asQuietCheck bool) (Result, error) {
 		if x.Options.Verbose {
 			max = 0
 		}
-		x.UI.Output(strings.TrimRight(res.Stdout, "\n")+"\n"+res.Stderr, max)
+		shown := strings.TrimRight(res.Stdout, "\n") + "\n" + res.Stderr
+		if c.secret {
+			shown = res.Stderr
+		}
+		x.UI.Output(shown, max)
 	}
 	if err == nil && c.expect != nil {
 		err = c.expect(res)
@@ -138,6 +164,9 @@ func (c *Command) exec(x *Ctx, asQuietCheck bool) (Result, error) {
 	}
 	if c.capture != "" {
 		x.Values[c.capture] = strings.TrimSpace(res.Stdout)
+	}
+	if c.captureEnv != "" {
+		x.Hidden = append(x.Hidden, c.captureEnv+"="+strings.TrimSpace(res.Stdout))
 	}
 	if !asQuietCheck {
 		msg := c.ok
@@ -260,3 +289,11 @@ func (w wait) run(x *Ctx) error {
 	}
 	return nil
 }
+
+// Run runs the command from Go code, such as a Func step, the same way a
+// step would: shown, asked about if it changes things, its output shown.
+func (c *Command) Run(x *Ctx) (Result, error) { return c.exec(x, false) }
+
+// RunQuiet runs a read-only command from Go code and returns its result
+// without reporting ✓; for reading state.
+func (c *Command) RunQuiet(x *Ctx) (Result, error) { return c.ReadOnly().Quiet().exec(x, true) }

@@ -100,14 +100,15 @@ func command(f *Flow, opts *Options) *cobra.Command {
 		},
 	}
 	for _, in := range f.Inputs {
+		// The flag says what the value is; prompts are questions.
 		help := in.Prompt
 		if in.Help != "" {
-			help += ". " + in.Help
+			help = in.Help
 		}
 		if in.Secret {
 			b := false
 			stdin[in.Name] = &b
-			cmd.Flags().BoolVar(&b, in.Name+"-stdin", false, "read "+in.Name+" from standard input ("+strings.ToLower(in.Prompt)+")")
+			cmd.Flags().BoolVar(&b, in.Name+"-stdin", false, "read the "+in.Name+" from standard input, instead of being asked")
 			continue
 		}
 		s := ""

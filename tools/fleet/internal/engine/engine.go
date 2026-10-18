@@ -27,6 +27,7 @@ type Input struct {
 	Choices  func(*Ctx) ([]string, error)
 	Pattern  string // the value must match it, when set
 	Secret   bool   // hidden prompt; without a terminal it comes from --NAME-stdin
+	Twice    bool   // a secret asked for twice, for a new password
 	Optional bool   // an empty value is fine
 }
 
@@ -78,6 +79,9 @@ type Ctx struct {
 	Stdin   io.Reader // for --NAME-stdin inputs
 	// LookPath finds a tool on PATH; exec.LookPath unless a test replaces it.
 	LookPath func(string) (string, error)
+	// Hidden is environment every command gets but nobody sees; see
+	// Command.CaptureEnv.
+	Hidden []string
 
 	flags map[string]string // from the command line
 	n     int
@@ -215,10 +219,29 @@ func resolve(c *Ctx, in Input) error {
 }
 
 func ask(c *Ctx, in Input, def string) (string, error) {
+	// Prompts may name earlier values: "Password for {{.user}}".
+	var err error
+	if in.Prompt, err = c.Expand(in.Prompt); err != nil {
+		return "", err
+	}
+	if in.Help, err = c.Expand(in.Help); err != nil {
+		return "", err
+	}
 	validate := func(v string) error { return check(in, v) }
 	switch {
 	case in.Secret:
-		return c.UI.Secret(in.Prompt, in.Help, validate)
+		v, err := c.UI.Secret(in.Prompt, in.Help, validate)
+		if err != nil || !in.Twice {
+			return v, err
+		}
+		again, err := c.UI.Secret("Again", "Type it once more, to catch a typo.", nil)
+		if err != nil {
+			return "", err
+		}
+		if again != v {
+			return "", errors.New("the two entries differ")
+		}
+		return v, nil
 	case in.Choices != nil:
 		options, err := in.Choices(c)
 		if err != nil {
@@ -269,3 +292,27 @@ type StepError struct {
 
 func (e *StepError) Error() string { return fmt.Sprintf("stopped at step %d, %s", e.N, e.Title) }
 func (e *StepError) Unwrap() error { return e.Err }
+
+// Approve asks before a change that Go code makes itself, such as writing a
+// file, the way a command step asks "Run it?". It returns false without
+// asking in a dry run, after saying so.
+func (c *Ctx) Approve(question string) (bool, error) {
+	if c.Options.DryRun {
+		c.UI.Skip("dry run: not done")
+		return false, nil
+	}
+	if c.Options.Yes {
+		return true, nil
+	}
+	if !c.UI.Interactive() {
+		return false, errors.New("this step changes things: run on a terminal to be asked, or give --yes")
+	}
+	ok, err := c.UI.Confirm(question, true)
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		return false, ErrStopped
+	}
+	return true, nil
+}
