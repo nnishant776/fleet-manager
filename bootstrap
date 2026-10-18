@@ -8,15 +8,19 @@
 #
 #   macOS               installs Lix if needed, then switches to HOST with the
 #                       nix-darwin this flake pins
-#   NixOS installer     runs os-install (ARGS are passed through)
+#   NixOS installer     runs fleet install, fetched from the latest release and
+#                       checked against its SHA256SUMS; os-install when it cannot
+#                       be fetched (ARGS are passed through to either)
 #   installed NixOS     runs system-switch for HOST (default: this hostname)
 #   other Linux         installs Lix; only Home Manager is supported there
 #
 # FLAKE overrides the flake, e.g. FLAKE=github:org/repo/v1.2 or FLAKE=path:.
+# FLEET_RELEASES overrides where fleet is fetched from.
 # POSIX sh on purpose: macOS ships bash 3.2.
 set -eu
 
 flake="${FLAKE:-github:nnishant776/fleet-manager}"
+releases="${FLEET_RELEASES:-https://github.com/nnishant776/fleet-manager/releases/latest/download}"
 nixFlags="--extra-experimental-features nix-command --extra-experimental-features flakes"
 
 say() { printf 'bootstrap: %s\n' "$*" >&2; }
@@ -39,6 +43,28 @@ ensure_nix() {
   # shellcheck disable=SC1091 # created by the installer
   . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
   command -v nix >/dev/null 2>&1 || die "Lix installed but nix is not on PATH; open a new shell and re-run"
+}
+
+fetch_fleet() {  # fetch_fleet — fleet for this machine, checked; prints its path
+  case "$(uname -m)" in
+    x86_64) arch=amd64 ;;
+    aarch64) arch=arm64 ;;
+    *) return 1 ;;
+  esac
+  name="fleet-linux-$arch"
+  dir="$(mktemp -d)" || return 1
+  say "fetching $name"
+  curl -sSfL -o "$dir/$name" "$releases/$name" || return 1
+  curl -sSfL -o "$dir/SHA256SUMS" "$releases/SHA256SUMS" || return 1
+  # The sums come from the same release, so this catches a broken download,
+  # not a forged release; the release's attestations are for that
+  # (gh attestation verify FILE --repo nnishant776/fleet-manager).
+  if ! (cd "$dir" && grep " $name\$" SHA256SUMS | sha256sum -c --quiet -) >&2; then
+    say "$name does not match SHA256SUMS"
+    return 1
+  fi
+  chmod +x "$dir/$name"
+  printf '%s\n' "$dir/$name"
 }
 
 ask_host() {  # ask_host OUTPUT — list the flake's hosts of that kind, read one
@@ -69,8 +95,14 @@ case "$(uname -s)" in
     if [ -e /etc/NIXOS ]; then
       if grep -qs ' /iso ' /proc/mounts; then
         # The installer: the host is os-install's to choose, so a first
-        # argument is passed through as -H.
+        # argument is passed through as -H. fleet install guides through
+        # os-install and takes the same flags; without it, os-install runs
+        # by itself.
         [ -n "$host" ] && set -- -H "$host" "$@"
+        if fleet="$(fetch_fleet)"; then
+          exec "$fleet" install --flake "$flake" "$@" <"$tty"
+        fi
+        say "could not fetch fleet; running os-install by itself"
         # shellcheck disable=SC2086
         exec nix $nixFlags run "$flake#os-install" -- "$@" <"$tty"
       fi

@@ -63,7 +63,7 @@ itself — and then hands over to the flake's own tools:
 | Running on | It does |
 |---|---|
 | macOS | installs Lix if needed, then switches to `<hostname>` with the nix-darwin this flake pins |
-| NixOS installer ISO | runs `os-install`; `<hostname>` is optional, and further arguments are passed to it |
+| NixOS installer ISO | runs `fleet install`, a guided `os-install`, downloaded from the latest release and checked against its `SHA256SUMS`; if the download fails, `os-install` by itself. `<hostname>` is optional, and further arguments are passed on |
 | an installed NixOS host | runs `system-switch` for `<hostname>` (default: this machine's hostname), building from the same flake |
 | another Linux | installs Lix and stops; only Home Manager is supported there |
 
