@@ -7,5 +7,6 @@
     ./names.nix
     ./dns.nix
     ./bluetooth.nix
+    ./tools.nix
   ];
 }
