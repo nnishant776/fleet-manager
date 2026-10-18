@@ -94,7 +94,15 @@
     apps = lib.genAttrs systems (system:
       import ./lib/apps { inherit self; pkgs = nixpkgs.legacyPackages.${system}; });
 
+    # fleet, the guided tool (tools/fleet): `fleet` brings the tools it runs,
+    # `fleet-static` is the bare static binary for machines without Nix.
+    packages = lib.genAttrs systems (system:
+      let fleet = nixpkgs.legacyPackages.${system}.callPackage ./tools/fleet/package.nix { };
+      in { inherit fleet; fleet-static = fleet.static; default = fleet; });
+
     checks.x86_64-linux = {
+      # Builds fleet, which runs its unit tests.
+      fleet = self.packages.x86_64-linux.fleet;
       secrets-sync = import ./tests/secrets/vm-test.nix {
         inherit inputs self;
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
@@ -153,6 +161,6 @@
         (_: host: lib.any (h: !h.enable) (lib.attrValues host.config.conf.networking.wireless.hotspots))
         nixosConfigurations);
   in {
-    inherit nixosConfigurations darwinConfigurations homeConfigurations apps checks;
+    inherit nixosConfigurations darwinConfigurations homeConfigurations apps packages checks;
   };
 }

@@ -9,6 +9,8 @@ in {
   home-switch   = app (import ./home-switch.nix { inherit pkgs; });
   check-purity  = app (import ./check-purity.nix { inherit pkgs; });
   fleet-secrets = app (import ./fleet-secrets.nix { inherit pkgs; });
+  # The guided tool; tools/fleet/package.nix.
+  fleet         = app (pkgs.callPackage ../../tools/fleet/package.nix { });
 } // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
   # On demand only: builds a Raspberry Pi SD image, never part of a rebuild.
   rpi-image = app (import ./rpi-image { inherit pkgs self; });
