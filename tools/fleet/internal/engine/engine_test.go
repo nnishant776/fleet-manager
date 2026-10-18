@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"github.com/spf13/cobra"
+
 	"bytes"
 	"context"
 	"errors"
@@ -356,5 +358,32 @@ func TestDefaultsAreUsedAndShownNotAsked(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "host pi · user support · sync false") {
 		t.Errorf("the values used are not shown:\n%s", out)
+	}
+}
+
+func TestShortAndRepeatedFlags(t *testing.T) {
+	var got map[string]string
+	f := &Flow{Path: []string{"t"}, Title: "t",
+		Inputs: []Input{{Name: "host", Short: "H"}, {Name: "disk", Short: "d", Many: true, Pattern: `^\S+$`}},
+		Steps: []Step{{Title: "s", Do: Func(func(x *Ctx) error {
+			got = map[string]string{"host": x.Value("host"), "disk": x.Value("disk")}
+			return nil
+		})}},
+	}
+	run := func(args ...string) error {
+		root := &cobra.Command{Use: "fleet", SilenceUsage: true, SilenceErrors: true}
+		Mount(root, []*Flow{f}, nil)
+		root.SetArgs(args)
+		return root.Execute()
+	}
+	if err := run("t", "-H", "a", "-d", "main=x", "--disk", "y"); err != nil {
+		t.Fatal(err)
+	}
+	if got["host"] != "a" || got["disk"] != "main=x\ny" {
+		t.Errorf("got %q", got)
+	}
+	// The pattern holds for each value, not for them joined.
+	if err := run("t", "-H", "a", "-d", "x", "-d", "y z"); err == nil || !strings.Contains(err.Error(), `"y z"`) {
+		t.Errorf("a value off the pattern was taken: %v", err)
 	}
 }

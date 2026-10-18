@@ -25,6 +25,7 @@ func All() []*engine.Flow {
 		SecretsUserKey,
 		SupportKeyRotate,
 		Setup,
+		Install,
 		Doctor,
 	}
 }

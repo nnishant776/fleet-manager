@@ -31,6 +31,8 @@ type Input struct {
 	Twice    bool   // a secret asked for twice, for a new password
 	Optional bool   // an empty value is fine
 	Bool     bool   // a yes/no switch: --NAME, asked as a yes/no question; "true" or "false"
+	Short    string // a one-letter flag as well, such as "H" for -H
+	Many     bool   // the flag may be given more than once; the values are joined by newlines
 	// Skip, if set, leaves the input out when it does not apply, such as a
 	// value that will be read from the host instead.
 	Skip func(*Ctx) bool
@@ -98,6 +100,14 @@ type Ctx struct {
 
 // Value returns an input's value, or a value a step captured.
 func (c *Ctx) Value(name string) string { return c.Values[name] }
+
+// Say shows text with its {{.name}} placeholders filled in, from Go code.
+func (c *Ctx) Say(s string) {
+	if t, err := c.Expand(s); err == nil {
+		s = t
+	}
+	c.UI.Text(s)
+}
 
 // Expand fills {{.name}} placeholders from the values.
 func (c *Ctx) Expand(s string) (string, error) {
@@ -304,8 +314,17 @@ func check(in Input, v string) error {
 		}
 		return fmt.Errorf("%s must not be empty", in.Name)
 	}
-	if in.Pattern != "" && !regexp.MustCompile(in.Pattern).MatchString(v) {
-		return fmt.Errorf("%s: %q does not match %s", in.Name, v, in.Pattern)
+	if in.Pattern == "" {
+		return nil
+	}
+	values := []string{v}
+	if in.Many {
+		values = strings.Split(v, "\n")
+	}
+	for _, v := range values {
+		if !regexp.MustCompile(in.Pattern).MatchString(v) {
+			return fmt.Errorf("%s: %q does not match %s", in.Name, v, in.Pattern)
+		}
 	}
 	return nil
 }

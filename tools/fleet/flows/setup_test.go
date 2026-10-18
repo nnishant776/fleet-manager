@@ -164,6 +164,9 @@ func TestSupportKeyRotationInOrder(t *testing.T) {
 	if !strings.Contains(out.String(), `from=\"192.168.0.0/24\" ssh-ed25519 AAAAC3NzaFRESH fleet`) {
 		t.Errorf("the line to add is not shown with its from= restriction:\n%s", out)
 	}
+	if !strings.Contains(out.String(), "In hosts/pi/default.nix, under conf.fleet.support.sshKeys") {
+		t.Errorf("the instructions do not name the host:\n%s", out)
+	}
 	if !strings.Contains(out.String(), "✓ the old key is refused") {
 		t.Errorf("output:\n%s", out)
 	}

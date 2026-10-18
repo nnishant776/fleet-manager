@@ -71,6 +71,7 @@ func command(f *Flow, opts *Options) *cobra.Command {
 		use += " [" + strings.ToUpper(a) + "]"
 	}
 	values := map[string]*string{}
+	many := map[string]*[]string{}
 	stdin := map[string]*bool{}
 	bools := map[string]*bool{}
 	cmd := &cobra.Command{
@@ -84,6 +85,11 @@ func command(f *Flow, opts *Options) *cobra.Command {
 			for name, v := range values {
 				if cmd.Flags().Changed(name) {
 					given[name] = *v
+				}
+			}
+			for name, v := range many {
+				if cmd.Flags().Changed(name) {
+					given[name] = strings.Join(*v, "\n")
 				}
 			}
 			for name, v := range bools {
@@ -120,12 +126,18 @@ func command(f *Flow, opts *Options) *cobra.Command {
 		if in.Bool {
 			b := false
 			bools[in.Name] = &b
-			cmd.Flags().BoolVar(&b, in.Name, false, help)
+			cmd.Flags().BoolVarP(&b, in.Name, in.Short, false, help)
+			continue
+		}
+		if in.Many {
+			var s []string
+			many[in.Name] = &s
+			cmd.Flags().StringArrayVarP(&s, in.Name, in.Short, nil, help+"; may be given more than once")
 			continue
 		}
 		s := ""
 		values[in.Name] = &s
-		cmd.Flags().StringVar(&s, in.Name, "", help)
+		cmd.Flags().StringVarP(&s, in.Name, in.Short, "", help)
 	}
 	return cmd
 }

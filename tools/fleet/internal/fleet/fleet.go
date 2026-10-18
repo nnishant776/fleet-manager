@@ -70,11 +70,20 @@ func HostInputs() []engine.Input {
 	}
 }
 
+// NixFlakes turns on what the Nix of the stock installer ISO leaves off; on
+// a machine that has them on already it changes nothing.
+var NixFlakes = []string{"--extra-experimental-features", "nix-command flakes"}
+
+// Nix is a nix command that works on the installer as well.
+func Nix(args ...string) *engine.Command {
+	return engine.Cmd("nix", append(append([]string{}, NixFlakes...), args...)...)
+}
+
 // Hosts lists the NixOS hosts of the configuration flake.
 func Hosts(x *engine.Ctx) ([]string, error) {
 	res, err := x.Runner.Run(x.Context, engine.Spec{
 		Name: "nix",
-		Args: []string{"eval", "--json", x.Value("flake") + "#nixosConfigurations", "--apply", "builtins.attrNames"},
+		Args: append(append([]string{}, NixFlakes...), "eval", "--json", x.Value("flake")+"#nixosConfigurations", "--apply", "builtins.attrNames"),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("listing hosts: %w: %s", err, strings.TrimSpace(res.Stderr))

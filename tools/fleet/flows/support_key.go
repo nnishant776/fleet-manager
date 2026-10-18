@@ -84,7 +84,7 @@ var SupportKeyRotate = &engine.Flow{
 					line = `from=\"` + from + `\" ` + line
 				}
 				x.Values["new_line"] = line
-				x.UI.Text("In hosts/{{.host}}/default.nix, under conf.fleet.support.sshKeys, add:")
+				x.Say("In hosts/{{.host}}/default.nix, under conf.fleet.support.sshKeys, add:")
 				x.UI.Text(`  "` + line + `"`)
 				x.UI.Text("then commit, push to main (merging locally), and come back.")
 				return engine.WaitFor(x, "Pushed?")
@@ -113,7 +113,7 @@ var SupportKeyRotate = &engine.Flow{
 			Title: "Remove the old key",
 			Why:   "Until it is gone, whoever holds it is still root on {{.host}}.",
 			Do: engine.Func(func(x *engine.Ctx) error {
-				x.UI.Text("In hosts/{{.host}}/default.nix, remove the old key from conf.fleet.support.sshKeys,")
+				x.Say("In hosts/{{.host}}/default.nix, remove the old key from conf.fleet.support.sshKeys,")
 				x.UI.Text("commit, push to main (merging locally), and come back.")
 				return engine.WaitFor(x, "Pushed?")
 			}),
