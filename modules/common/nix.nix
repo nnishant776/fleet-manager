@@ -18,6 +18,11 @@ in {
       dates = lib.mkIf isLinux "weekly";
       options = "--delete-older-than 30d";
     };
+    # Identical files in different store paths are hard-linked together on a
+    # timer, so the many near-identical generations share their bytes.
+    # auto-optimise-store would do it on every build instead, but nix-darwin
+    # rejects it for the Nix and Lix versions known to corrupt the store.
+    optimise.automatic = true;
     settings = {
       experimental-features = [ "nix-command" "flakes" ];
       # On a server, only administrators drive the daemon; a workstation keeps
