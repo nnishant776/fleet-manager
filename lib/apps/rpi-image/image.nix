@@ -12,5 +12,9 @@ inputs.nixos-raspberrypi.nixosConfigurations.rpi5-installer.extendModules {
         cp ${./README.txt} firmware/firstboot/README.txt
       '';
     })
+    # fleet, for the steps after the first boot (tools/fleet).
+    ({ pkgs, ... }: {
+      environment.systemPackages = [ (pkgs.callPackage ../../../tools/fleet/package.nix { }) ];
+    })
   ];
 }

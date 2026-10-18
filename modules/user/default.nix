@@ -10,6 +10,7 @@
     ./git.nix
     ./ssh.nix
     ./revision.nix
+    ./fleet.nix
   ];
 
   news.display = lib.mkDefault "silent";
