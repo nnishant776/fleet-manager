@@ -20,4 +20,14 @@
   };
 
   programs.home-manager.enable = lib.mkDefault true;
+
+  # The system's weekly garbage collection expires the profiles under
+  # /nix/var/nix/profiles, but not a user's own home-manager generations,
+  # which otherwise keep every old home in the store. Expire them on the
+  # same terms: weekly, older than 30 days.
+  services.home-manager.autoExpire = {
+    enable = lib.mkDefault true;
+    timestamp = lib.mkDefault "-30 days";
+    frequency = lib.mkDefault "weekly";
+  };
 }
