@@ -12,9 +12,14 @@ a common configuration module rather than being per host.
 
 ```
 ├── flake.nix                        # entry point; discovers hosts/
+├── bootstrap                        # first-run script; see First run
+├── docs/                            # design notes
+├── fleet/
+│   └── allowed_signers              # keys the fleet accepts on commits; see Signing commits for a fleet
 ├── lib/
-│   ├── apps/                        # os-install, system-switch, home-switch, check-purity, rpi-image, fleet-secrets, secrets-harness
+│   ├── apps/                        # os-install, system-switch, home-switch, check-purity, fleet-secrets; rpi-image and secrets-harness on Linux; darwin-rebuild on macOS
 │   ├── mkHost.nix                   # host factory (NixOS / nix-darwin)
+│   ├── secrets-sync.nix             # fleet-secrets-sync and fleet-identity, used by the sync and os-install
 │   ├── buildUser.nix                # assembles a user's Home Manager modules
 │   ├── mkUser.nix                   # standalone Home Manager builder
 │   └── flakeLib.nix                 # helpers shared by this flake's modules
@@ -24,8 +29,9 @@ a common configuration module rather than being per host.
 │   └── *.nix                        # every file here is imported as a module
 ├── users/<username>/                # optional per-user configuration
 │   └── default.nix                  # merged into that user's home, both paths
-├── tests/
-│   └── secrets/                     # secrets-harness: local stand-in for the secrets repository
+├── tests/                           # VM and evaluation checks wired into the flake's `checks`
+│   │                                # one folder per area: fleet, networking, pi-gw, rpi-image, secrets, users
+│   └── secrets/                     # also holds secrets-harness, the local stand-in for the secrets repository
 └── modules/
     ├── conf/                        # the conf.* vocabulary: options/<concern>.nix, role.nix, machineType.nix
     ├── common/                      # configuration valid on both platforms
@@ -34,9 +40,11 @@ a common configuration module rather than being per host.
     └── user/                        # Home Manager baseline for managed users
 ```
 
-Each concern has one option file in `modules/conf/options/` and one folder or
-file of the same name under `modules/linux/`, so the word in `conf.<name>` finds
-both the declaration and the implementation. A folder's `default.nix` only
+Most concerns have one option file in `modules/conf/options/` and one folder
+or file of the same name under `modules/linux/`, so the word in `conf.<name>`
+usually finds both the declaration and the implementation. The exceptions are
+`conf.hardware`, implemented in `baseline/`, `graphics/` and `power/`, and
+`conf.users`, implemented in `host/` and `secrets/`. A folder's `default.nix` only
 imports its parts; each part sets its own options under its own `mkIf`.
 
 ## Usage
@@ -79,7 +87,8 @@ Mac with Nix installed, `sudo nix run .#darwin-rebuild -- switch --flake .#<host
 
 Create `hosts/<hostname>/default.nix` with `nixpkgs.hostPlatform` and the
 machine's `conf.*` settings. No change to `flake.nix` is needed. The directory
-name must be exactly the machine's hostname.
+name must be exactly the machine's hostname. The host must also set
+`conf.host.name` to that same name; evaluation fails when the two differ.
 
 Anything the `conf` vocabulary does not cover is written as a plain NixOS or
 nix-darwin option in the same file, after the `conf` block. Every `.nix` file
@@ -131,6 +140,7 @@ It shows what will be erased and asks for the host name as confirmation
 (`--yes` skips that), re-running itself with sudo if needed. `-d` takes
 `NAME=DEVICE` when a layout declares more than one disk: `main` is
 `disk.device`, any other name is a key of `disk.extraDevices`.
+`--flake REF` installs from another flake, for example a pinned tag.
 
 ```nix
 conf.hardware.disk = {
@@ -149,7 +159,9 @@ disk and every `extraDevices` disk, holding the volumes the host declares. With
 `false` (a VM, say) it is bare. `encrypt` is the only encryption switch; there
 is no second layout. A `fleet` volume (64 MB, mounted at `/var/lib/fleet`, in
 the initrd) is always present: it holds the host's secrets identity and
-survives a reinstall of `/`. `swap` (16G) and `root` (`100%FREE`, `/`) are
+survives a rebuild, or a manual reinstall that keeps it. `os-install` erases
+the whole disk, so after an `os-install` the host identity only carries over
+with `--identity`. `swap` (16G) and `root` (`100%FREE`, `/`) are
 defaults a host changes field by field, or drops with `enable = false`. A host
 that needs a layout these options cannot express leaves `disk.enable` off and
 writes `hosts/<name>/disko-config.nix` itself, with
@@ -157,8 +169,9 @@ writes `hosts/<name>/disko-config.nix` itself, with
 
 **Adding a disk to a running machine** takes two steps, in this order. First,
 on the host, `sudo disk-extend <name> <device>` partitions the disk, creates the
-LUKS container when the host is encrypted (asking for the existing
-passphrase), and joins it to the volume group; `--grow <volume>` also enlarges
+LUKS container when the host is encrypted and asks you to choose its
+passphrase (use the one the other disks have, so one prompt at boot still
+unlocks them all), and joins it to the volume group; `--grow <volume>` also enlarges
 that volume and its ext4 or xfs filesystem. It refuses a device that already
 carries a filesystem, partition table or LUKS header, and prints the option to
 add when it finishes. Second, in the flake, add `extraDevices.<name> =
@@ -211,7 +224,7 @@ host's secrets and checks that they decrypt. These flags control the step:
 unusable value by the first-boot clone and re-applied on every sync, so a `git push` from a
 fleet machine fails. That is hygiene; the control is the credential: a public
 repository needs none, and a private one gets a deploy key with read access
-only, through `fleet.repo.deployKeySecret`.
+only, through `conf.fleet.repo.deployKeySecret`.
 
 ### Building a Raspberry Pi image
 
