@@ -15,6 +15,7 @@ var Groups = engine.Groups{
 func All() []*engine.Flow {
 	return []*engine.Flow{
 		HostCheck,
+		HostSecret,
 		SecretsHostEnroll,
 		SecretsHostRekey,
 		SecretsHostRetire,

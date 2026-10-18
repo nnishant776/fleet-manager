@@ -307,3 +307,16 @@ func TestSecretOutputAndHiddenEnvAreNeverShown(t *testing.T) {
 		t.Fatal("the hidden environment is part of the shown command")
 	}
 }
+
+func TestTemplatesTakeHyphenatedNames(t *testing.T) {
+	x, _, _ := newCtx(Options{}, nil)
+	x.Values["from-host"] = "/var/lib/x"
+	x.Values["host"] = "pi"
+	got, err := x.Expand("cat {{.from-host}} on {{.host}}")
+	if err != nil || got != "cat /var/lib/x on pi" {
+		t.Fatalf("got %q, %v", got, err)
+	}
+	if _, err := x.Expand("{{.missing-one}}"); err == nil {
+		t.Fatal("a missing hyphenated value expanded without an error")
+	}
+}

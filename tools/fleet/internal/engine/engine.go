@@ -29,6 +29,10 @@ type Input struct {
 	Secret   bool   // hidden prompt; without a terminal it comes from --NAME-stdin
 	Twice    bool   // a secret asked for twice, for a new password
 	Optional bool   // an empty value is fine
+	Bool     bool   // a yes/no switch: --NAME, asked as a yes/no question; "true" or "false"
+	// Skip, if set, leaves the input out when it does not apply, such as a
+	// value that will be read from the host instead.
+	Skip func(*Ctx) bool
 }
 
 // Step is one numbered step of a flow.
@@ -96,6 +100,14 @@ func (c *Ctx) Expand(s string) (string, error) {
 	if !strings.Contains(s, "{{") {
 		return s, nil
 	}
+	// Input names may have hyphens, like their flags (--from-host), which
+	// text/template does not accept after a dot.
+	for _, m := range hyphenated.FindAllStringSubmatch(s, -1) {
+		if _, ok := c.Values[m[1]]; !ok {
+			return "", fmt.Errorf("template: no value named %q", m[1])
+		}
+	}
+	s = hyphenated.ReplaceAllString(s, `{{index . "$1"}}`)
 	t, err := template.New("").Option("missingkey=error").Parse(s)
 	if err != nil {
 		return "", err
@@ -174,6 +186,9 @@ func Run(c *Ctx, f *Flow) error {
 }
 
 func resolve(c *Ctx, in Input) error {
+	if in.Skip != nil && in.Skip(c) {
+		return nil
+	}
 	value, given := c.flags[in.Name]
 	switch {
 	case given:
@@ -229,6 +244,12 @@ func ask(c *Ctx, in Input, def string) (string, error) {
 	}
 	validate := func(v string) error { return check(in, v) }
 	switch {
+	case in.Bool:
+		ok, err := c.UI.Confirm(in.Prompt, def == "true")
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprint(ok), nil
 	case in.Secret:
 		v, err := c.UI.Secret(in.Prompt, in.Help, validate)
 		if err != nil || !in.Twice {
@@ -255,6 +276,9 @@ func ask(c *Ctx, in Input, def string) (string, error) {
 }
 
 func check(in Input, v string) error {
+	if in.Bool && v != "" && v != "true" && v != "false" {
+		return fmt.Errorf("%s must be true or false, not %q", in.Name, v)
+	}
 	if v == "" {
 		if in.Optional {
 			return nil
@@ -316,3 +340,6 @@ func (c *Ctx) Approve(question string) (bool, error) {
 	}
 	return true, nil
 }
+
+// hyphenated matches {{.a-b}}, a value whose name has a hyphen.
+var hyphenated = regexp.MustCompile(`\{\{\s*\.([A-Za-z0-9_]+(?:-[A-Za-z0-9_]+)+)\s*\}\}`)

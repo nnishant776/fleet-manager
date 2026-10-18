@@ -1,7 +1,8 @@
 # End-to-end test of the host side of the secrets design: a `forge` node
 # serves signed bare repositories over sshd and a `fleet` node, built from the
 # scratch-secrets host, has to bootstrap, snapshot, activate and hold up
-# against a tampered repository. No network
+# against a tampered repository, and take secrets the maintainer adds with
+# `fleet host secret` (the forge also plays the maintainer). No network
 # and no hosting service are involved. Run it with
 # `nix build .#checks.x86_64-linux.secrets-sync` (see README.md).
 { pkgs, inputs, self }:
@@ -35,6 +36,8 @@ let
     ssh-keygen -q -t ed25519 -N "" -C "support@test" -f "$keys/support_ed25519"
     echo "maintainer@test $(cut -d' ' -f1,2 "$keys/signing_ed25519.pub")" > "$out/allowed_signers"
     cp "$keys/support_ed25519" "$keys/support_ed25519.pub" "$keys/deploy_ed25519.pub" "$out/"
+    # The maintainer's keys, for the forge to play the maintainer with fleet.
+    cp "$keys/recovery.key" "$keys/signing_ed25519" "$out/"
 
     # The identity document that `os-install --identity` reads, for the host key and deploy key.
     {
@@ -131,8 +134,9 @@ pkgs.testers.runNixOSTest {
       openssh.authorizedKeys.keys = [ (builtins.readFile "${fixtures}/deploy_ed25519.pub") ];
     };
 
-    # sshd runs git-upload-pack through the user's login PATH.
-    environment.systemPackages = [ pkgs.git ];
+    # sshd runs git-upload-pack through the user's login PATH; fleet is the
+    # maintainer's tool.
+    environment.systemPackages = [ pkgs.git self.packages.${pkgs.stdenv.hostPlatform.system}.fleet ];
 
     systemd.services.forge-repos = {
       description = "Put the fixture repositories where the git user serves them";
@@ -152,6 +156,18 @@ pkgs.testers.runNixOSTest {
       source = "${fixtures}/support_ed25519";
       mode = "0600";
     };
+
+    # The forge also plays the maintainer's machine, running fleet with the
+    # maintainer's recovery and signing keys.
+    environment.etc."test-keys/recovery.key" = {
+      source = "${fixtures}/recovery.key";
+      mode = "0600";
+    };
+    environment.etc."test-keys/signing_ed25519" = {
+      source = "${fixtures}/signing_ed25519";
+      mode = "0600";
+    };
+    environment.etc."test-keys/allowed_signers".source = "${fixtures}/allowed_signers";
   };
 
   nodes.fleet = { config, pkgs, ... }: {
@@ -179,6 +195,9 @@ pkgs.testers.runNixOSTest {
     # The first-boot configuration clone has no deploy-key secret in this
     # test (that needs a host secret the fixtures do not carry), so root
     # reaches the forge with the host's deploy key and pins nothing.
+    # To read back what fleet host secret stored, with the host's own key.
+    environment.systemPackages = [ pkgs.sops ];
+
     programs.ssh.extraConfig = ''
       Host forge
         IdentityFile /var/lib/fleet/deploy_ed25519
@@ -272,5 +291,52 @@ pkgs.testers.runNixOSTest {
         assert status == 11, f"sync after unsigned commit exited {status}, expected 11: {out}"
         after = fleet.succeed("basename $(readlink /var/lib/fleet/secrets)").strip()
         assert after == current, f"snapshot moved from {current} to {after}"
+
+    # The forge as the maintainer's machine: a signing clone of the secrets
+    # repository, the recovery key for sops, and the support key for the
+    # host, whose key it knows.
+    forge.succeed(
+        "install -d -o git -m 700 /home/git/.ssh",
+        "install -o git -m 600 /etc/test-keys/recovery.key /etc/test-keys/signing_ed25519 /home/git/",
+        "install -o git -m 600 /etc/test-keys/support_ed25519 /home/git/.ssh/id_ed25519",
+        "ssh-keyscan -t ed25519 fleet > /home/git/.ssh/known_hosts 2>/dev/null",
+        "chown git /home/git/.ssh/known_hosts",
+        "su git -c 'git clone -q /var/lib/forge/secrets.git /home/git/w"
+        " && git -C /home/git/w config user.name maintainer"
+        " && git -C /home/git/w config user.email maintainer@test"
+        " && git -C /home/git/w config gpg.format ssh"
+        " && git -C /home/git/w config user.signingKey /home/git/signing_ed25519"
+        " && git -C /home/git/w config commit.gpgSign true'",
+    )
+
+    def maintainer(args, stdin=""):
+        # fleet, non-interactive, in the maintainer's clone; sops decrypts with
+        # the recovery key from SOPS_AGE_KEY_FILE.
+        return forge.succeed(
+            f"cd /home/git/w && printf %s '{stdin}' | su git -c"
+            f" 'SOPS_AGE_KEY_FILE=/home/git/recovery.key fleet host secret {args} --recovery \"\" --yes' 2>&1"
+        )
+
+    def host_value(name):
+        fleet.succeed(sync_cmd)
+        return fleet.succeed(
+            "SOPS_AGE_KEY_FILE=/var/lib/fleet/age.key sops -d --extract"
+            f" '[\"{name}\"]' /var/lib/fleet/secrets/hosts/${hostName}.yaml"
+        )
+
+    with subtest("8: fleet host secret encrypts a value for the host, which fetches it"):
+        out = maintainer("${hostName} test_secret --value-stdin", stdin="s3cret value")
+        assert "s3cret" not in out, f"fleet showed the value:\n{out}"
+        assert "✓ committed: ${hostName}: test_secret" in out, out
+        got = host_value("test_secret")
+        assert got == "s3cret value", f"the host decrypted '{got}'"
+
+    with subtest("9: fleet host secret reads a value off the host, never showing it"):
+        fleet.succeed("printf 'kept-on-the-host\\n' > /root/hotspot-pass && chmod 600 /root/hotspot-pass")
+        out = maintainer("${hostName} from_host --from-host /root/hotspot-pass --address fleet")
+        assert "kept-on-the-host" not in out, f"fleet showed the value:\n{out}"
+        assert "ForwardAgent=no" in out and "support@fleet" in out, out
+        got = host_value("from_host")
+        assert got == "kept-on-the-host", f"the host decrypted '{got}' (the trailing newline should be dropped)"
   '';
 }

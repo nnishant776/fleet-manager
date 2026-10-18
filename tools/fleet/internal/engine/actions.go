@@ -93,7 +93,7 @@ func (c *Command) spec(x *Ctx) (Spec, error) {
 
 func (c *Command) shown(x *Ctx, s Spec) string {
 	line := s.String()
-	if s.Dir != "" {
+	if s.Dir != "" && s.Dir != "." {
 		line = "cd " + quote(s.Dir) + " && " + line
 	}
 	switch {

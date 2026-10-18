@@ -72,6 +72,7 @@ func command(f *Flow, opts *Options) *cobra.Command {
 	}
 	values := map[string]*string{}
 	stdin := map[string]*bool{}
+	bools := map[string]*bool{}
 	cmd := &cobra.Command{
 		Use:     use,
 		Short:   f.Short,
@@ -83,6 +84,11 @@ func command(f *Flow, opts *Options) *cobra.Command {
 			for name, v := range values {
 				if cmd.Flags().Changed(name) {
 					given[name] = *v
+				}
+			}
+			for name, v := range bools {
+				if cmd.Flags().Changed(name) {
+					given[name] = fmt.Sprint(*v)
 				}
 			}
 			for name, v := range stdin {
@@ -109,6 +115,12 @@ func command(f *Flow, opts *Options) *cobra.Command {
 			b := false
 			stdin[in.Name] = &b
 			cmd.Flags().BoolVar(&b, in.Name+"-stdin", false, "read the "+in.Name+" from standard input, instead of being asked")
+			continue
+		}
+		if in.Bool {
+			b := false
+			bools[in.Name] = &b
+			cmd.Flags().BoolVar(&b, in.Name, false, help)
 			continue
 		}
 		s := ""
