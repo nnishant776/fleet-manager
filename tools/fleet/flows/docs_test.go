@@ -35,3 +35,22 @@ func TestRunbookShowsFlagsStepsAndCommands(t *testing.T) {
 		t.Errorf("install's flags:\n%s", install)
 	}
 }
+
+// Every flow is on the menu once, but docs, which is for changing fleet.
+func TestMenuListsEveryFlowOnce(t *testing.T) {
+	seen := map[*engine.Flow]int{}
+	for _, s := range Menu {
+		for _, f := range s.Flows {
+			seen[f]++
+		}
+	}
+	for _, f := range All() {
+		want := 1
+		if f == Docs {
+			want = 0
+		}
+		if seen[f] != want {
+			t.Errorf("fleet %s is on the menu %d times, want %d", strings.Join(f.Path, " "), seen[f], want)
+		}
+	}
+}

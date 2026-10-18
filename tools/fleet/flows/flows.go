@@ -1,6 +1,6 @@
 // Package flows holds fleet's commands, one file each. A flow is a
 // declaration: its inputs and its steps. To add one, write it in a new file
-// and list it in All.
+// and list it in Menu, or in All if it stays off the menu.
 package flows
 
 import "github.com/nnishant776/fleet-manager/tools/fleet/internal/engine"
@@ -12,21 +12,21 @@ var Groups = engine.Groups{
 	"support-key": "The key that opens the support account",
 }
 
-// All is every flow, in the order the menu shows them.
+// Menu is what `fleet` offers when run alone, the everyday work first: a
+// host, then this machine, then the secrets repository one change at a time.
+var Menu = []engine.Section{
+	{Name: "Hosts", Flows: []*engine.Flow{HostCheck, HostSecret, HostEnroll, SupportKeyRotate}},
+	{Name: "This machine", Flows: []*engine.Flow{Install, Setup, Doctor}},
+	{Name: "Secrets", Flows: []*engine.Flow{
+		SecretsUserPassword, SecretsUserKey, SecretsHostEnroll, SecretsHostRekey, SecretsHostRetire,
+	}},
+}
+
+// All is every flow: the menu's, in its order, then those only typed.
 func All() []*engine.Flow {
-	return []*engine.Flow{
-		HostCheck,
-		HostSecret,
-		HostEnroll,
-		SecretsHostEnroll,
-		SecretsHostRekey,
-		SecretsHostRetire,
-		SecretsUserPassword,
-		SecretsUserKey,
-		SupportKeyRotate,
-		Setup,
-		Install,
-		Docs,
-		Doctor,
+	var all []*engine.Flow
+	for _, s := range Menu {
+		all = append(all, s.Flows...)
 	}
+	return append(all, Docs)
 }

@@ -15,10 +15,16 @@ import (
 // Groups describes the intermediate commands, such as "host", by name.
 type Groups map[string]string
 
+// Section is one part of the menu `fleet` shows when run alone.
+type Section struct {
+	Name  string
+	Flows []*Flow
+}
+
 // Mount adds a command for every flow under root, creating the intermediate
-// commands from groups, and makes root itself offer a menu of flows when it
-// runs without arguments on a terminal.
-func Mount(root *cobra.Command, flows []*Flow, groups Groups) {
+// commands from groups, and makes root itself offer the menu when it runs
+// without arguments on a terminal.
+func Mount(root *cobra.Command, flows []*Flow, groups Groups, menu []Section) {
 	opts := &Options{}
 	root.PersistentFlags().BoolVarP(&opts.Yes, "yes", "y", false, "run changes without asking first")
 	root.PersistentFlags().BoolVar(&opts.DryRun, "dry-run", false, "show every step and command; look, but change nothing")
@@ -37,20 +43,26 @@ func Mount(root *cobra.Command, flows []*Flow, groups Groups) {
 		if !u.Interactive() {
 			return cmd.Help()
 		}
-		titles := make([]string, len(flows))
-		for i, f := range flows {
-			titles[i] = f.Title
+		var rows []ui.MenuRow
+		var listed []*Flow
+		for _, s := range menu {
+			for i, f := range s.Flows {
+				row := ui.MenuRow{Label: f.Title, Detail: f.Short + "."}
+				if i == 0 {
+					row.Section = s.Name
+				}
+				rows = append(rows, row)
+				listed = append(listed, f)
+			}
 		}
-		choice, err := u.Choose("What do you want to do?", "fleet <command> --help explains each one.", titles)
+		choice, err := u.Menu("What do you want to do?", rows)
+		if errors.Is(err, ui.ErrCancelled) {
+			return nil
+		}
 		if err != nil {
 			return err
 		}
-		for _, f := range flows {
-			if f.Title == choice {
-				return runFlow(cmd.Context(), f, *opts, map[string]string{})
-			}
-		}
-		return nil
+		return runFlow(cmd.Context(), listed[choice], *opts, map[string]string{})
 	}
 }
 
@@ -149,7 +161,7 @@ func runFlow(ctx context.Context, f *Flow, opts Options, flags map[string]string
 		flags:   flags,
 	}
 	err := Run(x, f)
-	if errors.Is(err, ErrStopped) {
+	if errors.Is(err, ErrStopped) || errors.Is(err, ui.ErrCancelled) {
 		return nil
 	}
 	return err

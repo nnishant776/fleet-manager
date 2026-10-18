@@ -189,7 +189,7 @@ func Run(c *Ctx, f *Flow) error {
 			}
 		}
 		if err := s.Do.run(c); err != nil {
-			if errors.Is(err, ErrStopped) {
+			if errors.Is(err, ErrStopped) || errors.Is(err, ui.ErrCancelled) {
 				c.UI.Skip("stopped here; nothing after this step was run")
 				return err
 			}

@@ -66,7 +66,7 @@ func absent(rel, msg string) engine.Step {
 // SecretsHostEnroll admits a new host.
 var SecretsHostEnroll = &engine.Flow{
 	Path:    []string{"secrets", "host-enroll"},
-	Title:   "Enroll a host in the secrets repository",
+	Title:   "Admit a host from its enrollment file",
 	Short:   "Admit a new host from its enrollment file",
 	Long:    "Records the host's age recipient in fleet.yaml, renders .sops.yaml, creates its\nempty encrypted file, commits, and shows the deploy key to register.",
 	Example: "  fleet secrets host-enroll laptop1 --from laptop1.enroll\n  ssh support@laptop1 sudo cat /var/lib/fleet/laptop1.enroll | fleet secrets host-enroll laptop1 --from -",

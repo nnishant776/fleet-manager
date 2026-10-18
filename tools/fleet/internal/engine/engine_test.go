@@ -372,7 +372,7 @@ func TestShortAndRepeatedFlags(t *testing.T) {
 	}
 	run := func(args ...string) error {
 		root := &cobra.Command{Use: "fleet", SilenceUsage: true, SilenceErrors: true}
-		Mount(root, []*Flow{f}, nil)
+		Mount(root, []*Flow{f}, nil, nil)
 		root.SetArgs(args)
 		return root.Execute()
 	}

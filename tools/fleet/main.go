@@ -33,7 +33,7 @@ func main() {
 			"skips the confirmations, and --dry-run shows every command and changes nothing.",
 		SilenceUsage: true,
 	}
-	engine.Mount(root, flows.All(), flows.Groups)
+	engine.Mount(root, flows.All(), flows.Groups, flows.Menu)
 
 	err := fang.Execute(context.Background(), root,
 		fang.WithVersion(version),

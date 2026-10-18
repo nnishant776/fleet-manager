@@ -22,6 +22,9 @@ import (
 // ErrNoTerminal is returned by a prompt when there is no terminal to ask on.
 var ErrNoTerminal = errors.New("no terminal to ask on")
 
+// ErrCancelled is returned by a prompt left with Ctrl+C.
+var ErrCancelled = errors.New("cancelled")
+
 // Indent lines up everything under a step with the step's title.
 const Indent = "      "
 
@@ -189,13 +192,48 @@ func (u *UI) Choose(title, help string, options []string) (string, error) {
 	return value, u.run(field)
 }
 
-func (u *UI) run(field huh.Field) error {
-	return huh.NewForm(huh.NewGroup(field)).
+// MenuRow is one choice of a Menu.
+type MenuRow struct {
+	Section string // shown beside the first row of its section
+	Label   string
+	Detail  string // shown above the list while the row is highlighted
+}
+
+// Menu offers rows in sections as one list, and returns the index of the
+// chosen one. The keys are listed under it.
+func (u *UI) Menu(title string, rows []MenuRow) (int, error) {
+	if !u.tty {
+		return 0, ErrNoTerminal
+	}
+	width := 0
+	for _, r := range rows {
+		width = max(width, len([]rune(r.Section)))
+	}
+	options := make([]huh.Option[int], len(rows))
+	for i, r := range rows {
+		pad := strings.Repeat(" ", width-len([]rune(r.Section)))
+		options[i] = huh.NewOption(r.Section+pad+"   "+r.Label, i)
+	}
+	var chosen int
+	field := huh.NewSelect[int]().Title(title).
+		DescriptionFunc(func() string { return rows[chosen].Detail }, &chosen).
+		Options(options...).Value(&chosen)
+	return chosen, u.form(field, true)
+}
+
+func (u *UI) run(field huh.Field) error { return u.form(field, false) }
+
+func (u *UI) form(field huh.Field, help bool) error {
+	err := huh.NewForm(huh.NewGroup(field)).
 		WithTheme(huh.ThemeFunc(theme)).
-		WithShowHelp(false).
+		WithShowHelp(help).
 		WithInput(u.in).
 		WithOutput(u.out).
 		Run()
+	if errors.Is(err, huh.ErrUserAborted) {
+		return ErrCancelled
+	}
+	return err
 }
 
 // theme is huh's base theme without its focus border, in the palette above.
