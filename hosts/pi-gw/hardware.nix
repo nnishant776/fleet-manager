@@ -13,9 +13,9 @@
   ];
   _module.args.nixos-raspberrypi = inputs.nixos-raspberrypi;
 
-  # The Pi boots through its firmware, not EFI; baseline/boot.nix turns on the
-  # loader named by conf.hardware.boot.loader.
-  boot.loader.systemd-boot.enable = lib.mkForce false;
+  # The Pi boots through its firmware, not EFI, with the loader the
+  # nixos-raspberrypi modules above bring, so this flake turns on none.
+  conf.hardware.boot.loader = null;
 
   # The partitions of the card written by `nix run .#rpi-image`.
   fileSystems."/" = {
