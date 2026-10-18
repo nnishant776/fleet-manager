@@ -16,13 +16,13 @@ import (
 	"github.com/nnishant776/fleet-manager/tools/fleet/internal/secrets"
 )
 
-// HostEnrol brings a host that is already running into the secrets setup:
+// HostEnroll brings a host that is already running into the secrets setup:
 // what was done by hand for neerajpinew on 2026-10-18. Every step looks first
-// and skips what is already done, so it also finishes a half-done enrolment.
-var HostEnrol = &engine.Flow{
-	Path:  []string{"host", "enrol"},
-	Title: "Enrol a running host in the secrets setup",
-	Short: "Enrol a running host: identity, enrollment, deploy key, first sync",
+// and skips what is already done, so it also finishes a half-done enrollment.
+var HostEnroll = &engine.Flow{
+	Path:  []string{"host", "enroll"},
+	Title: "Enroll a running host in the secrets setup",
+	Short: "Enroll a running host: identity, enrollment, deploy key, first sync",
 	Long: "For a host that already runs, and whose configuration in this repository sets\n" +
 		"conf.secrets.repo.url. fleet logs in as its admin account through an agent that\n" +
 		"holds one key only, switches the host to that configuration if it does not run\n" +
@@ -30,7 +30,7 @@ var HostEnrol = &engine.Flow{
 		"enrolls it in the secrets repository and pushes, registers its deploy key\n" +
 		"read-only, then syncs the host and checks it. Steps that are done already are\n" +
 		"skipped, so it can be run again after a failure.",
-	Example: "  fleet host enrol neerajpinew --key ~/.ssh/home_network_ssh_key --repo ~/Projects/fleet-secrets",
+	Example: "  fleet host enroll neerajpinew --key ~/.ssh/home_network_ssh_key --repo ~/Projects/fleet-secrets",
 	Args:    []string{"host"},
 	Inputs: []engine.Input{
 		fleet.FlakeInput,
@@ -110,7 +110,7 @@ var HostEnrol = &engine.Flow{
 			Do:    engine.Func(copyEnrollment),
 		},
 		{
-			Title: "Enrol {{.host}} in the secrets repository",
+			Title: "Enroll {{.host}} in the secrets repository",
 			Why:   "fleet secrets host-enroll records its recipient, renders the rules and creates its empty file, each step shown.",
 			When:  enrolledWithThisIdentity,
 			Do:    engine.Func(runHostEnroll),
@@ -215,11 +215,11 @@ func switchHost(x *engine.Ctx) error {
 	}
 	// systemd-run gives the service a minimal PATH; nixos-rebuild needs the
 	// system's (it runs `test`).
-	_, err = fleet.OnAdmin(`sudo -n systemctl reset-failed fleet-enrol-switch 2>/dev/null; ` +
-		`sudo -n systemd-run --wait --collect --unit=fleet-enrol-switch ` +
+	_, err = fleet.OnAdmin(`sudo -n systemctl reset-failed fleet-enroll-switch 2>/dev/null; ` +
+		`sudo -n systemd-run --wait --collect --unit=fleet-enroll-switch ` +
 		`--setenv=PATH=/run/wrappers/bin:/run/current-system/sw/bin ` +
 		`nixos-rebuild switch --flake {{.switch_ref}}#{{.host}}; s=$?; ` +
-		`sudo -n journalctl -u fleet-enrol-switch -o cat -n 15 --no-pager; exit $s`).OK("switched").Run(x)
+		`sudo -n journalctl -u fleet-enroll-switch -o cat -n 15 --no-pager; exit $s`).OK("switched").Run(x)
 	return err
 }
 

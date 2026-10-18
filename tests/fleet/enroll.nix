@@ -1,21 +1,21 @@
-# Test of `fleet host enrol` on a running host that has a checkout in
+# Test of `fleet host enroll` on a running host that has a checkout in
 # /etc/nixos but no secrets identity yet: the case where the first-boot clone
 # never runs, so the identity has to be made by hand. A `forge` node serves a
 # fresh, signed secrets repository over SSH and also plays the maintainer's
-# machine; `newhost` is built from tests/fleet/enrol-host. The checks:
+# machine; `newhost` is built from tests/fleet/enroll-host. The checks:
 # - fleet logs in as admin through a one-key agent, creates the identity,
 #   copies the enrollment file and checks it, enrolls the host with a signed
 #   commit, pushes, and registers the deploy key;
 # - the host can then fetch, verify and decrypt its secrets with that key;
 # - a second run finds everything done and changes nothing.
-# Run it with `nix build .#checks.x86_64-linux.fleet-enrol`.
+# Run it with `nix build .#checks.x86_64-linux.fleet-enroll`.
 { pkgs, inputs, self }:
 let
   lib = pkgs.lib;
   mkHost = import ../../lib/mkHost.nix { inherit inputs; };
-  hostNode = mkHost.modulesFor { hostName = "newhost"; hostDir = ./enrol-host; };
+  hostNode = mkHost.modulesFor { hostName = "newhost"; hostDir = ./enroll-host; };
 
-  fixtures = pkgs.runCommand "fleet-enrol-fixtures" {
+  fixtures = pkgs.runCommand "fleet-enroll-fixtures" {
     nativeBuildInputs = with pkgs; [ age openssh git ];
   } ''
     export HOME="$TMPDIR/home"
@@ -50,7 +50,7 @@ let
   secretsUrl = "ssh://git@forge/var/lib/forge/secrets.git";
 in
 pkgs.testers.runNixOSTest {
-  name = "fleet-enrol";
+  name = "fleet-enroll";
 
   node.specialArgs = hostNode.specialArgs;
   node.pkgsReadOnly = false;
@@ -134,20 +134,20 @@ pkgs.testers.runNixOSTest {
         " && git -C /home/git/w config commit.gpgSign true'",
     )
 
-    def enrol():
+    def enroll():
         # Bounded and printed, so that a step that hangs shows where.
         status, out = forge.execute(
             "cd /home/git && timeout 180 su git -c 'SOPS_AGE_KEY_FILE=/home/git/recovery.key"
-            " fleet host enrol newhost --flake /var/empty --key /home/git/admin"
+            " fleet host enroll newhost --flake /var/empty --key /home/git/admin"
             " --repo /home/git/w --recovery \"\" --sync=false --yes"
             " --register-with \"cat >> /home/git/.ssh/authorized_keys\"' 2>&1"
         )
         print(out)
-        assert status == 0, f"fleet host enrol exited {status}"
+        assert status == 0, f"fleet host enroll exited {status}"
         return out
 
-    with subtest("fleet enrols a running host without an identity"):
-        out = enrol()
+    with subtest("fleet enrolls a running host without an identity"):
+        out = enroll()
         for want in ["has no identity yet", "created under /var/lib/fleet", "checksum",
                      "committed: host-enroll: newhost", "stopped the one-key agent"]:
             assert want in out, f"output lacks {want!r}:\n{out}"
@@ -169,7 +169,7 @@ pkgs.testers.runNixOSTest {
 
     with subtest("a second run finds everything done"):
         before = forge.succeed("su git -c 'git -C /var/lib/forge/secrets.git rev-parse main'")
-        out = enrol()
+        out = enroll()
         for want in ["skipped: it has one", "skipped: it is enrolled already, with this identity",
                      "skipped: nothing to push"]:
             assert want in out, f"output lacks {want!r}:\n{out}"

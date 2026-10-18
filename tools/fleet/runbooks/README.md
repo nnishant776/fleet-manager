@@ -11,7 +11,7 @@ no arguments offers these as a menu.
 |---|---|
 | [`fleet host check`](host-check.md) | Check a host: configuration, sync, secrets and health, without changing anything |
 | [`fleet host secret`](host-secret.md) | Add or change a host secret: encrypt, commit, push, and show how the configuration uses it |
-| [`fleet host enrol`](host-enrol.md) | Enrol a running host: identity, enrollment, deploy key, first sync |
+| [`fleet host enroll`](host-enroll.md) | Enroll a running host: identity, enrollment, deploy key, first sync |
 | [`fleet secrets host-enroll`](secrets-host-enroll.md) | Admit a new host from its enrollment file |
 | [`fleet secrets host-rekey`](secrets-host-rekey.md) | Point a known host at a new identity |
 | [`fleet secrets host-retire`](secrets-host-retire.md) | Remove a host and its files |

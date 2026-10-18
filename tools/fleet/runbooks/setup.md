@@ -62,6 +62,6 @@ A value that is neither given nor has a default is asked for on a terminal.
 
    > Push the allowed_signers commit to fleet-manager's main if one was made, merging
    > locally: GitHub's merge buttons drop the signature. Then, for each host:
-   > fleet host enrol \<host>
+   > fleet host enroll \<host>
 
 It needs `git`, `yq`, `age`, `age-keygen`, `ssh-keygen` on the PATH; `fleet doctor` says where to get them.

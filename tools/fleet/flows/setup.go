@@ -113,7 +113,7 @@ var Setup = &engine.Flow{
 			Why:   "With that, hosts can be enrolled.",
 			Do: engine.Show("Push the allowed_signers commit to fleet-manager's main if one was made, merging\n" +
 				"locally: GitHub's merge buttons drop the signature. Then, for each host:\n" +
-				"  fleet host enrol <host>"),
+				"  fleet host enroll <host>"),
 		},
 	},
 }

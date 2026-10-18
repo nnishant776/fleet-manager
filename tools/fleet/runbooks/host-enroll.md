@@ -1,8 +1,8 @@
 <!-- Written by `fleet docs` from tools/fleet/flows; edit the flows, not this. -->
 
-# fleet host enrol
+# fleet host enroll
 
-Enrol a running host: identity, enrollment, deploy key, first sync.
+Enroll a running host: identity, enrollment, deploy key, first sync.
 
 For a host that already runs, and whose configuration in this repository sets
 conf.secrets.repo.url. fleet logs in as its admin account through an agent that
@@ -13,9 +13,9 @@ read-only, then syncs the host and checks it. Steps that are done already are
 skipped, so it can be run again after a failure.
 
 ```
-fleet host enrol [HOST] [flags]
+fleet host enroll [HOST] [flags]
 
-fleet host enrol neerajpinew --key ~/.ssh/home_network_ssh_key --repo ~/Projects/fleet-secrets
+fleet host enroll neerajpinew --key ~/.ssh/home_network_ssh_key --repo ~/Projects/fleet-secrets
 ```
 
 ## Flags
@@ -60,7 +60,7 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 6. **Copy its enrollment file here.** It holds the two public halves only. Copied over SSH to a host whose key is known, so it cannot be swapped on the way; the checksums must match.
 
-7. **Enrol HOST in the secrets repository.** fleet secrets host-enroll records its recipient, renders the rules and creates its empty file, each step shown.
+7. **Enroll HOST in the secrets repository.** fleet secrets host-enroll records its recipient, renders the rules and creates its empty file, each step shown.
 
 8. **Push the secrets repository.** HOST fetches from GitHub; it accepts the commit only if it is signed by an allowed key.
 

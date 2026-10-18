@@ -36,7 +36,7 @@ var Install = &engine.Flow{
 			Many: true, Optional: true},
 		{Name: "identity", Prompt: "Identity to carry over", Help: "An identity document from 'fleet-identity --export' on the old install, instead of a new identity",
 			Optional: true},
-		{Name: "no-enroll", Prompt: "Skip waiting for the enrolment?", Help: "Do not wait for the host to be enrolled; it retries after boot", Bool: true},
+		{Name: "no-enroll", Prompt: "Skip waiting for the enrollment?", Help: "Do not wait for the host to be enrolled; it retries after boot", Bool: true},
 		{Name: "enroll-out", Prompt: "Also copy the enrollment file to", Help: "A path, for example on a mounted USB stick",
 			Optional: true},
 	},
@@ -317,7 +317,7 @@ func afterInstall(x *engine.Ctx) error {
 		x.UI.Text("To unlock with the TPM as well, run the systemd-cryptenroll line os-install printed.")
 	}
 	if x.Value("state_path") != "" {
-		x.Say("If it was not enrolled during the install, from the maintainer's machine: fleet host enrol {{.host}}")
+		x.Say("If it was not enrolled during the install, from the maintainer's machine: fleet host enroll {{.host}}")
 	}
 	x.Say("Then, from the maintainer's machine: fleet host check {{.host}}")
 	return nil

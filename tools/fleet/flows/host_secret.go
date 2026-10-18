@@ -72,7 +72,7 @@ var HostSecret = &engine.Flow{
 	Needs: []string{"git", "yq", "sops", "age"},
 	Steps: []engine.Step{
 		secrets.Open(),
-		secrets.Enrolled(true, "host '{{.host}}' is not enrolled; enroll it first (fleet host enrol, or fleet secrets host-enroll)"),
+		secrets.Enrolled(true, "host '{{.host}}' is not enrolled; enroll it first (fleet host enroll, or fleet secrets host-enroll)"),
 		{
 			Title: "Read the current value off {{.host}}",
 			Why:   "As {{.user}}, with nothing forwarded; the value is kept in memory and never shown.",

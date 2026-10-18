@@ -16,9 +16,9 @@ const enrollDoc = "version: 1\nhost: pi\ncreated: 2026-10-18T12:14:02Z\n" +
 	"age_recipient: age1testrecipient\n" +
 	"deploy_pubkey: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDdBK90 fleet-deploy@pi\n"
 
-// enrolHost answers like a host with fleet's tooling. identity and enrolled
-// say how far its enrolment got; tamper corrupts the enrollment checksum.
-func enrolHost(identity, enrolled, tamper bool) func(engine.Spec) (engine.Result, error) {
+// enrollHost answers like a host with fleet's tooling. identity and enrolled
+// say how far its enrollment got; tamper corrupts the enrollment checksum.
+func enrollHost(identity, enrolled, tamper bool) func(engine.Spec) (engine.Result, error) {
 	sum := sha256.Sum256([]byte(enrollDoc))
 	sumLine := hex.EncodeToString(sum[:]) + "  /var/lib/fleet/pi.enroll\n"
 	if tamper {
@@ -55,7 +55,7 @@ func enrolHost(identity, enrolled, tamper bool) func(engine.Spec) (engine.Result
 	}
 }
 
-func runEnrol(t *testing.T, respond func(engine.Spec) (engine.Result, error)) (error, *engine.Fake, string) {
+func runEnroll(t *testing.T, respond func(engine.Spec) (engine.Result, error)) (error, *engine.Fake, string) {
 	t.Helper()
 	var out bytes.Buffer
 	fake := &engine.Fake{Respond: respond}
@@ -69,7 +69,7 @@ func runEnrol(t *testing.T, respond func(engine.Spec) (engine.Result, error)) (e
 		LookPath: func(t string) (string, error) { return "/fake/bin/" + t, nil },
 	}
 	repo := t.TempDir()
-	err := engine.RunWith(x, HostEnrol, map[string]string{
+	err := engine.RunWith(x, HostEnroll, map[string]string{
 		"host": "pi", "flake": "/etc/nixos", "key": "/keys/home", "repo": repo, "recovery": "",
 		"register-with": "cat >> /forge/authorized_keys", "sync": "false",
 	})
@@ -86,8 +86,8 @@ func ranMatching(f *engine.Fake, fragment string) []engine.Spec {
 	return got
 }
 
-func TestEnrolDoesWhatIsMissingInOrder(t *testing.T) {
-	err, fake, out := runEnrol(t, enrolHost(false, false, false))
+func TestEnrollDoesWhatIsMissingInOrder(t *testing.T) {
+	err, fake, out := runEnroll(t, enrollHost(false, false, false))
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
@@ -119,8 +119,8 @@ func TestEnrolDoesWhatIsMissingInOrder(t *testing.T) {
 	}
 }
 
-func TestEnrolSkipsWhatIsDone(t *testing.T) {
-	err, fake, out := runEnrol(t, enrolHost(true, true, false))
+func TestEnrollSkipsWhatIsDone(t *testing.T) {
+	err, fake, out := runEnroll(t, enrollHost(true, true, false))
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
@@ -136,8 +136,8 @@ func TestEnrolSkipsWhatIsDone(t *testing.T) {
 	}
 }
 
-func TestEnrolStopsOnATamperedEnrollmentFile(t *testing.T) {
-	err, fake, out := runEnrol(t, enrolHost(false, false, true))
+func TestEnrollStopsOnATamperedEnrollmentFile(t *testing.T) {
+	err, fake, out := runEnroll(t, enrollHost(false, false, true))
 	if err == nil {
 		t.Fatalf("accepted an enrollment file whose checksum differs\n%s", out)
 	}
@@ -152,15 +152,15 @@ func TestEnrolStopsOnATamperedEnrollmentFile(t *testing.T) {
 	}
 }
 
-func TestEnrolSyncsAsSupportWithNothingForwarded(t *testing.T) {
+func TestEnrollSyncsAsSupportWithNothingForwarded(t *testing.T) {
 	var out bytes.Buffer
-	fake := &engine.Fake{Respond: enrolHost(true, true, false)}
+	fake := &engine.Fake{Respond: enrollHost(true, true, false)}
 	x := &engine.Ctx{
 		Context: context.Background(), UI: ui.NewWith(&out, nil), Runner: fake,
 		Options: engine.Options{Yes: true}, Values: map[string]string{}, Stdin: strings.NewReader(""),
 		LookPath: func(t string) (string, error) { return "/fake/bin/" + t, nil },
 	}
-	err := engine.RunWith(x, HostEnrol, map[string]string{
+	err := engine.RunWith(x, HostEnroll, map[string]string{
 		"host": "pi", "flake": "/etc/nixos", "key": "/keys/home", "repo": t.TempDir(), "recovery": "",
 		"register-with": "true", "sync": "true",
 	})
