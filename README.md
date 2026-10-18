@@ -327,8 +327,8 @@ nix eval .#nixosConfigurations.<host>.config.conf.hardware.graphics.vendor
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `host.name` | str | `"localhost"` | Hostname. Must equal the host directory name |
-| `host.timezone` | str | `"Asia/Kolkata"` | Timezone |
-| `host.locale` | str | `"en_IN"` | Locale; also sets the `LC_*` variables |
+| `host.timezone` | str | `"Asia/Kolkata"` | Timezone. NixOS only |
+| `host.locale` | str | `"en_IN"` | Locale; also sets the `LC_*` variables. NixOS only |
 
 ### `conf.users`
 
@@ -343,15 +343,15 @@ Each entry in `conf.users.accounts` takes these fields:
 |---|---|---|---|
 | `fullName` | str | *the username* | Display name |
 | `email` | str | `""` | Email address |
-| `privileged` | bool | `false` | Grants sudo through `wheel`, plus the privilege-adjacent groups for whichever services the host enables |
-| `groups` | listOf str | `[]` | Extra groups. Privilege-granting groups are rejected here |
-| `initialHashedPassword` | nullOr str | `null` | Password hash applied when the account is created, `mkpasswd -m yescrypt` format. `null` creates it locked. On a host with `conf.secrets.repo.url` the hash comes from the secrets repository instead |
-| `sshKeys` | listOf str | `[]` | SSH public keys accepted for this account |
+| `privileged` | bool | `false` | Grants sudo through `wheel`, plus the privilege-adjacent groups for whichever services the host enables. NixOS only |
+| `groups` | listOf str | `[]` | Extra groups. Privilege-granting groups are rejected here. NixOS only. With SSH sharing on, an unprivileged account needs `ssh-users` here to log in over SSH |
+| `initialHashedPassword` | nullOr str | `null` | Password hash applied when the account is created, `mkpasswd -m yescrypt` format. `null` creates it locked. On a host with `conf.secrets.repo.url` the hash comes from the secrets repository instead. NixOS only |
+| `sshKeys` | listOf str | `[]` | SSH public keys accepted for this account. NixOS only |
 | `sudoSshKeys` | listOf str | `[]` | SSH public keys that unlock sudo for this privileged account instead of its password. Not the same as `sshKeys`. Listing keys on an unprivileged account is an error. NixOS only. See below |
 | `secrets.password` | bool | `true` | Take the account's password hash from `users/<name>/<host>.yaml` in the secrets repository. Ignored on a host without `conf.secrets.repo.url`; setting `initialHashedPassword` as well is an error on an opted-in host |
-| `secrets.sshKey` | bool | `false` | Deploy a per-host SSH key from the same file to `/run/secrets/users/<name>/ssh_key`. Can be turned on any time after the account exists. Ignored on a host without `conf.secrets.repo.url` |
+| `secrets.sshKey` | bool | `false` | Deploy a per-host SSH key from the same file to `/run/secrets/users/<name>/ssh_key`. Can be turned on any time after the account exists. Ignored on a host without `conf.secrets.repo.url`. NixOS only. Also deploys `ssh_key.pub` (mode 0444), and the key becomes the user's default SSH identity and git signing key |
 | `selfManagedHome` | bool | `false` | This user manages their own home instead of the system doing it |
-| `manageAccount` | nullOr bool | `null` | Whether the account itself is created here. `null` means true on Linux and false on macOS |
+| `manageAccount` | nullOr bool | `null` | Whether the account itself is created here. `null` means true on Linux and false on macOS. `false` is an error on Linux. On macOS, `true` puts the account on nix-darwin's delete list, so removing it from `accounts` deletes the macOS account at the next switch |
 | `uid` | nullOr int | `null` | Numeric user id. Required on macOS when `manageAccount` is true |
 | `gid` | nullOr int | `null` | Numeric primary group id. Defaults to `20` (`staff`) on macOS |
 | `homeConfig` | deferredModule | `{}` | Additional Home Manager configuration for this user |
@@ -456,14 +456,14 @@ default.
 | `networking.macNames` | bool | `false` | Names every physical network interface, Wi-Fi and wired, after its bus and MAC (e.g. `wlu001a2b3c4d5e`), from the next boot |
 | `networking.wireless.enable` | bool | `true` | Master switch for every radio: Wi-Fi, the hotspot and Bluetooth. Set it to `false` to turn them all off at once. Wired networking keeps working |
 | `networking.wireless.countryCode` | nullOr str | `null` | Two capital letters, such as `DE`: the country whose radio rules apply. Without it the strict worldwide rules apply. Used by `networkd` |
-| `networking.wireless.wifi.enable` | toggle | `false` | Wi-Fi client. Needs `networking.enable`; off when `networking.wireless.enable` is off |
-| `networking.wireless.wifi.interfaces` | attrs | `{}` | With `networkd`: the client's interfaces, by name. Each joins its own networks, kept in `/etc/wpa_supplicant/<name>.conf`. `{}` uses every Wi-Fi interface, sharing `imperative.conf`. With a hotspot declared, it must name them, so the client never takes a hotspot's adapter |
-| `networking.wireless.wifi.interfaces.<name>.routeMetric` | nullOr int | `null` | Which network carries internet traffic when several give a default route. The lowest wins. `null` is networkd's 1024, as for a wired network |
-| `networking.wireless.hotspots` | attrs | `{}` | Wi-Fi hotspots that share this machine's connection with other devices, keyed by the adapter's interface name. Each has a service of its own. Needs `networking.backend = "networkd"`, `networking.wireless.countryCode`, the client's interfaces named in `networking.wireless.wifi.interfaces`, and each password file. Off when `networking.wireless.enable` is off |
+| `networking.wireless.wifi.enable` | toggle | `false` | Wi-Fi client. Needs `networking.enable`; off when `networking.wireless.enable` is off; on by default with `machineType = "laptop"` |
+| `networking.wireless.wifi.interfaces` | attrs | `{}` | With `networkd`: the client's interfaces, by name. Each joins its own networks, kept in `/etc/wpa_supplicant/<name>.conf`. `{}` uses every Wi-Fi interface, sharing `imperative.conf`. When a hotspot is declared and the Wi-Fi client is on (`wifi.enable`), it must name them, so the client never takes a hotspot's adapter |
+| `networking.wireless.wifi.interfaces.<name>.routeMetric` | nullOr ints.unsigned | `null` | Which network carries internet traffic when several give a default route. The lowest wins. `null` is networkd's 1024, as for a wired network |
+| `networking.wireless.hotspots` | attrs | `{}` | Wi-Fi hotspots that share this machine's connection with other devices, keyed by the adapter's interface name. Each has a service of its own. Needs `networking.backend = "networkd"`, `networking.wireless.countryCode`, the client's interfaces named in `networking.wireless.wifi.interfaces` when the Wi-Fi client is on, and each password file. Off when `networking.wireless.enable` is off |
 | `networking.wireless.hotspots.<name>.enable` | bool | `false` | Turns this hotspot on. Off, its adapter is still kept from the Wi-Fi client, so turning it on changes nothing else |
 | `networking.wireless.hotspots.<name>.ssid` | str | the host name | Network name the hotspot shows (1 to 32 bytes). Each hotspot needs its own |
 | `networking.wireless.hotspots.<name>.band` | enum: `2g`/`5g`/`6g` | `"5g"` | Frequency band. `6g` is Wi-Fi 6E and needs an adapter and a country that allow it (India allows indoor use since 2026) |
-| `networking.wireless.hotspots.<name>.channel` | nullOr int | `null` | Channel. `null` picks 6, 36 or 37 for `2g`, `5g`, `6g` |
+| `networking.wireless.hotspots.<name>.channel` | nullOr ints.positive | `null` | Channel. `null` picks 6, 36 or 37 for `2g`, `5g`, `6g` |
 | `networking.wireless.hotspots.<name>.width` | `"max"` or 20/40/80/160/320 | `"max"` | Channel width in MHz. `"max"` takes the widest the adapter and the country allow, and stays at 20 on `2g`. A number pins it, and the hotspot does not start if that width is not allowed |
 | `networking.wireless.hotspots.<name>.radarChannels` | bool | `false` | Lets `"max"` use channels shared with radar. The hotspot then waits a minute or more before it starts, and many USB adapters cannot do it. 160 MHz on `5g` needs them |
 | `networking.wireless.hotspots.<name>.security` | enum: `wpa3`/`wpa2-wpa3` | `"wpa3"` | `wpa3` lets in WPA3 devices only. `wpa2-wpa3` also lets older devices in. 6 GHz allows WPA3 only |
@@ -472,7 +472,7 @@ default.
 | `networking.wireless.hotspots.<name>.passwordFile` | str | `"/var/lib/hotspot/<name>"` | File on the machine holding only this hotspot's password (8 to 63 characters, no `\|`), created by root with mode 0600. It is read when the hotspot starts and never copied into the Nix store |
 | `networking.wireless.hotspots.<name>.settings` | attrs | `{}` | Extra hostapd settings for this hotspot. They come last, so they win. Put width keys in `width`, not here, as `settings` skips its checks |
 | `networking.wireless.hotspots.<name>.extraConfig` | lines | `""` | Lines added to this hotspot's hostapd configuration as they are, after `settings` |
-| `networking.wireless.bluetooth.enable` | toggle | `false` | Bluetooth (bluez, blueman); also turns on all firmware. Needs `networking.enable`; off when `networking.wireless.enable` is off |
+| `networking.wireless.bluetooth.enable` | toggle | `false` | Bluetooth (bluez, blueman); also turns on all firmware. Needs `networking.enable`; off when `networking.wireless.enable` is off; on by default with `machineType = "laptop"` |
 | `networking.firewall.enable` | nullOr bool | `null` | `null` keeps the NixOS firewall at its default, which is on; `true`/`false` set it explicitly. `false` is rejected on a fleet host |
 | `networking.firewall.config` | attrs | `{}` | Merged into `networking.firewall`, for its options such as logging. `extraCommands` and `extraStopCommands` (iptables) are rejected |
 | `networking.firewall.inputRules` | lines | `""` | nftables rules of this host's own for new connections to it. They add access; they cannot remove what an open port allows |
@@ -571,8 +571,8 @@ An adapter plugged in later starts its client by itself.
 
 **Hotspots** are named by their adapter's interface name. Turn on
 `networking.macNames` so the name is stable, plug the adapter in and read its
-name with `ip link`. Whenever there is a hotspot, name the Wi-Fi client's
-interfaces in `networking.wireless.wifi.interfaces`, so the client never takes a
+name with `ip link`. Whenever there is a hotspot and the Wi-Fi client is on
+(`wifi.enable`), name the Wi-Fi client's interfaces in `networking.wireless.wifi.interfaces`, so the client never takes a
 hotspot's adapter:
 
 ```nix
@@ -630,7 +630,7 @@ secrets in them, as they end up in the Nix store.
 |---|---|---|---|
 | `containers.enable` | toggle | `false` | Docker (rootful and rootless) and Podman |
 | `containers.extraPackages` | listOf package | `[]` | Extra container tooling |
-| `containers.registries` | listOf str | `docker.io`, `quay.io`, `ghcr.io`, `registry.k8s.io` | Registries images may come from; Podman, skopeo and buildah reject any other source. Docker has no equivalent control |
+| `containers.registries` | listOf str | `docker.io`, `quay.io`, `ghcr.io`, `registry.k8s.io` | Registries images may come from; Podman, skopeo and buildah reject any other source. Docker has no equivalent control. The list is also the search order for image names given without a registry |
 | `virtualisation.enable` | toggle | `false` | KVM, QEMU, libvirt, virt-manager |
 | `virtualisation.extraPackages` | listOf package | `[]` | Extra virtualisation packages |
 
@@ -694,8 +694,9 @@ Each SDK (`sdk.base`, `sdk.cpp`, `sdk.go`, `sdk.rust`, `sdk.python`, `sdk.java`,
 | `extraPackages` | listOf package | `[]` | **Appends** to the default set |
 | `nix-ldLibraries` | listOf package | `[]` | Runtime libraries exported to nix-ld |
 
-Editors take the same fields. `editors.neovim` and `editors.emacs` additionally
-accept `configPath` for a local path and `configRepo` for a remote one.
+Editors take the same fields. All three (`editors.neovim`, `editors.emacs` and
+`editors.vscode`) additionally accept `configPath` and `configRepo` (str,
+default `""`); no module reads them yet.
 
 ### `conf.flatpak` and `conf.homebrew`
 
@@ -705,7 +706,9 @@ accept `configPath` for a local path and `configRepo` for a remote one.
 | `homebrew.enable` | toggle (macOS) | `false` | Homebrew integration |
 | `homebrew.brews` / `.casks` | listOf str | `[]` | Formulae and casks |
 | `homebrew.masApps` | attrsOf int | `{}` | Mac App Store applications, name to id |
+| `homebrew.onActivation.autoUpdate` | bool | `false` | Update Homebrew itself on activation |
 | `homebrew.onActivation.cleanup` | enum: `none`/`uninstall`/`zap` | `"none"` | Cleanup mode |
+| `homebrew.onActivation.upgrade` | bool | `false` | Upgrade installed packages on activation |
 
 ### `conf.fleet`
 
@@ -715,7 +718,7 @@ accept `configPath` for a local path and `configRepo` for a remote one.
 | `fleet.repo.ref` | str | `"main"` | Branch or tag to track |
 | `fleet.repo.deployKeySecret` | nullOr str | `null` | Key in `hosts/<host>.yaml` of the secrets repository with a read-only SSH deploy key for a private remote. Requires `conf.secrets.repo.url` |
 | `fleet.localPath` | str | `"/etc/nixos"` | Where the configuration checkout lives. On NixOS every account's git trusts it (`safe.directory`) |
-| `fleet.signing.allowedSignersFile` | nullOr path | `null` | SSH allowed-signers file every fetched commit must be signed by. Required when `repo.url` is set |
+| `fleet.signing.allowedSignersFile` | nullOr path | `null` | SSH allowed-signers file. The newest commit of every fetch must be signed by a key in it, for the configuration and for the secrets repository. Required when `repo.url` is set |
 | `fleet.support.enable` | nullOr bool | `null` | Create an account for the maintainer to reach the host with. `null` means on when `conf.secrets.repo.url` is set. NixOS only; macOS hosts get no support account yet. Sets `sharing.ssh.enable` |
 | `fleet.support.user` | str | `"support"` | Name of the support account |
 | `fleet.support.sshKeys` | listOf str | `[]` | The maintainer's public keys, ideally hardware-backed `sk-ssh-ed25519`. Required when the account is enabled. The account is privileged with a sudo rule without a password, since its password is locked and the key is the factor |
@@ -742,6 +745,13 @@ Setting `repo.url` requires `conf.fleet.signing.allowedSignersFile`, which every
 fetched commit is verified against, and `conf.fleet.repo.url`, since the fleet
 sync is what refreshes the secrets. The URL must be an SSH one, because the host
 authenticates with its deploy key; `http://` and `https://` are rejected.
+These checks apply on NixOS; on macOS `secrets.repo.url` only sets up sops.
+
+The secrets repository is checked against the same signers file, so its
+commits, including the ones `fleet-secrets` makes, must be signed too. Set up
+commit signing in that checkout as well (see
+[Signing commits for a fleet](#signing-commits-for-a-fleet)).
+
 Secrets never enter this repository, which is
 public: the ciphertext, and the list of who can decrypt it, live in a separate
 **private** repository, `fleet-secrets`, with branch protection and one
@@ -760,7 +770,8 @@ fleet-secrets/
 exactly one host plus the maintainer's recovery key. A user file holds
 `password` (a `mkpasswd -m yescrypt` hash) and, when `secrets.sshKey` is on,
 `ssh_key` and `ssh_key_pub`. A host file holds whatever that machine needs;
-`support_password` and `config_deploy_key` are reserved names.
+`support_password` is a reserved name; the deploy key is stored under whatever
+name `conf.fleet.repo.deployKeySecret` gives.
 
 ```nix
 # hosts/laptop1/default.nix
@@ -773,11 +784,11 @@ conf.users.accounts.alice = { fullName = "Alice"; };   # password from secrets; 
 ```
 
 **On the host.** Each host has an identity of two keys, both root-only files in
-`conf.secrets.statePath`, which is its own volume (`fleet`) so a reinstall of
-`/` leaves it alone: an age key (`age.key`) that decrypts, and an SSH deploy
-key (`deploy_ed25519`) that only fetches ciphertext. `os-install` generates
-them, or restores them with `--identity`. No copy exists anywhere else, so a
-reinstall either carries the identity over by hand or re-keys the host. Each
+`conf.secrets.statePath`, which is its own volume (`fleet`), so a rebuild or a
+manual reinstall that keeps the volume leaves it alone: an age key (`age.key`) that decrypts, and an SSH deploy
+key (`deploy_ed25519`) that only fetches ciphertext. `os-install` erases the
+whole disk, so it generates new ones, or restores them with `--identity`. No
+copy exists anywhere else, so a reinstall either carries the identity over by hand or re-keys the host. Each
 sync fetches the secrets repository into a temporary directory, verifies the
 commit signature, copies only this host's files into a snapshot in
 `<statePath>/secrets`, and deletes the clone; sops-nix decrypts the snapshot
@@ -803,7 +814,8 @@ maintainer's tool, run in a clone of the secrets repository, with `--recovery
 `host-rekey`, `host-retire`, `user-password` and `user-key`. It keeps
 `fleet.yaml` and `.sops.yaml` consistent and commits each change; it refuses a
 dirty tree. `fleet-identity` is installed on opted-in hosts and prints the
-host's enrollment file (`--qr` for a QR code); `sudo fleet-identity --export`
+host's enrollment file (`--qr` for a QR code); it needs `sudo`, since the state
+directory is root's; `sudo fleet-identity --export`
 writes the private identity document for a planned reinstall. For a local
 test without a hosting service, `nix run .#secrets-harness` stands in for the
 secrets repository and the configuration upstream; see `tests/secrets/README.md`.
@@ -818,12 +830,12 @@ secrets repository and the configuration upstream; see `tests/secrets/README.md`
   repository, run `fleet-secrets user-password alice laptop1`, and push. Press
   Enter at the installer. With `--no-enroll` the host boots with locked
   accounts and retries until enrolled. Once the host is up, the remote variant
-  is `ssh support@laptop1 cat /var/lib/fleet/laptop1.enroll | fleet-secrets
+  is `ssh support@laptop1 sudo cat /var/lib/fleet/laptop1.enroll | fleet-secrets
   host-enroll laptop1 --from -`.
 - **Add a user.** Add `users.accounts.bob` to the host, run
   `fleet-secrets user-password bob laptop1`, push both repositories. If the
   file is forgotten, the sync refuses to build and logs `missing:
-  secrets/users/bob/laptop1.yaml`; nothing changes until it exists.
+  /var/lib/fleet/secrets/users/bob/laptop1.yaml`; nothing changes until it exists.
 - **Add an SSH key later.** Set `accounts.bob.secrets.sshKey = true`, run
   `fleet-secrets user-key bob laptop1`, register the printed public key where
   bob needs access, push both repositories. Order does not matter; the sync
@@ -839,8 +851,9 @@ secrets repository and the configuration upstream; see `tests/secrets/README.md`
 - **User leaves.** Delete `users/alice/*.yaml`, remove `accounts.alice` from the
   hosts, commit both repositories, revoke her public keys on the forge. The
   account disappears at the next sync.
-- **Reinstall.** If the `fleet` volume survived, nothing is needed. Otherwise
-  it is a re-key: `os-install -H laptop1` creates a new identity and
+- **Reinstall.** After a manual reinstall that kept the `fleet` volume nothing
+  is needed. `os-install` erases it, so use `--identity` with the document from
+  `fleet-identity --export`, or else it is a re-key: `os-install -H laptop1` creates a new identity and
   enrollment file, `fleet-secrets host-rekey laptop1 --from laptop1.enroll`
   re-encrypts that host's files to it, swap the deploy key on the forge, press
   Enter at the installer. To carry the identity over instead, on the working
