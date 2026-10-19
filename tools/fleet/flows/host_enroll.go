@@ -115,7 +115,7 @@ var HostEnroll = &engine.Flow{
 		},
 		{
 			Title: "Copy its enrollment file here",
-			Why:   "It holds the two public halves only. Copied over SSH to a host whose key is known, so it cannot be swapped on the way; the checksums must match.",
+			Why:   "It holds the public halves only. Copied over SSH to a host whose key is known, so it cannot be swapped on the way; the checksums must match.",
 			Do:    engine.Func(copyEnrollment),
 		},
 		{

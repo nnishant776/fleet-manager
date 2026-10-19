@@ -18,6 +18,7 @@ a common configuration module rather than being per host.
 │   └── allowed_signers              # keys the fleet accepts on commits; see Signing commits for a fleet
 ├── lib/
 │   ├── apps/                        # os-install, system-switch, home-switch, check-purity, fleet-secrets, fleet; rpi-image and secrets-harness on Linux; darwin-rebuild on macOS
+│   ├── mkFleet.nix                  # lib.mkFleet: a fleet's systems, homes and apps from its host folders; see A private fleet
 │   ├── mkHost.nix                   # host factory (NixOS / nix-darwin)
 │   ├── secrets-sync.nix             # fleet-secrets-sync and fleet-identity, used by the sync and os-install
 │   ├── buildUser.nix                # assembles a user's Home Manager modules
@@ -220,12 +221,16 @@ host's secrets and checks that they decrypt. These flags control the step:
 | `--identity FILE` | Restore a host identity exported by `fleet-identity --export` instead of generating one; no enrollment is needed |
 | `--no-enroll` | Do not wait for enrollment; the host boots with locked accounts and retries the secrets fetch until it is enrolled |
 | `--enroll-out PATH` | Also copy the enrollment file to `PATH`, for example a mounted USB stick |
+| `--private` | The flake is a private repository (`git+ssh://…`) that the host reads with its own configuration key: the identity is made first, the install waits until its keys are registered, then clones the flake and installs from it. See [A private fleet](#a-private-fleet) |
 
 **Fleet machines pull; they cannot push.** The checkout's push URL is set to an
 unusable value by the first-boot clone and re-applied on every sync, so a `git push` from a
 fleet machine fails. That is hygiene; the control is the credential: a public
-repository needs none, and a private one gets a deploy key with read access
-only, through `conf.fleet.repo.deployKeySecret`.
+repository needs none, and a private one gets a key with read access only.
+That is the host's own configuration key, through `conf.fleet.repo.hostKey`,
+or a key delivered in its secrets, through `conf.fleet.repo.deployKeySecret`.
+The fetch URL is set from `conf.fleet.repo.url` on every sync too, so a host
+follows its configuration to another repository.
 
 ### Building a Raspberry Pi image
 
@@ -305,6 +310,63 @@ commit signed by a key still trusted. Do not rely on `valid-before` for that:
 Git checks it against the commit's own date, which the signer chooses, so a
 stolen key can still sign backdated commits; the option only suits retiring a
 key on a planned date.
+
+### A private fleet
+
+The hosts in `hosts/` here are examples and test hosts, and they keep working
+as they are. A real fleet can keep its hosts and users in a private repository
+instead. That repository pins this one and builds its hosts with
+`lib.mkFleet`:
+
+```nix
+{
+  inputs.fleet-manager.url = "github:nnishant776/fleet-manager";
+  outputs = { self, fleet-manager }: fleet-manager.lib.mkFleet {
+    inherit self;
+    hosts = ./config/hosts;             # one folder per host, as hosts/ here
+    users = ./config/users;             # optional, as users/ here
+    extraSystems = [ "x86_64-linux" ];  # the apps where you and CI run them
+  };
+}
+```
+
+Its machines deploy from the private repository: each records that
+repository's commit as its revision, verifies it against the signers file its
+configuration names, and builds with the fleet-manager its `flake.lock` pins.
+Moving to a newer fleet-manager is a signed commit there that updates the
+lock. A host's folder works the same there; only the path to a signers file
+changes with the depth, as in `../../../fleet/allowed_signers`.
+
+A private repository needs a key to read. GitHub allows a deploy key on one
+repository only, and each host's deploy key is on the secrets repository, so
+a host has a second key for its configuration: `config_ed25519`. The host
+makes it with the rest of its identity, and its enrollment file lists it as
+`config_deploy_pubkey`. A host fetches with it when its configuration says:
+
+```nix
+conf.fleet.repo.url = "git@github.com:org/fleet-inventory.git";
+conf.fleet.repo.hostKey = true;
+```
+
+The key has to be a read-only deploy key of the private repository.
+`fleet host enroll <host> --flake <checkout>` registers it with `gh`.
+
+- **Installing a host from it:** run `bootstrap` with
+  `FLAKE=git+ssh://git@github.com/org/fleet-inventory`, or
+  `os-install --private --flake git+ssh://… -H <host>`. The host can't read the
+  repository yet, so the identity comes first. The install shows the
+  enrollment file and waits while you enroll the host and register both of its
+  keys. Then it clones the private flake with the configuration key and
+  installs.
+- **Moving a running host to it:**
+  1. Copy the host's folder there, with `repo.url` and `hostKey` set, and push.
+  2. Run `fleet host enroll <host> --flake <checkout of it>`, which adds the
+     configuration key on the host and registers it.
+  3. Here, point the host's `repo.url` at the private repository, with
+     `hostKey`, and push. The host syncs that commit. Its next sync fetches
+     from the private repository, and `resetLocalChanges` (on by default) moves
+     the checkout over.
+  4. Delete the host's folder here.
 
 ### The `fleet` tool
 
@@ -760,6 +822,7 @@ default `""`); no module reads them yet.
 | `fleet.repo.url` | nullOr str | `null` | Git remote the machine is deployed from |
 | `fleet.repo.ref` | str | `"main"` | Branch or tag to track |
 | `fleet.repo.deployKeySecret` | nullOr str | `null` | Key in `hosts/<host>.yaml` of the secrets repository with a read-only SSH deploy key for a private remote. Requires `conf.secrets.repo.url` |
+| `fleet.repo.hostKey` | bool | `false` | Fetch a private remote with the host's own configuration key, `<secrets.statePath>/config_ed25519`, made with its identity and listed in its enrollment file as `config_deploy_pubkey`; register it read-only there. Requires `conf.secrets.repo.url`; not with `deployKeySecret`. See [A private fleet](#a-private-fleet) |
 | `fleet.localPath` | str | `"/etc/nixos"` | Where the configuration checkout lives. On NixOS every account's git trusts it (`safe.directory`) |
 | `fleet.signing.allowedSignersFile` | nullOr path | `null` | SSH allowed-signers file. The newest commit of every fetch must be signed by a key in it, for the configuration and for the secrets repository. Required when `repo.url` is set |
 | `fleet.support.enable` | nullOr bool | `null` | Create an account for the maintainer to reach the host with. `null` means on when `conf.secrets.repo.url` is set. NixOS only; macOS hosts get no support account yet. Sets `sharing.ssh.enable` |
@@ -826,10 +889,12 @@ conf.fleet.support.sshKeys = [ "sk-ssh-ed25519@openssh.com AAAA…" ];
 conf.users.accounts.alice = { fullName = "Alice"; };   # password from secrets; no SSH key yet
 ```
 
-**On the host.** Each host has an identity of two keys, both root-only files in
+**On the host.** Each host has an identity of three keys, all root-only files in
 `conf.secrets.statePath`, which is its own volume (`fleet`), so a rebuild or a
-manual reinstall that keeps the volume leaves it alone: an age key (`age.key`) that decrypts, and an SSH deploy
-key (`deploy_ed25519`) that only fetches ciphertext. `os-install` erases the
+manual reinstall that keeps the volume leaves it alone: an age key (`age.key`) that decrypts, an SSH deploy
+key (`deploy_ed25519`) that only fetches ciphertext, and an SSH configuration
+key (`config_ed25519`) that fetches a private configuration
+(`conf.fleet.repo.hostKey`). `os-install` erases the
 whole disk, so it generates new ones, or restores them with `--identity`. No
 copy exists anywhere else, so a reinstall either carries the identity over by hand or re-keys the host. Each
 sync fetches the secrets repository into a temporary directory, verifies the
@@ -991,7 +1056,7 @@ turn the implied option off.
 | `conf.users.accounts.<name>.privileged` | • `wheel` (sudo), plus `networkmanager` or `wpa_supplicant`, by backend, `ssh-users`, `docker`, `podman` and `libvirtd` for whichever of those services the host enables. Only `wheel`, `docker`, `podman`, `libvirtd`, `networkmanager` and `wpa_supplicant` are rejected in `groups`; `ssh-users` is not, so others opt in through `groups` |
 | `conf.users.accounts.<name>.sudoSshKeys` | • `/etc/ssh/sudo_keys.d/<name>` (root's, mode 0444) with those keys<br>• `security.pam.sshAgentAuth` reading only those files, for sudo<br>• `Defaults noninteractive_auth`, so `sudo -n` can use the key<br>• Listing keys on an unprivileged account is a build error |
 | `conf.fleet.localPath`<br>*(every NixOS host)* | • Trusted in `/etc/gitconfig` (`safe.directory`), so every account can use the root-owned checkout |
-| `conf.fleet.repo.url` | • `fleet.autoUpdate.enable` on, `users.mutableUsers = false`<br>• On NixOS: requires `fleet.signing.allowedSignersFile`; plain `http://` is rejected<br>• On NixOS: `networking.firewall.enable = false` is rejected; sshd password authentication gives a warning<br>• `fleet.repo.deployKeySecret` requires `secrets.repo.url` |
+| `conf.fleet.repo.url` | • `fleet.autoUpdate.enable` on, `users.mutableUsers = false`<br>• On NixOS: requires `fleet.signing.allowedSignersFile`; plain `http://` is rejected<br>• On NixOS: `networking.firewall.enable = false` is rejected; sshd password authentication gives a warning<br>• `fleet.repo.deployKeySecret` and `fleet.repo.hostKey` require `secrets.repo.url`, and exclude each other |
 | `conf.secrets.repo.url` | • `fleet.support.enable` on, which requires `fleet.support.sshKeys` and sets `sharing.ssh.enable = true` (sshd still needs `networking.enable`)<br>• sops-nix reads `<statePath>/secrets`; every account with `secrets.password` (the default) takes its hash from the secrets repository, so `initialHashedPassword` is an error<br>• Requires `fleet.repo.url` (`fleet-bootstrap` and `config-auto-update` refresh the secrets) and `fleet.signing.allowedSignersFile` (every fetched commit is verified against it); an HTTP(S) URL is rejected<br>• Accounts with `secrets.sshKey`: Home Manager points SSH and git signing at `/run/secrets/users/<name>/ssh_key` |
 | `conf.fleet.support.enable` | • A privileged `support` account with `fleet.support.sshKeys`, a locked password and passwordless sudo<br>• `sharing.ssh.enable = true` (a plain value, so it beats role defaults) |
 | `conf.hardware.boot.mode = "bios"` | • `hardware.boot.loader` defaults to `"grub"`; GRUB without `grubPasswordHash` gives a warning |

@@ -58,7 +58,7 @@ A value that is neither given nor has a default is asked for on a terminal.
    $ SSH_AUTH_SOCK=AGENT ssh -A -o BatchMode=yes -o ConnectTimeout=10 ADMIN@ADDRESS 'sudo -n fleet-secrets-sync init --state /var/lib/fleet --host HOST'
    ```
 
-6. **Copy its enrollment file here.** It holds the two public halves only. Copied over SSH to a host whose key is known, so it cannot be swapped on the way; the checksums must match.
+6. **Copy its enrollment file here.** It holds the public halves only. Copied over SSH to a host whose key is known, so it cannot be swapped on the way; the checksums must match.
 
 7. **Enroll HOST in the secrets repository.** fleet secrets host-enroll records its recipient, renders the rules and creates its empty file, each step shown.
 
