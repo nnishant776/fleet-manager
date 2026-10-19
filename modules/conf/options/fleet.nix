@@ -21,7 +21,7 @@
           An `https://` address is fetched with no key, for a public
           repository. An SSH address (`git@host:org/repo.git` or `ssh://…`),
           for a private one, is fetched with the host's own configuration key,
-          `<conf.secrets.statePath>/config_ed25519`, which the host makes with
+          `<conf.secrets.statePath>/config_deploy_ed25519`, which the host makes with
           the rest of its identity, so it needs `conf.secrets.repo.url`. Its
           enrollment file lists the public half; register that read-only on
           the repository.

@@ -182,7 +182,7 @@ echo "login=$(id -un)"
 sudo -n true 2>/dev/null && echo sudo=true || echo sudo=false
 command -v fleet-secrets-sync >/dev/null && echo has_tooling=true || echo has_tooling=false
 sudo -n test -f /var/lib/fleet/age.key && echo has_identity=true || echo has_identity=false
-sudo -n test -f /var/lib/fleet/config_ed25519 && echo has_config_key=true || echo has_config_key=false
+sudo -n test -f /var/lib/fleet/config_deploy_ed25519 && echo has_config_key=true || echo has_config_key=false
 test -d /etc/nixos/.git && echo has_checkout=true || echo has_checkout=false
 echo "origin=$(git -C /etc/nixos remote get-url origin 2>/dev/null)"
 id support >/dev/null 2>&1 && echo has_support=true || echo has_support=false`).RunQuiet(x)
@@ -270,7 +270,7 @@ func copyEnrollment(x *engine.Ctx) error {
 		if v, ok := strings.CutPrefix(line, "age_recipient: "); ok {
 			x.Values["recipient"] = v
 		}
-		if v, ok := strings.CutPrefix(line, "deploy_pubkey: "); ok {
+		if v, ok := strings.CutPrefix(strings.TrimPrefix(line, "secrets_"), "deploy_pubkey: "); ok {
 			x.Values["deploy_key"] = v
 		}
 		if v, ok := strings.CutPrefix(line, "config_deploy_pubkey: "); ok {

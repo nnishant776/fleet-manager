@@ -30,11 +30,13 @@ pkgs.runCommand "fleet-secrets-parity" {
     age-keygen -o $id.key 2>/dev/null
     ssh-keygen -q -t ed25519 -N "" -f $id.deploy
   done
-  enrollment() {  # enrollment ID HOST
-    printf 'version: 1\nhost: %s\ncreated: 2026-10-18T00:00:00Z\nage_recipient: %s\ndeploy_pubkey: %s fleet-deploy@%s\n' \
-      "$2" "$(age-keygen -y $1.key)" "$(cut -d' ' -f1,2 $1.deploy.pub)" "$2" > $1.enroll
+  # FIELD is secrets_deploy_pubkey, or deploy_pubkey as files written before
+  # the keys were renamed say; both tools take either.
+  enrollment() {  # enrollment ID HOST [FIELD]
+    printf 'version: 1\nhost: %s\ncreated: 2026-10-18T00:00:00Z\nage_recipient: %s\n%s: %s fleet-deploy@%s\n' \
+      "$2" "$(age-keygen -y $1.key)" "''${3:-secrets_deploy_pubkey}" "$(cut -d' ' -f1,2 $1.deploy.pub)" "$2" > $1.enroll
   }
-  enrollment alpha alpha
+  enrollment alpha alpha deploy_pubkey
   enrollment beta beta
   enrollment alpha2 alpha
   export SOPS_AGE_KEY_FILE=$PWD/maint.key

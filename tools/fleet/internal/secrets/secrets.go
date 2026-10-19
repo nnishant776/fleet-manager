@@ -170,12 +170,16 @@ func ReadEnrollment() engine.Step {
 			}
 			x.Values["enrollment"] = string(doc)
 			field := map[string]string{}
-			for _, key := range []string{"version", "host", "age_recipient", "deploy_pubkey"} {
-				res, err := engine.Cmd("yq", "."+key).StdinFrom("enrollment").StdinNote("the enrollment file").RunQuiet(x)
+			// Files written before the keys were renamed say deploy_pubkey.
+			for _, f := range [][2]string{
+				{"version", ".version"}, {"host", ".host"}, {"age_recipient", ".age_recipient"},
+				{"secrets_deploy_pubkey", ".secrets_deploy_pubkey // .deploy_pubkey"},
+			} {
+				res, err := engine.Cmd("yq", f[1]).StdinFrom("enrollment").StdinNote("the enrollment file").RunQuiet(x)
 				if err != nil {
 					return err
 				}
-				field[key] = strings.TrimSpace(res.Stdout)
+				field[f[0]] = strings.TrimSpace(res.Stdout)
 			}
 			if field["version"] != "1" {
 				return fmt.Errorf("unsupported enrollment file version '%s'", field["version"])
@@ -189,8 +193,8 @@ func ReadEnrollment() engine.Step {
 			}) >= 0 {
 				return errors.New("malformed age_recipient in the enrollment file")
 			}
-			if !strings.HasPrefix(field["deploy_pubkey"], "ssh-ed25519 ") {
-				return errors.New("deploy_pubkey in the enrollment file is not an ssh-ed25519 key")
+			if !strings.HasPrefix(field["secrets_deploy_pubkey"], "ssh-ed25519 ") {
+				return errors.New("secrets_deploy_pubkey in the enrollment file is not an ssh-ed25519 key")
 			}
 			// Absent from files written before hosts had a configuration key.
 			res, err := engine.Cmd("yq", `.config_deploy_pubkey // ""`).StdinFrom("enrollment").StdinNote("the enrollment file").RunQuiet(x)
@@ -201,7 +205,7 @@ func ReadEnrollment() engine.Step {
 			if configKey != "" && !strings.HasPrefix(configKey, "ssh-ed25519 ") {
 				return errors.New("config_deploy_pubkey in the enrollment file is not an ssh-ed25519 key")
 			}
-			x.Values["recipient"], x.Values["deploy_key"], x.Values["config_key"] = r, field["deploy_pubkey"], configKey
+			x.Values["recipient"], x.Values["deploy_key"], x.Values["config_key"] = r, field["secrets_deploy_pubkey"], configKey
 			x.UI.OK("for " + field["host"] + ", recipient " + r)
 			return nil
 		}),

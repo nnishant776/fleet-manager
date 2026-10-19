@@ -110,7 +110,7 @@ pkgs.writeShellApplication {
     recovery="$(age-keygen -y "$dir/recovery.key")"
     recipient="$(age-keygen -y "$dir/host.key")"
 
-    genkey "$dir/deploy_ed25519" "fleet-deploy@$host"
+    genkey "$dir/secrets_deploy_ed25519" "fleet-secrets@$host"
     genkey "$dir/signing_ed25519" "maintainer@test"
     genkey "$dir/support_ed25519" "support@test"
     if [ ! -e "$dir/allowed_signers" ]; then
@@ -120,7 +120,7 @@ pkgs.writeShellApplication {
     # The user-level sshd the scratch host fetches from, authenticating only
     # the host's deploy key.
     genkey "$dir/sshd/ssh_host_ed25519_key" "secrets-harness-sshd"
-    cp "$dir/deploy_ed25519.pub" "$dir/sshd/authorized_keys"
+    cp "$dir/secrets_deploy_ed25519.pub" "$dir/sshd/authorized_keys"
     cat > "$dir/sshd/sshd_config" <<EOF
     Port $port
     HostKey $dir/sshd/ssh_host_ed25519_key
@@ -215,10 +215,10 @@ pkgs.writeShellApplication {
 
     jq -n \
       --arg dir "$dir" --argjson port "$port" --arg user "$me" \
-      --arg recipient "$recipient" --arg deploy "$(cat "$dir/deploy_ed25519.pub")" \
+      --arg recipient "$recipient" --arg deploy "$(cat "$dir/secrets_deploy_ed25519.pub")" \
       --arg secrets "$user_url" --arg config "$config_url" \
       '{ dir: $dir, port: $port, user: $user, secrets_url: $secrets,
-         config_url: $config, host_recipient: $recipient, deploy_pubkey: $deploy,
+         config_url: $config, host_recipient: $recipient, secrets_deploy_pubkey: $deploy,
          files: { recovery_key: ($dir + "/recovery.key"), host_key: ($dir + "/host.key"),
                   signing_key: ($dir + "/signing_ed25519"),
                   allowed_signers: ($dir + "/allowed_signers"),

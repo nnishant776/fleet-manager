@@ -37,9 +37,9 @@ func deployKeyText(extra string) engine.Step {
 		Title: "Register {{.host}}'s deploy key",
 		Why:   "The host fetches this repository with it; it must be read-only.",
 		Do: engine.Seq(
-			engine.Show("Deploy public key of {{.host}}:\n"+
+			engine.Show("Secrets deploy key of {{.host}}:\n"+
 				"  {{.deploy_key}}\n\n"+
-				"Register it read-only on the forge (the web page, Settings -> Deploy keys,\n"+
+				"Register it read-only on the secrets repository (the web page, Settings -> Deploy keys,\n"+
 				"is the safer route), or with:\n"+
 				"  gh repo deploy-key add <file holding the key above> --title {{.host}}"+extra),
 			engine.Func(configKeyText),
@@ -54,7 +54,7 @@ func configKeyText(x *engine.Ctx) error {
 		return nil
 	}
 	x.UI.Blank()
-	x.Say("Configuration public key of {{.host}}:\n" +
+	x.Say("Configuration deploy key of {{.host}}:\n" +
 		"  {{.config_key}}\n\n" +
 		"If its configuration repository is private (an SSH conf.fleet.repo.url),\n" +
 		"register this one read-only there, the same way:\n" +

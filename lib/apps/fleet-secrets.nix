@@ -163,7 +163,8 @@ pkgs.writeShellApplication {
       version="$(yq '.version' <<<"$doc")"
       host="$(yq '.host' <<<"$doc")"
       enrolledRecipient="$(yq '.age_recipient' <<<"$doc")"
-      enrolledDeployKey="$(yq '.deploy_pubkey' <<<"$doc")"
+      # Files written before the keys were renamed say deploy_pubkey.
+      enrolledDeployKey="$(yq '.secrets_deploy_pubkey // .deploy_pubkey' <<<"$doc")"
       enrolledConfigKey="$(yq '.config_deploy_pubkey // ""' <<<"$doc")"
       [ "$version" = 1 ] || die "unsupported enrollment file version '$version'"
       [ "$host" = "$1" ] || die "enrollment file is for host '$host', not '$1'"
@@ -174,7 +175,7 @@ pkgs.writeShellApplication {
       esac
       case "$enrolledDeployKey" in
         "ssh-ed25519 "*) ;;
-        *) die "deploy_pubkey in the enrollment file is not an ssh-ed25519 key" ;;
+        *) die "secrets_deploy_pubkey in the enrollment file is not an ssh-ed25519 key" ;;
       esac
       case "$enrolledConfigKey" in
         ""|"ssh-ed25519 "*) ;;
@@ -192,15 +193,15 @@ pkgs.writeShellApplication {
 
     print_deploy_key() {  # print_deploy_key HOST
       echo
-      echo "Deploy public key of $1:"
+      echo "Secrets deploy key of $1:"
       echo "  $enrolledDeployKey"
       echo
-      echo "Register it read-only on the forge (the web page, Settings -> Deploy keys,"
+      echo "Register it read-only on this repository (the web page, Settings -> Deploy keys,"
       echo "is the safer route), or with:"
       echo "  gh repo deploy-key add <file holding the key above> --title $1"
       if [ -n "$enrolledConfigKey" ]; then
         echo
-        echo "Configuration public key of $1:"
+        echo "Configuration deploy key of $1:"
         echo "  $enrolledConfigKey"
         echo
         echo "If its configuration repository is private (an SSH conf.fleet.repo.url),"

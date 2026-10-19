@@ -42,7 +42,20 @@ let
     # The maintainer's keys, for the forge to play the maintainer with fleet.
     cp "$keys/recovery.key" "$keys/signing_ed25519" "$out/"
 
-    # The identity document that `os-install --identity` reads, for the host key and deploy key.
+    # The identity document that `os-install --identity` reads, for the host
+    # key and both deploy keys.
+    {
+      echo "version: 1"
+      echo "host: ${hostName}"
+      echo "age_key: |"
+      sed 's/^/  /' "$keys/host.key"
+      echo "secrets_deploy_key: |"
+      sed 's/^/  /' "$keys/deploy_ed25519"
+      echo "config_deploy_key: |"
+      sed 's/^/  /' "$keys/config_ed25519"
+    } > "$out/identity.yaml"
+    # As exported before the keys were renamed and the configuration key
+    # existed, for init to read and to add one.
     {
       echo "version: 1"
       echo "host: ${hostName}"
@@ -50,13 +63,7 @@ let
       sed 's/^/  /' "$keys/host.key"
       echo "deploy_key: |"
       sed 's/^/  /' "$keys/deploy_ed25519"
-    } > "$out/identity.yaml"
-    # As exported before the configuration key existed, for init to add one.
-    cp "$out/identity.yaml" "$out/identity-without-config.yaml"
-    {
-      echo "config_key: |"
-      sed 's/^/  /' "$keys/config_ed25519"
-    } >> "$out/identity.yaml"
+    } > "$out/identity-without-config.yaml"
 
     signed_git() {
       git -c gpg.format=ssh -c "user.signingkey=$keys/signing_ed25519" \
@@ -415,20 +422,44 @@ pkgs.testers.runNixOSTest {
         assert url == "${configUrl}", f"origin is {url}"
         assert f"commit={unsigned}" in recorded(), recorded()
 
-    with subtest("14: init adds a configuration key to an identity made without one"):
+    with subtest("14: init reads an older identity, and adds a configuration key to it"):
+        # The document says deploy_key and has no configuration key.
         fleet.succeed(
             "fleet-secrets-sync init --state /tmp/old --host ${hostName}"
             " --from-identity ${fixtures}/identity-without-config.yaml"
         )
-        pub = fleet.succeed("cat /tmp/old/config_ed25519.pub").strip()
-        fleet.succeed("test \"$(stat -c %a /tmp/old/config_ed25519)\" = 600")
+        secrets_pub = fleet.succeed("cat /tmp/old/secrets_deploy_ed25519.pub").strip()
+        pub = fleet.succeed("cat /tmp/old/config_deploy_ed25519.pub").strip()
+        fleet.succeed("test \"$(stat -c %a /tmp/old/config_deploy_ed25519)\" = 600")
         enroll = fleet.succeed("cat /tmp/old/${hostName}.enroll")
+        assert f"secrets_deploy_pubkey: {secrets_pub}" in enroll, enroll
         assert f"config_deploy_pubkey: {pub}" in enroll, enroll
         before = fleet.succeed("sha256sum /tmp/old/* | sort")
         fleet.succeed("fleet-secrets-sync init --state /tmp/old --host ${hostName}")
         assert fleet.succeed("sha256sum /tmp/old/* | sort") == before, "a second init changed the identity"
         # The host's own enrollment file lists the key the config account takes.
         real = fleet.succeed("cat /var/lib/fleet/${hostName}.enroll")
-        assert "config_deploy_pubkey: " + fleet.succeed("cat /var/lib/fleet/config_ed25519.pub").strip() in real, real
+        assert "config_deploy_pubkey: " + fleet.succeed("cat /var/lib/fleet/config_deploy_ed25519.pub").strip() in real, real
+
+    with subtest("15: a host from before the keys were renamed keeps its deploy key"):
+        # Its state as it was: deploy_ed25519, and an enrollment file that says deploy_pubkey.
+        fleet.succeed(
+            "install -d -m 700 /tmp/legacy",
+            "cp -a /tmp/old/age.key /tmp/legacy/",
+            "cp -a /tmp/old/secrets_deploy_ed25519 /tmp/legacy/deploy_ed25519",
+            "cp -a /tmp/old/secrets_deploy_ed25519.pub /tmp/legacy/deploy_ed25519.pub",
+        )
+        fleet.succeed("fleet-secrets-sync init --state /tmp/legacy --host ${hostName}")
+        fleet.succeed("test -f /tmp/legacy/secrets_deploy_ed25519 -a ! -e /tmp/legacy/deploy_ed25519")
+        assert fleet.succeed("cat /tmp/legacy/secrets_deploy_ed25519.pub").strip() == secrets_pub
+        enroll = fleet.succeed("cat /tmp/legacy/${hostName}.enroll")
+        assert f"secrets_deploy_pubkey: {secrets_pub}" in enroll and "\ndeploy_pubkey" not in enroll, enroll
+        # The sync, too, renames a key it finds under the old name.
+        fleet.succeed(
+            "mv /var/lib/fleet/secrets_deploy_ed25519 /var/lib/fleet/deploy_ed25519",
+            "mv /var/lib/fleet/secrets_deploy_ed25519.pub /var/lib/fleet/deploy_ed25519.pub",
+        )
+        fleet.succeed(sync_cmd)
+        fleet.succeed("test -f /var/lib/fleet/secrets_deploy_ed25519 -a ! -e /var/lib/fleet/deploy_ed25519")
   '';
 }

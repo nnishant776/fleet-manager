@@ -338,7 +338,8 @@ changes with the depth, as in `../../../fleet/allowed_signers`.
 
 A private repository needs a key to read. GitHub allows a deploy key on one
 repository only, and each host's deploy key is on the secrets repository, so
-a host has a second key for its configuration: `config_ed25519`. The host
+a host has a second key for its configuration: `config_deploy_ed25519`, next
+to `secrets_deploy_ed25519` for the secrets. The host
 makes it with the rest of its identity, and its enrollment file lists it as
 `config_deploy_pubkey`. A host fetches with it whenever its configuration
 names an SSH address; an `https://` one is fetched with no key:
@@ -366,7 +367,7 @@ The key has to be a read-only deploy key of the private repository.
      configuration key. Nothing in this repository names the private one; the
      host learns it from the configuration it switches to:
      ```bash
-     sudo env GIT_SSH_COMMAND="ssh -i /var/lib/fleet/config_ed25519 -o IdentitiesOnly=yes" \
+     sudo env GIT_SSH_COMMAND="ssh -i /var/lib/fleet/config_deploy_ed25519 -o IdentitiesOnly=yes" \
        nixos-rebuild switch --flake git+ssh://git@github.com/example-org/inventory#<host>
      ```
      Its next sync fetches from the private repository, and
@@ -896,10 +897,11 @@ conf.users.accounts.alice = { fullName = "Alice"; };   # password from secrets; 
 
 **On the host.** Each host has an identity of three keys, all root-only files in
 `conf.secrets.statePath`, which is its own volume (`fleet`), so a rebuild or a
-manual reinstall that keeps the volume leaves it alone: an age key (`age.key`) that decrypts, an SSH deploy
-key (`deploy_ed25519`) that only fetches ciphertext, and an SSH configuration
-key (`config_ed25519`) that fetches a private configuration, from an SSH
-`conf.fleet.repo.url`. `os-install` erases the
+manual reinstall that keeps the volume leaves it alone: an age key (`age.key`) that decrypts, an SSH secrets
+deploy key (`secrets_deploy_ed25519`) that only fetches ciphertext, and an SSH
+configuration deploy key (`config_deploy_ed25519`) that fetches a private
+configuration, from an SSH `conf.fleet.repo.url`. Their public halves are
+`secrets_deploy_pubkey` and `config_deploy_pubkey` in its enrollment file. `os-install` erases the
 whole disk, so it generates new ones, or restores them with `--identity`. No
 copy exists anywhere else, so a reinstall either carries the identity over by hand or re-keys the host. Each
 sync fetches the secrets repository into a temporary directory, verifies the

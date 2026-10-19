@@ -63,10 +63,10 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 9. **Register HOST's deploy key.** The host fetches this repository with it; it must be read-only.
 
-   > Deploy public key of HOST:
+   > Secrets deploy key of HOST:
    > DEPLOY_KEY
    > 
-   > Register it read-only on the forge (the web page, Settings -> Deploy keys,
+   > Register it read-only on the secrets repository (the web page, Settings -> Deploy keys,
    > is the safer route), or with:
    > gh repo deploy-key add \<file holding the key above> --title HOST
    > 

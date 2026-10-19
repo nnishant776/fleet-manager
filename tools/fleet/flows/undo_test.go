@@ -34,7 +34,7 @@ func TestAdmittingAHostPutsBackWhenTheCommitFails(t *testing.T) {
 	_ = os.WriteFile(from, []byte(enrollDoc), 0o644)
 	answers := map[string]string{
 		".hosts | has(strenv(h))": "false", ".version": "1", ".host": "pi",
-		".age_recipient": "age1testrecipient", ".deploy_pubkey": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDdBK90 fleet-deploy@pi",
+		".age_recipient": "age1testrecipient", ".secrets_deploy_pubkey // .deploy_pubkey": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDdBK90 fleet-deploy@pi",
 		".maintainer": "age1maint",
 	}
 	x, fake, out := newFakeCtx(func(s engine.Spec) (engine.Result, error) {
