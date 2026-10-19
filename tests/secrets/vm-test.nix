@@ -122,7 +122,7 @@ let
   '';
 
   secretsUrl = "ssh://git@forge/var/lib/forge/secrets.git";
-  # A private configuration repository, as fleet-inventory is: its own account
+  # A private configuration repository, as a fleet's inventory is: its own account
   # on the forge, which takes the host's configuration key and no other.
   configUrl = "ssh://config@forge/var/lib/forge/config.git";
 in

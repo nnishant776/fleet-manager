@@ -4,7 +4,7 @@
       url = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
         default = null;
-        example = "git@github.com:org/fleet-secrets.git";
+        example = "git@github.com:example-org/secrets.git";
         description = ''
           The private secrets repository this host fetches its secrets from.
           `null` opts the host out entirely: no secrets sync, no host

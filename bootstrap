@@ -15,7 +15,7 @@
 #   other Linux         installs Lix; only Home Manager is supported there
 #
 # FLAKE overrides the flake, e.g. FLAKE=github:org/repo/v1.2 or FLAKE=path:.
-# A private fleet's, git+ssh://git@github.com/org/fleet-inventory, is
+# A private fleet's, git+ssh://git@github.com/example-org/inventory, is
 # installed with fleet-manager's os-install --private (see README).
 # FLEET_RELEASES overrides where fleet is fetched from.
 # POSIX sh on purpose: macOS ships bash 3.2.

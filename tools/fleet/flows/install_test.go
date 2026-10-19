@@ -95,7 +95,7 @@ func TestInstallDryRunNamesWhatIsMissing(t *testing.T) {
 
 func TestInstallFromAPrivateConfiguration(t *testing.T) {
 	x, fake, out := newFakeCtx(installer(t, true))
-	flake := "git+ssh://git@github.com/nnishant776/fleet-inventory"
+	flake := "git+ssh://git@github.com/example-org/inventory"
 	err := engine.RunWith(x, Install, map[string]string{"flake": flake, "host": "nas", "disk": "main=/dev/vda"})
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)

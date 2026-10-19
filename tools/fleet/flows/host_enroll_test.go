@@ -196,7 +196,7 @@ func TestEnrollAddsAndRegistersTheConfigurationKey(t *testing.T) {
 		case s.Name == "nix" && strings.Contains(args, "conf.fleet.repo.hostKey"):
 			return engine.Result{Stdout: "true"}, nil
 		case s.Name == "nix" && strings.Contains(args, "conf.fleet.repo.url"):
-			return engine.Result{Stdout: "git@github.com:nnishant776/fleet-inventory.git"}, nil
+			return engine.Result{Stdout: "git@github.com:example-org/inventory.git"}, nil
 		}
 		return base(s)
 	})

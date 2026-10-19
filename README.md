@@ -344,7 +344,7 @@ makes it with the rest of its identity, and its enrollment file lists it as
 `config_deploy_pubkey`. A host fetches with it when its configuration says:
 
 ```nix
-conf.fleet.repo.url = "git@github.com:org/fleet-inventory.git";
+conf.fleet.repo.url = "git@github.com:example-org/inventory.git";
 conf.fleet.repo.hostKey = true;
 ```
 
@@ -352,7 +352,7 @@ The key has to be a read-only deploy key of the private repository.
 `fleet host enroll <host> --flake <checkout>` registers it with `gh`.
 
 - **Installing a host from it:** run `bootstrap` with
-  `FLAKE=git+ssh://git@github.com/org/fleet-inventory`, or
+  `FLAKE=git+ssh://git@github.com/example-org/inventory`, or
   `os-install --private --flake git+ssh://… -H <host>`. The host can't read the
   repository yet, so the identity comes first. The install shows the
   enrollment file and waits while you enroll the host and register both of its
@@ -362,10 +362,17 @@ The key has to be a read-only deploy key of the private repository.
   1. Copy the host's folder there, with `repo.url` and `hostKey` set, and push.
   2. Run `fleet host enroll <host> --flake <checkout of it>`, which adds the
      configuration key on the host and registers it.
-  3. Here, point the host's `repo.url` at the private repository, with
-     `hostKey`, and push. The host syncs that commit. Its next sync fetches
-     from the private repository, and `resetLocalChanges` (on by default) moves
-     the checkout over.
+  3. Switch the host, once, to its configuration there, fetched with its
+     configuration key. Nothing in this repository names the private one; the
+     host learns it from the configuration it switches to:
+     ```bash
+     sudo env GIT_SSH_COMMAND="ssh -i /var/lib/fleet/config_ed25519 -o IdentitiesOnly=yes" \
+       nixos-rebuild switch --flake git+ssh://git@github.com/example-org/inventory#<host>
+     ```
+     Its next sync fetches from the private repository, and
+     `resetLocalChanges` (on by default) moves the checkout over. Do this after
+     the host has synced once from a fleet-manager with `hostKey`, so that its
+     record says which repository its last commit came from.
   4. Delete the host's folder here.
 
 ### The `fleet` tool
@@ -843,7 +850,7 @@ promote a release by moving the slower ref.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `secrets.repo.url` | nullOr str | `null` | The private secrets repository, as an SSH URL (`git@github.com:org/fleet-secrets.git`). Requires `fleet.repo.url` and `fleet.signing.allowedSignersFile`. `null` opts the host out entirely: no secrets sync, no host identity, sops off, `accounts.<name>.secrets.*` ignored, no support account |
+| `secrets.repo.url` | nullOr str | `null` | The private secrets repository, as an SSH URL (`git@github.com:example-org/secrets.git`). Requires `fleet.repo.url` and `fleet.signing.allowedSignersFile`. `null` opts the host out entirely: no secrets sync, no host identity, sops off, `accounts.<name>.secrets.*` ignored, no support account |
 | `secrets.repo.ref` | str | `"main"` | Branch of the secrets repository to track |
 | `secrets.statePath` | str | `"/var/lib/fleet"` | Where the host's identity, enrollment file and secrets snapshot live. Expected to be its own volume |
 
@@ -860,11 +867,11 @@ commit signing in that checkout as well (see
 
 Secrets never enter this repository, which is
 public: the ciphertext, and the list of who can decrypt it, live in a separate
-**private** repository, `fleet-secrets`, with branch protection and one
+**private** repository, with branch protection and one
 read-only deploy key per host. Its layout:
 
 ```
-fleet-secrets/
+<secrets repository>/
   fleet.yaml                   registry of recipients, kept by fleet-secrets
   .sops.yaml                   rendered from fleet.yaml; never edited by hand
   hosts/laptop1.yaml           host secrets for laptop1
@@ -884,7 +891,7 @@ name `conf.fleet.repo.deployKeySecret` gives.
 conf.hardware.disk = { enable = true; device = "/dev/nvme0n1"; encrypt = true; volumes.swap.size = "32G"; };
 conf.fleet.repo.url = "https://github.com/org/fleet-config.git";
 conf.fleet.signing.allowedSignersFile = ../../fleet/allowed_signers;
-conf.secrets.repo.url = "git@github.com:org/fleet-secrets.git";
+conf.secrets.repo.url = "git@github.com:example-org/secrets.git";
 conf.fleet.support.sshKeys = [ "sk-ssh-ed25519@openssh.com AAAA…" ];
 conf.users.accounts.alice = { fullName = "Alice"; };   # password from secrets; no SSH key yet
 ```

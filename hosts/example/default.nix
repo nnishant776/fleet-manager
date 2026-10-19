@@ -370,7 +370,7 @@
       # Where the host's identity, enrollment file and secrets snapshot live.
       statePath = "/var/lib/fleet";
       # repo = {
-      #   url = "git@github.com:org/fleet-secrets.git";
+      #   url = "git@github.com:example-org/secrets.git";
       #   ref = "main";
       # };
     };
