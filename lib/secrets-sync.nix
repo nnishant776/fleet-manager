@@ -17,7 +17,8 @@
 
       exit codes: 10 fetch failed, 11 commit not signed by an allowed signer,
       12 check found missing files or keys, 13 bad state directory, 14 identity
-      missing or not writable, 15 host file does not decrypt with this host's key
+      missing or not writable, 15 host file does not decrypt with this host's key,
+      16 commit does not follow the one accepted last (a rollback)
       EOF
         exit "''${1:-1}"
       }
@@ -186,6 +187,26 @@
             fail 11 "commit $commit on $ref is not signed by an allowed signer"
           fi
 
+          # A signature does not stop an old signed commit from being served
+          # again, which would bring back secrets that have since been
+          # replaced. The commit accepted last, kept in $state/accepted, must
+          # be this one or an ancestor of it. The clone holds the tip only, so
+          # when the tip has moved its history is fetched first: commits and
+          # trees, not the files. Removing the record accepts whatever comes
+          # next, for a history rewritten on purpose.
+          if [ -s accepted ]; then
+            last="$(cat accepted)"
+            if [ "$last" != "$commit" ]; then
+              if ! git -C "$tmp/clone" fetch --quiet --unshallow origin "$ref" 2>"$tmp/err"; then
+                cat "$tmp/err" >&2
+                fail 10 "fetch of the history of $ref from $repo failed"
+              fi
+              if ! git -C "$tmp/clone" merge-base --is-ancestor "$last" "$commit" 2>/dev/null; then
+                fail 16 "commit $commit on $ref does not follow $last, the last commit this host accepted; to accept it on purpose, remove $state/accepted"
+              fi
+            fi
+          fi
+
           git -C "$tmp/clone" sparse-checkout set --no-cone "hosts/$host.yaml" "users/*/$host.yaml"
           git -C "$tmp/clone" checkout --quiet
 
@@ -208,6 +229,7 @@
           mv -T "$new" "snapshots/$commit"
 
           ln -sfn "snapshots/$commit" secrets.tmp && mv -T secrets.tmp secrets
+          printf '%s\n' "$commit" > accepted.tmp && mv -f accepted.tmp accepted
           find snapshots -mindepth 1 -maxdepth 1 ! -name "$commit" -exec rm -rf {} +
 
           if [ -f "snapshots/$commit/hosts/$host.yaml" ]; then

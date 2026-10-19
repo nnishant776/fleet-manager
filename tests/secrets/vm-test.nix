@@ -1,9 +1,9 @@
 # End-to-end test of the host side of the secrets design: a `forge` node
 # serves signed bare repositories over sshd and a `fleet` node, built from the
 # scratch-secrets host, has to bootstrap, snapshot, activate and hold up
-# against a tampered repository, and take secrets the maintainer adds with
-# `fleet host secret` (the forge also plays the maintainer). No network
-# and no hosting service are involved. Run it with
+# against a tampered repository and an older commit served again, and take
+# secrets the maintainer adds with `fleet host secret` (the forge also plays
+# the maintainer). No network and no hosting service are involved. Run it with
 # `nix build .#checks.x86_64-linux.secrets-sync` (see README.md).
 { pkgs, inputs, self }:
 let
@@ -354,5 +354,23 @@ pkgs.testers.runNixOSTest {
         )
         assert status != 0 and "group holds secrets of its own (first, second)" in out, out
         assert host_value("group/first") == "first value"
+
+    with subtest("11: an older signed commit served again is refused, unless the record goes"):
+        fleet.succeed(sync_cmd)
+        current = fleet.succeed("basename $(readlink /var/lib/fleet/secrets)").strip()
+        accepted = fleet.succeed("cat /var/lib/fleet/accepted").strip()
+        assert accepted == current, f"accepted {accepted}, but the snapshot is {current}"
+        # Someone who can push, with only old signed commits, rewinds the branch.
+        older = forge.succeed("su git -c 'git -C /home/git/w rev-parse HEAD~1'").strip()
+        forge.succeed(f"su git -c 'git -C /home/git/w push -q --force origin {older}:main'")
+        status, out = fleet.execute(sync_cmd)
+        assert status == 16, f"sync after a rollback exited {status}, expected 16: {out}"
+        assert fleet.succeed("basename $(readlink /var/lib/fleet/secrets)").strip() == current
+        assert fleet.succeed("cat /var/lib/fleet/accepted").strip() == accepted
+        # Removing the record accepts it, for a history rewritten on purpose.
+        fleet.succeed("rm /var/lib/fleet/accepted")
+        out = fleet.succeed(sync_cmd + " 2>/dev/null").strip()
+        assert out == older, f"sync printed {out}, expected {older}"
+        assert fleet.succeed("cat /var/lib/fleet/accepted").strip() == older
   '';
 }
