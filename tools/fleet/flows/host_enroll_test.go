@@ -193,8 +193,6 @@ func TestEnrollAddsAndRegistersTheConfigurationKey(t *testing.T) {
 			return r, err
 		case s.Name == "ssh" && strings.Contains(args, "pi.enroll"):
 			return engine.Result{Stdout: doc + hex.EncodeToString(sum[:]) + "  /var/lib/fleet/pi.enroll\n"}, nil
-		case s.Name == "nix" && strings.Contains(args, "conf.fleet.repo.hostKey"):
-			return engine.Result{Stdout: "true"}, nil
 		case s.Name == "nix" && strings.Contains(args, "conf.fleet.repo.url"):
 			return engine.Result{Stdout: "git@github.com:example-org/inventory.git"}, nil
 		}

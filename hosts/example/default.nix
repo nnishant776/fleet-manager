@@ -326,12 +326,11 @@
       # Where the configuration checkout lives on the machine.
       localPath = "/etc/nixos";
       # repo = {
+      #   # https:// for a public remote; an SSH address for a private one,
+      #   # fetched with the host's own key (needs `secrets.repo.url`).
       #   url = "https://github.com/org/fleet-manager.git";
       #   # Branch or tag to track.
       #   ref = "main";
-      #   # Key in the host's secrets file (`hosts/<host>.yaml`) for a private
-      #   # remote; needs `secrets.repo.url`.
-      #   deployKeySecret = "deploy-key";
       # };
       # SSH allowed-signers file (`<principal> <key-type> <key>` per line).
       # signing.allowedSignersFile = ../../fleet/allowed_signers;

@@ -29,12 +29,16 @@ pkgs.writeShellApplication {
     usage() {
       cat >&2 <<'EOF'
     usage: os-install [-H HOST] [-d [NAME=]DEVICE]... [--flake REF] [--yes]
-                      [--identity FILE] [--no-enroll] [--enroll-out PATH] [--private]
+                      [--identity FILE] [--no-enroll] [--enroll-out PATH]
 
       -H, --host HOST        host to install (a directory under hosts/)
       -d, --disk [NAME=]DEV  physical device for a disk in the host's layout;
                              NAME may be omitted when the layout has one disk
-          --flake REF        flake to install from (default: the one running this)
+          --flake REF        flake to install from (default: the one running this);
+                             a private one, git+ssh://…, the host reads with its
+                             own configuration key, so its identity is made
+                             first, in memory, and the install waits until its
+                             keys are registered
       -y, --yes              do not ask for confirmation before erasing
           --identity FILE    carry over the identity document written by
                              'fleet-identity --export' on the old install,
@@ -42,10 +46,6 @@ pkgs.writeShellApplication {
           --no-enroll        do not wait for the host to be enrolled
           --enroll-out PATH  also copy the enrollment file to PATH, for
                              example on a mounted USB stick
-          --private          the flake is a private repository, git+ssh://…, that
-                             the host reads with its own configuration key: its
-                             identity is made first, in memory, and the install
-                             waits until its keys are registered
 
     Anything not given as a flag is chosen from a list, when run in a terminal.
     A host with an encrypted layout asks for one passphrase, used for every
@@ -94,7 +94,6 @@ pkgs.writeShellApplication {
     identity=""
     noEnroll=false
     enrollOut=""
-    private=false
 
     while [ $# -gt 0 ]; do
       case "$1" in
@@ -110,7 +109,6 @@ pkgs.writeShellApplication {
         --identity) identity="''${2:?--identity needs a value}"; shift 2 ;;
         --no-enroll) noEnroll=true; shift ;;
         --enroll-out) enrollOut="''${2:?--enroll-out needs a value}"; shift 2 ;;
-        --private)  private=true; shift ;;
         -h|--help)  usage 0 ;;
         *)          echo "os-install: unknown argument '$1'" >&2; usage ;;
       esac
@@ -144,19 +142,17 @@ pkgs.writeShellApplication {
         || { echo "os-install: nothing chosen; nothing was changed" >&2; exit 1; }
     }
 
-    # A private flake (conf.fleet.repo.hostKey) can only be read with the
+    # A private flake, git+ssh://, can only be read with the
     # host's own configuration key, so the identity comes first, made in
     # memory (/run is a tmpfs), and is enrolled before anything is fetched.
     # The flake is cloned with that key and installed from the clone, which
     # keeps its revision. The identity reaches the new disk below, as one
     # carried over with --identity does.
+    private=false
+    case "$flake" in git+ssh://*) private=true ;; esac
     if $private; then
-      case "$flake" in
-        git+ssh://*) ;;
-        *) echo "os-install: --private needs the flake as git+ssh://…, not $flake" >&2; exit 1 ;;
-      esac
       if [ -z "$host" ]; then
-        echo "os-install: --private needs the host (-H): its flake cannot be read to list them yet" >&2
+        echo "os-install: a private flake needs the host (-H): it cannot be read to list them yet" >&2
         exit 1
       fi
       ramState="$(umask 077; mktemp -d /run/os-install-identity.XXXXXX)"

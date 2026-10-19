@@ -124,7 +124,7 @@
           fi
 
           # The key that reads the configuration repository, for a fleet whose
-          # configuration is private (conf.fleet.repo.hostKey). Made like the
+          # configuration is private (an SSH conf.fleet.repo.url). Made like the
           # others, and added to an identity made before it existed.
           if [ ! -e config_ed25519 ]; then
             rm -f config_ed25519.pub

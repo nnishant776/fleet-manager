@@ -1,4 +1,11 @@
 { lib, ... }: {
+  imports = [
+    (lib.mkRemovedOptionModule [ "conf" "fleet" "repo" "deployKeySecret" ] ''
+      A host now fetches an SSH conf.fleet.repo.url with its own configuration
+      key, which it makes with its identity; no key goes into its secrets.
+    '')
+  ];
+
   options.conf.fleet = {
     repo = {
       url = lib.mkOption {
@@ -10,6 +17,14 @@
           `os-install` clones it to `conf.fleet.localPath` and `autoUpdate`
           syncs from it. `null` means the machine has no upstream, in which case
           the checkout is left empty and automatic updates stay off.
+
+          An `https://` address is fetched with no key, for a public
+          repository. An SSH address (`git@host:org/repo.git` or `ssh://…`),
+          for a private one, is fetched with the host's own configuration key,
+          `<conf.secrets.statePath>/config_ed25519`, which the host makes with
+          the rest of its identity, so it needs `conf.secrets.repo.url`. Its
+          enrollment file lists the public half; register that read-only on
+          the repository.
         '';
       };
       ref = lib.mkOption {
@@ -18,31 +33,6 @@
         description = ''
           Branch or tag to track. Point a canary group of machines at one ref
           and the rest at another to stage a rollout.
-        '';
-      };
-      deployKeySecret = lib.mkOption {
-        type = lib.types.nullOr lib.types.str;
-        default = null;
-        example = "deploy-key";
-        description = ''
-          Key in the host's secrets file (`hosts/<host>.yaml` in the secrets
-          repository) holding a read-only SSH deploy key for a private
-          `repo.url`. The sync uses it for every fetch. Give the key read
-          access only on the hosting side; the machine's own push URL is
-          disabled regardless. Requires `conf.secrets.repo.url`.
-        '';
-      };
-      hostKey = lib.mkOption {
-        type = lib.types.bool;
-        default = false;
-        description = ''
-          Fetch a private `repo.url` with the host's own configuration key,
-          `<conf.secrets.statePath>/config_ed25519`. `fleet-secrets-sync init`
-          makes it on the host with the rest of its identity, so the private
-          key never leaves the machine, and the enrollment file lists its
-          public half as `config_deploy_pubkey`; register that read-only on
-          the configuration repository. Requires `conf.secrets.repo.url`; not
-          with `deployKeySecret`.
         '';
       };
     };

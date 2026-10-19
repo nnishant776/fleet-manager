@@ -16,7 +16,8 @@
 #
 # FLAKE overrides the flake, e.g. FLAKE=github:org/repo/v1.2 or FLAKE=path:.
 # A private fleet's, git+ssh://git@github.com/example-org/inventory, is
-# installed with fleet-manager's os-install --private (see README).
+# installed with fleet-manager's os-install, which reads it with the host's own key
+# (see README).
 # FLEET_RELEASES overrides where fleet is fetched from.
 # POSIX sh on purpose: macOS ships bash 3.2.
 set -eu
@@ -107,7 +108,7 @@ case "$(uname -s)" in
         # fleet-manager, makes the identity first and waits for its keys.
         installer="$flake"
         case "$flake" in
-          git+ssh://*) installer="$library"; set -- --private --flake "$flake" "$@" ;;
+          git+ssh://*) installer="$library"; set -- --flake "$flake" "$@" ;;
         esac
         if fleet="$(fetch_fleet)"; then
           exec "$fleet" install --flake "$flake" "$@" <"$tty"

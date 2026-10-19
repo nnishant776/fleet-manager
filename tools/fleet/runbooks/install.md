@@ -28,7 +28,6 @@ fleet install -H nas1 -d main=/dev/nvme0n1 -d data=/dev/sda --enroll-out /media/
 | `--identity` | An identity document from 'fleet-identity --export' on the old install, instead of a new identity |
 | `--no-enroll` | Do not wait for the host to be enrolled; it retries after boot |
 | `--enroll-out` | A path, for example on a mounted USB stick |
-| `--private` | The flake is a private repository, git+ssh://…, that the host reads with its own key (conf.fleet.repo.hostKey); os-install, from fleet-manager, makes its identity first and waits for its keys to be registered. Set for a git+ssh:// flake |
 
 Every command also takes `--dry-run` (show every step and command; look, but
 change nothing), `-y`/`--yes` (run changes without asking) and `--verbose`.

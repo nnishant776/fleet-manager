@@ -47,7 +47,7 @@ let
           exit 1
         fi
       ''}
-      ${import ./config-fetch.nix { inherit config lib; }}
+      ${(import ./config-fetch.nix { inherit config lib; }).line}
 
       # Clone beside the target and move it into place, so a half-finished
       # clone never looks like a checkout, and an existing empty directory is

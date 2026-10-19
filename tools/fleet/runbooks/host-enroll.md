@@ -70,7 +70,7 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 9. **Register HOST's deploy key, read-only.** It is how HOST fetches the private secrets repository. Read-only: a host never writes to it.
 
-10. **Register HOST's configuration key, read-only.** Its configuration is private (conf.fleet.repo.hostKey), and this key is how HOST fetches it. Read-only, like the deploy key.
+10. **Register HOST's configuration key, read-only.** Its configuration comes over SSH, from a private repository, and this key is how HOST fetches it. Read-only, like the deploy key.
 
 11. **Sync HOST.** Its first sync with secrets: fetch and verify them, then its configuration.
 

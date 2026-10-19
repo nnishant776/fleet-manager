@@ -137,10 +137,10 @@ var HostEnroll = &engine.Flow{
 		},
 		{
 			Title: "Register {{.host}}'s configuration key, read-only",
-			Why:   "Its configuration is private (conf.fleet.repo.hostKey), and this key is how {{.host}} fetches it. Read-only, like the deploy key.",
+			Why:   "Its configuration comes over SSH, from a private repository, and this key is how {{.host}} fetches it. Read-only, like the deploy key.",
 			When: func(x *engine.Ctx) (bool, string) {
-				if x.Value("config_host_key") != "true" {
-					return false, "its configuration repository needs no key (conf.fleet.repo.hostKey is not set)"
+				if !sshURL(x.Value("config_url")) {
+					return false, "its configuration repository needs no key: " + x.Value("config_url") + " is not an SSH address"
 				}
 				return true, ""
 			},
@@ -212,10 +212,6 @@ id support >/dev/null 2>&1 && echo has_support=true || echo has_support=false`).
 	// Where the configuration says the host syncs from, if the flake can tell.
 	if url, err := engine.Silently(x, nil, "nix", "eval", "--raw", x.Value("flake")+"#nixosConfigurations."+x.Value("host")+".config.conf.fleet.repo.url"); err == nil {
 		x.Values["config_url"] = url
-	}
-	// Whether it fetches that with its own configuration key: a private one.
-	if v, err := engine.Silently(x, nil, "nix", "eval", "--json", x.Value("flake")+"#nixosConfigurations."+x.Value("host")+".config.conf.fleet.repo.hostKey"); err == nil {
-		x.Values["config_host_key"] = v
 	}
 	return nil
 }
@@ -339,6 +335,13 @@ func aheadOfUpstream(x *engine.Ctx) (bool, string) {
 
 var githubRemote = regexp.MustCompile(`github\.com[:/]([^/]+/[^/]+?)(\.git)?$`)
 
+// sshURL says whether a git URL is an SSH address, git@host:… or ssh://…,
+// which a host fetches with its own key, as modules/linux/fleet/config-fetch.nix
+// decides.
+func sshURL(u string) bool { return strings.HasPrefix(u, "ssh://") || scpURL.MatchString(u) }
+
+var scpURL = regexp.MustCompile(`^[^/:]+@[^/:]+:`)
+
 func registerDeployKey(x *engine.Ctx) error {
 	origin, _ := engine.Silently(x, nil, "git", "-C", x.Value("repo"), "remote", "get-url", "origin")
 	return registerKey(x, "deploy_key", origin, "the secrets repository")
@@ -349,7 +352,7 @@ func registerDeployKey(x *engine.Ctx) error {
 func registerConfigKey(x *engine.Ctx) error {
 	if x.Value("config_key") == "" && !x.Options.DryRun {
 		return errors.New("its enrollment file lists no configuration key: the fleet-secrets-sync it runs predates them;" +
-			" let it sync a configuration of fleet-manager that has conf.fleet.repo.hostKey, then run this again")
+			" let it sync a newer fleet-manager, whose init makes one, then run this again")
 	}
 	return registerKey(x, "config_key", x.Value("config_url"), "the configuration repository")
 }

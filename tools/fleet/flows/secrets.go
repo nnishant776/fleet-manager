@@ -56,7 +56,7 @@ func configKeyText(x *engine.Ctx) error {
 	x.UI.Blank()
 	x.Say("Configuration public key of {{.host}}:\n" +
 		"  {{.config_key}}\n\n" +
-		"If its configuration repository is private (conf.fleet.repo.hostKey),\n" +
+		"If its configuration repository is private (an SSH conf.fleet.repo.url),\n" +
 		"register this one read-only there, the same way:\n" +
 		"  gh repo deploy-key add <file holding the key above> --repo <owner>/<configuration repository> --title {{.host}}")
 	return nil

@@ -203,7 +203,7 @@ pkgs.writeShellApplication {
         echo "Configuration public key of $1:"
         echo "  $enrolledConfigKey"
         echo
-        echo "If its configuration repository is private (conf.fleet.repo.hostKey),"
+        echo "If its configuration repository is private (an SSH conf.fleet.repo.url),"
         echo "register this one read-only there, the same way:"
         echo "  gh repo deploy-key add <file holding the key above> --repo <owner>/<configuration repository> --title $1"
       fi

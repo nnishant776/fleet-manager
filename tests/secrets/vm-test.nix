@@ -4,7 +4,7 @@
 # against a tampered repository and an older commit served again, take
 # secrets the maintainer adds with `fleet host secret` (the forge also plays
 # the maintainer), and fetch its configuration from a private repository with
-# its own configuration key (conf.fleet.repo.hostKey), refusing what is not
+# its own configuration key (an SSH conf.fleet.repo.url), refusing what is not
 # signed. No network and no hosting service are involved. Run it with
 # `nix build .#checks.x86_64-linux.secrets-sync` (see README.md).
 { pkgs, inputs, self }:
@@ -201,7 +201,6 @@ pkgs.testers.runNixOSTest {
         boot.loader.grub.enable = lib.mkForce false;
         conf.secrets.repo.url = lib.mkForce secretsUrl;
         conf.fleet.repo.url = lib.mkForce configUrl;
-        conf.fleet.repo.hostKey = true;
         # Syncs run when a subtest starts one.
         systemd.timers.config-auto-update.enable = false;
         conf.fleet.signing.allowedSignersFile = lib.mkForce "${fixtures}/allowed_signers";
@@ -213,7 +212,7 @@ pkgs.testers.runNixOSTest {
 
     # Root has no ssh configuration for the forge: the secrets fetch uses the
     # host's deploy key and the configuration fetch its configuration key
-    # (conf.fleet.repo.hostKey), each as the tools set it, or not at all.
+    # (its repo.url is an SSH address), each as the tools set it, or not at all.
     # sops, to read back what fleet host secret stored, with the host's own key.
     environment.systemPackages = [ pkgs.sops ];
 

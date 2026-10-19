@@ -102,7 +102,7 @@ func TestInstallFromAPrivateConfiguration(t *testing.T) {
 	}
 	cmds := strings.Join(fake.Commands(), "\n")
 	want := "nix --extra-experimental-features 'nix-command flakes' run 'github:nnishant776/fleet-manager#os-install' --" +
-		" --private --flake " + flake + " -H nas -d main=/dev/vda --yes"
+		" --flake " + flake + " -H nas -d main=/dev/vda --yes"
 	if !strings.Contains(cmds, want) {
 		t.Errorf("os-install was not run as\n  %s\nbut:\n%s", want, cmds)
 	}

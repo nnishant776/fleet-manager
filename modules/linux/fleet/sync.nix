@@ -104,7 +104,7 @@ let
       # from the new one, and resetLocalChanges moves the checkout over, even
       # to an unrelated history. What it fetches is verified as always.
       git -C "$repo" remote set-url origin ${lib.escapeShellArg cfg.repo.url}
-      ${import ./config-fetch.nix { inherit config lib; }}
+      ${(import ./config-fetch.nix { inherit config lib; }).line}
 
       # The network may not be up yet on a machine that does not wait for it
       # at boot, so the fetch is retried with a growing pause.
@@ -255,22 +255,13 @@ in
             + " is null: a fleet host must verify what it fetches before building it.";
         }
         {
-          assertion = cfg.repo.deployKeySecret == null || config.conf.secrets.repo.url != null;
+          assertion = !(import ./config-fetch.nix { inherit config lib; }).ssh
+            || config.conf.secrets.repo.url != null;
           message =
-            "conf.fleet.repo.deployKeySecret is set but conf.secrets.repo.url is null;"
-            + " the key has to come from the host's file in the secrets repository.";
-        }
-        {
-          assertion = !cfg.repo.hostKey || config.conf.secrets.repo.url != null;
-          message =
-            "conf.fleet.repo.hostKey is set but conf.secrets.repo.url is null;"
-            + " the key is part of the identity a host gets with its secrets.";
-        }
-        {
-          assertion = !(cfg.repo.hostKey && cfg.repo.deployKeySecret != null);
-          message =
-            "conf.fleet.repo.hostKey and conf.fleet.repo.deployKeySecret are both set;"
-            + " the configuration is fetched with one key, so choose one.";
+            "conf.fleet.repo.url is an SSH address, which this host would fetch with its"
+            + " own configuration key, but conf.secrets.repo.url is null, so it has no"
+            + " identity and no key. Set conf.secrets.repo.url, or give an https://"
+            + " address for a public repository.";
         }
         {
           assertion = cfg.repo.url == null || !(lib.hasPrefix "http://" cfg.repo.url);
@@ -290,12 +281,6 @@ in
     }
 
     (lib.mkIf (enabled && cfg.repo.url != null && config.conf.platform == "nixos") {
-
-    # Read-only deploy key for a private repository, root-only at
-    # /run/secrets/<name>; the sync hands it to ssh above.
-    sops.secrets = lib.mkIf (cfg.repo.deployKeySecret != null) {
-      ${cfg.repo.deployKeySecret} = { };
-    };
 
     systemd.services.config-auto-update = {
       description = "Sync ${cfg.localPath} from ${cfg.repo.ref} and rebuild";
