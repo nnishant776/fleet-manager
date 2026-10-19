@@ -314,12 +314,14 @@ what it does and why, shows the exact command, asks before it changes
 anything, and checks the result. `fleet` alone shows a menu, and
 `fleet <command> --help` explains a command.
 
-It is on the PATH of every privileged account whose home this flake manages,
-and on the Raspberry Pi image. Elsewhere:
+No account gets it by default; it comes with the Raspberry Pi image only.
+Install it yourself where you want it:
 
 ```bash
-nix run .#fleet -- host check neerajpinew      # once
-nix profile install .#fleet                    # to keep it
+nix profile install github:nnishant776/fleet-manager#fleet   # for your account
+nix profile install .#fleet                                  # or from a checkout
+nix run .#fleet -- host check neerajpinew                    # once, without installing
+nix profile upgrade fleet                                    # later, for a newer version
 ```
 
 Every question has a flag, so a command also runs without prompts. `--dry-run`
