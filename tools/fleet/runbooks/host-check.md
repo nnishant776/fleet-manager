@@ -53,7 +53,7 @@ if any found a problem.
 
    ```
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'sudo -n test -d /var/lib/fleet || { echo none; exit 0; }; sudo -n readlink /var/lib/fleet/secrets || echo missing'
-   $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'sudo -n find -H /run/secrets /run/secrets-for-users -mindepth 1 -maxdepth 1 -printf '\''%f\n'\'' 2>/dev/null | sort -u'
+   $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'sudo -n find -H /run/secrets /run/secrets-for-users -mindepth 1 ! -type d -printf '\''%P\n'\'' 2>/dev/null | sort -u'
    ```
 
 4. **Health.** A failed unit is worth knowing about before changing anything else.

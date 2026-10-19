@@ -127,7 +127,7 @@ var HostCheck = &engine.Flow{
 				},
 				engine.Probe{
 					What: "decrypted secrets",
-					Cmd:  fleet.OnHost(`sudo -n find -H /run/secrets /run/secrets-for-users -mindepth 1 -maxdepth 1 -printf '%f\n' 2>/dev/null | sort -u`),
+					Cmd:  fleet.OnHost(`sudo -n find -H /run/secrets /run/secrets-for-users -mindepth 1 ! -type d -printf '%P\n' 2>/dev/null | sort -u`),
 					Expect: func(out string) (string, error) {
 						names := strings.Fields(out)
 						if len(names) == 0 {

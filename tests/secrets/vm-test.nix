@@ -318,10 +318,12 @@ pkgs.testers.runNixOSTest {
         )
 
     def host_value(name):
+        # A / in the name nests it: a/b is ["a"]["b"], as sops-nix reads it.
+        path = "".join(f'["{part}"]' for part in name.split("/"))
         fleet.succeed(sync_cmd)
         return fleet.succeed(
             "SOPS_AGE_KEY_FILE=/var/lib/fleet/age.key sops -d --extract"
-            f" '[\"{name}\"]' /var/lib/fleet/secrets/hosts/${hostName}.yaml"
+            f" '{path}' /var/lib/fleet/secrets/hosts/${hostName}.yaml"
         )
 
     with subtest("8: fleet host secret encrypts a value for the host, which fetches it"):
@@ -338,5 +340,19 @@ pkgs.testers.runNixOSTest {
         assert "ForwardAgent=no" in out and "support@fleet" in out, out
         got = host_value("from_host")
         assert got == "kept-on-the-host", f"the host decrypted '{got}' (the trailing newline should be dropped)"
+
+    with subtest("10: fleet host secret groups secrets under a name with a /"):
+        out = maintainer("${hostName} group/first --value-stdin", stdin="first value")
+        assert "✓ committed: ${hostName}: group/first" in out, out
+        maintainer("${hostName} group/second --value-stdin", stdin="second value")
+        assert host_value("group/first") == "first value"
+        assert host_value("group/second") == "second value"
+        # One value would replace both, so the name of the group is refused.
+        status, out = forge.execute(
+            "cd /home/git/w && printf x | su git -c"
+            " 'SOPS_AGE_KEY_FILE=/home/git/recovery.key fleet host secret ${hostName} group --value-stdin --recovery \"\" --yes' 2>&1"
+        )
+        assert status != 0 and "group holds secrets of its own (first, second)" in out, out
+        assert host_value("group/first") == "first value"
   '';
 }

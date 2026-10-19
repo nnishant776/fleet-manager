@@ -1,6 +1,7 @@
 package flows
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -21,19 +22,20 @@ var HostSecret = &engine.Flow{
 		"is kept today, so it never appears on screen. Then it shows the lines that\n" +
 		"make the host's configuration use it, and with --sync syncs the host and\n" +
 		"checks the secret arrived.",
-	Example: "  fleet host secret neerajpinew wifi_psk\n" +
-		"  fleet host secret neerajpinew hotspot-wls2ccf67579ff5 --from-host /var/lib/hotspot/wls2ccf67579ff5\n" +
-		"  printf %s \"$psk\" | fleet host secret pi-gw wifi_psk --value-stdin --yes",
+	Example: "  fleet host secret neerajpinew wifi/home\n" +
+		"  fleet host secret neerajpinew hotspot/wls2ccf67579ff5 --from-host /var/lib/hotspot/wls2ccf67579ff5\n" +
+		"  printf %s \"$psk\" | fleet host secret pi-gw wifi/home --value-stdin --yes",
 	Args: []string{"host", "name"},
 	Inputs: []engine.Input{
 		secrets.RepoInput,
 		secrets.RecoveryInput,
 		knownHost(),
 		{
-			Name:    "name",
-			Prompt:  "Name of the secret",
-			Help:    "Its key in hosts/<host>.yaml, and its file in /run/secrets: letters, digits, - and _",
-			Pattern: `^[A-Za-z0-9][A-Za-z0-9_-]*$`,
+			Name:   "name",
+			Prompt: "Name of the secret",
+			Help: "Its key in hosts/<host>.yaml, and its file under /run/secrets: letters, digits, - and _, " +
+				"with / to group secrets, as hotspot/wls2ccf67579ff5",
+			Pattern: secrets.KeyPattern,
 		},
 		{
 			Name:     "from-host",
@@ -87,13 +89,17 @@ var HostSecret = &engine.Flow{
 		secrets.Unlock(),
 		{
 			Title: "Encrypt it into hosts/{{.host}}.yaml",
-			Why:   "Encrypted to {{.host}} and your recovery key only. An existing value of the same name is replaced.",
+			Why:   "Encrypted to {{.host}} and your recovery key only. An existing value of the same name is replaced; a name that would replace a group of secrets, or go under a value, is refused.",
 			Do: engine.Func(func(x *engine.Ctx) error {
 				if x.Value("value") == "" && !x.Options.DryRun {
 					return errors.New("the value is empty")
 				}
+				if err := checkPlace(x); err != nil {
+					return err
+				}
 				x.Values["value_json"] = secrets.JSON(x.Value("value"))
-				_, err := secrets.Set("hosts/{{.host}}.yaml", "{{.name}}", "value_json", "the value").Run(x)
+				x.Values["key_path"] = secrets.KeyPath(x.Value("name"))
+				_, err := secrets.SetAt("hosts/{{.host}}.yaml", "{{.key_path}}", "value_json", "the value").Run(x)
 				return err
 			}),
 		},
@@ -140,4 +146,21 @@ func wantSync(x *engine.Ctx) (bool, string) {
 		return false, "not asked to (--sync)"
 	}
 	return true, ""
+}
+
+// checkPlace refuses a name that would replace a group of the host's
+// secrets or go under one of its values. sops leaves the keys in clear, so
+// yq reads the file's shape as it is, decrypting nothing.
+func checkPlace(x *engine.Ctx) error {
+	res, err := engine.Cmd("yq", "-o=json", ".", "hosts/{{.host}}.yaml").In("{{.repo}}").RunQuiet(x)
+	if err != nil {
+		return err
+	}
+	var doc map[string]any
+	if out := strings.TrimSpace(res.Stdout); out != "" && out != "null" {
+		if err := json.Unmarshal([]byte(out), &doc); err != nil {
+			return fmt.Errorf("reading hosts/%s.yaml: %w", x.Value("host"), err)
+		}
+	}
+	return secrets.CheckPlace(doc, x.Value("name"))
 }

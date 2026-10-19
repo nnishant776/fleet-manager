@@ -14,9 +14,9 @@ checks the secret arrived.
 ```
 fleet host secret [HOST] [NAME] [flags]
 
-fleet host secret neerajpinew wifi_psk
-fleet host secret neerajpinew hotspot-wls2ccf67579ff5 --from-host /var/lib/hotspot/wls2ccf67579ff5
-printf %s "$psk" | fleet host secret pi-gw wifi_psk --value-stdin --yes
+fleet host secret neerajpinew wifi/home
+fleet host secret neerajpinew hotspot/wls2ccf67579ff5 --from-host /var/lib/hotspot/wls2ccf67579ff5
+printf %s "$psk" | fleet host secret pi-gw wifi/home --value-stdin --yes
 ```
 
 ## Flags
@@ -26,7 +26,7 @@ printf %s "$psk" | fleet host secret pi-gw wifi_psk --value-stdin --yes
 | `--repo` | The fleet-secrets checkout to change; defaults to FLEET_SECRETS_REPO, then this directory |
 | `--recovery` | Your passphrase-encrypted age identity (age -p). Empty: sops uses SOPS_AGE_KEY_FILE or SOPS_AGE_KEY |
 | `--host` | The host's name: lowercase letters, digits and '-' |
-| `--name` | Its key in hosts/\<host>.yaml, and its file in /run/secrets: letters, digits, - and _ |
+| `--name` | Its key in hosts/\<host>.yaml, and its file under /run/secrets: letters, digits, - and _, with / to group secrets, as hotspot/wls2ccf67579ff5 |
 | `--from-host` | A file on the host that holds the value today; empty to type it |
 | `--value-stdin` | read the value from standard input, instead of being asked. Hidden as you type; trailing newlines are dropped |
 | `--address` | A name or IP address for SSH; defaults to the host's name |
@@ -64,7 +64,7 @@ A value that is neither given nor has a default is asked for on a terminal.
    $ age -d RECOVERY
    ```
 
-5. **Encrypt it into hosts/HOST.yaml.** Encrypted to HOST and your recovery key only. An existing value of the same name is replaced.
+5. **Encrypt it into hosts/HOST.yaml.** Encrypted to HOST and your recovery key only. An existing value of the same name is replaced; a name that would replace a group of secrets, or go under a value, is refused.
 
 6. **Commit.** Signed with your key, if this checkout signs; hosts accept only signed commits. Push it afterwards.
 

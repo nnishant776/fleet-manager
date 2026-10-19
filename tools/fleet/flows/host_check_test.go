@@ -32,7 +32,7 @@ func healthyPi() hostAnswers {
 		"systemctl show -p LoadState":     "loaded\nsuccess\nSun 2026-10-18 18:21:40 IST\n",
 		"fleet-sync/status":               "",
 		"readlink /var/lib/fleet/secrets": "snapshots/a32bf3e3cc506d937af8934906ba14e80762d028\n",
-		"find -H /run/secrets":            "hotspot-wls2ccf67579ff5\n",
+		"find -H /run/secrets":            "hotspot/wls2ccf67579ff5\nwifi_psk\n",
 		"is-system-running":               "running\n",
 	}
 }
@@ -65,7 +65,7 @@ func TestHostCheckOnAHealthyHost(t *testing.T) {
 		"✓ last sync: succeeded, at Sun 2026-10-18 18:21:40 IST",
 		"✓ problems recorded for everyone: none",
 		"✓ secrets snapshot: commit a32bf3e3cc50",
-		"✓ decrypted secrets: hotspot-wls2ccf67579ff5",
+		"✓ decrypted secrets: hotspot/wls2ccf67579ff5, wifi_psk",
 		"✓ system state: running, no failed units",
 	} {
 		if !strings.Contains(out, want) {
