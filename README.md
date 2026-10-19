@@ -1232,7 +1232,11 @@ the secrets repository with a force push. When a history is rewritten on
 purpose, remove the record on each host (`sudo rm /var/lib/fleet-sync/accepted`,
 or `/var/lib/fleet/accepted` for the secrets); the next sync then takes what it
 fetches. A new install records the revision it was installed from; a host
-without a record takes the first commit it fetches.
+without a record takes the first commit it fetches. The configuration's record
+holds for the repository it came from (`accepted.url`, beside it): a host whose
+configuration names another repository, as when it moves to
+[a private fleet](#a-private-fleet), starts the record afresh there, from its
+first verified commit.
 
 **Everyone at a fleet host sees it when updates stop.** When a sync run stops
 on something a person has to fix, such as an unsigned commit, a configuration

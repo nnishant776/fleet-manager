@@ -131,8 +131,16 @@ let
       # who can push could serve an old signed commit again and take the
       # machine back to it. So the machine remembers the last commit it
       # accepted, and takes only that commit or one that follows it.
+      # The record holds for the repository it came from, kept beside it:
+      # when the configuration names another one, as when a host moves to a
+      # private repository, that one's first verified commit starts the record
+      # anew. Only a signed commit can change the URL, so this opens no way
+      # back. A record from before the URL was kept holds for this one.
       accepted=/var/lib/fleet-sync/accepted
-      if [ -s "$accepted" ]; then
+      url=${lib.escapeShellArg cfg.repo.url}
+      if [ -s "$accepted" ] && [ -s "$accepted.url" ] && [ "$(cat "$accepted.url")" != "$url" ]; then
+        log "the configuration now comes from $url, not $(cat "$accepted.url"); the record starts there"
+      elif [ -s "$accepted" ]; then
         last="$(cat "$accepted")"
         if ! git -C "$repo" merge-base --is-ancestor "$last" "$target" 2>/dev/null; then
           log "refusing: $target on $ref does not follow $last, the last commit this machine accepted"
@@ -153,6 +161,7 @@ let
       # Recorded now, before the build: the commit is verified and checked
       # out, and a build that fails is fixed by a newer commit on top of it.
       printf '%s\n' "$target" > "$accepted.tmp" && chmod 0644 "$accepted.tmp" && mv -f "$accepted.tmp" "$accepted"
+      printf '%s\n' "$url" > "$accepted.url.tmp" && chmod 0644 "$accepted.url.tmp" && mv -f "$accepted.url.tmp" "$accepted.url"
       after="$(git -C "$repo" rev-parse HEAD)"
       log "revision $before -> $after (tracking $ref)"${lib.optionalString secretsOn ''
 

@@ -83,6 +83,8 @@ let
         accepted=/var/lib/fleet-sync/accepted
         install -d -m 0755 /var/lib/fleet-sync
         printf '%s\n' "$installed" > "$accepted.tmp" && chmod 0644 "$accepted.tmp" && mv -f "$accepted.tmp" "$accepted"
+        # And the repository it came from, which the record holds for.
+        printf '%s\n' ${lib.escapeShellArg cfg.repo.url} > "$accepted.url.tmp" && chmod 0644 "$accepted.url.tmp" && mv -f "$accepted.url.tmp" "$accepted.url"
       fi
 
       # The audit rules loaded at boot, before the checkout existed, so they
