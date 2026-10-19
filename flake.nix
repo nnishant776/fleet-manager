@@ -58,41 +58,21 @@
   outputs = inputs@{ self, nixpkgs, ... }:
   let
     lib = nixpkgs.lib;
-    mkHost = import ./lib/mkHost.nix { inherit inputs; };
-    mkUser = import ./lib/mkUser.nix { inherit inputs; };
+    # The library a private fleet builds on: lib.mkFleet (lib/mkFleet.nix).
+    mkFleet = import ./lib/mkFleet.nix { inherit inputs; };
 
-    hostNames = builtins.attrNames (
-      lib.filterAttrs (_: t: t == "directory") (builtins.readDir ./hosts)
-    );
-
-    hostPlatforms = lib.genAttrs hostNames (h:
-      let
-        hostFile = import (./hosts + "/${h}/default.nix");
-        raw = if builtins.isFunction hostFile then hostFile { config = {}; pkgs = {}; lib = lib; } else hostFile;
-      in
-        raw.nixpkgs.hostPlatform
-    );
-
-    linuxHosts = lib.filterAttrs (_: p: (lib.systems.elaborate p).isLinux) hostPlatforms;
-    darwinHosts = lib.filterAttrs (_: p: (lib.systems.elaborate p).isDarwin) hostPlatforms;
-
-    nixosConfigurations = lib.mapAttrs (h: _: mkHost { hostName = h; hostDir = ./hosts/${h}; }) linuxHosts;
-    darwinConfigurations = lib.mapAttrs (h: _: mkHost { hostName = h; hostDir = ./hosts/${h}; }) darwinHosts;
-
-    # The two sets are keyed by host directory and a directory has one platform,
-    # so they cannot overlap; unionOfDisjoint says so and fails loudly if that
-    # ever stops being true, where // would silently keep one side.
-    allHosts = lib.attrsets.unionOfDisjoint nixosConfigurations darwinConfigurations;
-
-    homeConfigurations = mkUser.mkHomeConfigurations {
-      hostConfigs = allHosts;
-      usersDir = ./users;
+    # This repository's own fleet, the example and test hosts under hosts/,
+    # built exactly as a private fleet's hosts are.
+    ownFleet = mkFleet {
+      inherit self;
+      hosts = ./hosts;
+      users = ./users;
+      libraryApps = true;
     };
+    inherit (ownFleet) nixosConfigurations darwinConfigurations homeConfigurations apps;
 
-    # One set of apps per system any host uses; the scripts live in lib/apps.
-    systems = lib.unique (lib.attrValues (lib.attrsets.unionOfDisjoint linuxHosts darwinHosts));
-    apps = lib.genAttrs systems (system:
-      import ./lib/apps { inherit self; pkgs = nixpkgs.legacyPackages.${system}; });
+    # One set of packages per system any host uses, as for the apps.
+    systems = builtins.attrNames apps;
 
     # fleet, the guided tool (tools/fleet): `fleet` brings the tools it runs,
     # `fleet-static` is the bare static binary for machines without Nix.
@@ -171,5 +151,6 @@
         nixosConfigurations);
   in {
     inherit nixosConfigurations darwinConfigurations homeConfigurations apps packages checks;
+    lib = { inherit mkFleet; };
   };
 }

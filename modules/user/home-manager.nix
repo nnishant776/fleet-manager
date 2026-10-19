@@ -1,4 +1,4 @@
-{ config, lib, pkgs, inputs, ... }:
+{ config, lib, pkgs, inputs, fleetUsersDir, ... }:
 let
   usersCfg = config.conf.users;
 
@@ -31,6 +31,7 @@ in {
     users = lib.mapAttrs (username: u:
       buildUser {
         inherit pkgs lib username;
+        usersDir = fleetUsersDir;
         extraModules = [ u.homeConfig ];
         # allowLocalOverride stays at its default of false: this tree is
         # evaluated by root during a system rebuild, so the result must not

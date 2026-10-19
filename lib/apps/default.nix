@@ -1,6 +1,8 @@
 # The flake's apps, one file each. Every script is a writeShellApplication, so
 # shellcheck runs when it is built and its tools come from runtimeInputs.
-{ pkgs, self }:
+# self is the flake the apps install and switch from; inputs are the ones its
+# hosts are built with; libraryApps adds fleet-manager's own utilities.
+{ pkgs, self, inputs ? self.inputs, libraryApps ? true }:
 let
   app = drv: { type = "app"; program = pkgs.lib.getExe drv; };
 in {
@@ -11,7 +13,7 @@ in {
   fleet-secrets = app (import ./fleet-secrets.nix { inherit pkgs; });
   # The guided tool; tools/fleet/package.nix.
   fleet         = app (pkgs.callPackage ../../tools/fleet/package.nix { });
-} // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+} // pkgs.lib.optionalAttrs (libraryApps && pkgs.stdenv.hostPlatform.isLinux) {
   # On demand only: builds a Raspberry Pi SD image, never part of a rebuild.
   rpi-image = app (import ./rpi-image { inherit pkgs self; });
 
@@ -20,5 +22,5 @@ in {
 } // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
   # nix-darwin's own tool from the input this flake pins, so the first switch
   # on a Mac uses the same nix-darwin as the modules it activates.
-  darwin-rebuild = app self.inputs.nix-darwin.packages.${pkgs.stdenv.hostPlatform.system}.darwin-rebuild;
+  darwin-rebuild = app inputs.nix-darwin.packages.${pkgs.stdenv.hostPlatform.system}.darwin-rebuild;
 }

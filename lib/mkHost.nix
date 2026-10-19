@@ -1,4 +1,6 @@
-{ inputs }:
+# usersDir is the fleet's folder of per-user configuration, or null; modules get it
+# as fleetUsersDir, for the homes the system builds.
+{ inputs, usersDir ? null }:
 let
   lib = inputs.nixpkgs.lib;
   flakeLib = import ./flakeLib.nix { inherit lib; };
@@ -55,7 +57,7 @@ let
       inputs.sops-nix.nixosModules.sops
       inputs.dms.nixosModules.dank-material-shell
     ];
-    specialArgs = { inherit inputs flakeLib; };
+    specialArgs = { inherit inputs flakeLib; fleetUsersDir = usersDir; };
   };
 
   mkHost = { hostName, hostDir }:
@@ -77,7 +79,7 @@ let
           inputs.home-manager.darwinModules.home-manager
           inputs.sops-nix.darwinModules.sops
         ];
-        specialArgs = { inherit inputs flakeLib; };
+        specialArgs = { inherit inputs flakeLib; fleetUsersDir = usersDir; };
       }
     else
       builtins.throw "mkHost: unsupported system '${system}' for host '${hostName}'";

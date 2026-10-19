@@ -12,7 +12,7 @@ let
       # packages, overlays and nixpkgs configuration of the machine it runs on.
     , pkgs
     , extraModules ? [ ]
-    , usersDir ? ../users
+    , usersDir ? null
       # Safe here since Home Manager is invoked by the user on their own
       # machine; buildUser defaults this off so a future system-level caller
       # has to opt in deliberately.
@@ -66,7 +66,7 @@ let
   # There is deliberately no bare `<username>` alias; the hostname is a
   # property of the machine running the command, so the `home-switch` wrapper
   # resolves it in the shell instead.
-  mkHomeConfigurations = { hostConfigs, usersDir ? ../users }:
+  mkHomeConfigurations = { hostConfigs, usersDir ? null }:
     lib.listToAttrs (map
       (e: lib.nameValuePair "${e.username}@${e.dirName}" (entryToUser usersDir e))
       (hostUserEntries { inherit hostConfigs; }));

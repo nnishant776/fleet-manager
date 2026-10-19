@@ -10,7 +10,8 @@
 , lib ? pkgs.lib
 , username
 , extraModules ? [ ]
-, usersDir ? ../users
+  # The fleet's folder of per-user configuration (lib.mkFleet's users), or null.
+, usersDir ? null
   # Enables importing ~/.config/home-manager/home.nix. Only for standalone
   # Home Manager (lib/mkUser.nix); must stay off for anything the system
   # evaluates, since a rebuild runs as root and the file belongs to the user.
@@ -23,14 +24,14 @@ let
     else "/home/${username}";
 
   # Organisation-defined config for this user, tracked in the flake.
-  orgConfig = usersDir + "/${username}/default.nix";
+  orgConfig = if usersDir == null then null else usersDir + "/${username}/default.nix";
 
   # Machine-local config owned by the user, outside the flake.
   localConfig = homeDir + "/.config/home-manager/home.nix";
 in {
   imports =
     [ ../modules/user/default.nix ]
-    ++ lib.optional (builtins.pathExists orgConfig) orgConfig
+    ++ lib.optional (orgConfig != null && builtins.pathExists orgConfig) orgConfig
     ++ extraModules
     ++ lib.optional (allowLocalOverride && builtins.pathExists localConfig) (import localConfig);
 
