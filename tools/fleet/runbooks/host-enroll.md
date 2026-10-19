@@ -52,7 +52,7 @@ A value that is neither given nor has a default is asked for on a terminal.
    $ SSH_AUTH_SOCK=AGENT ssh -A -o BatchMode=yes -o ConnectTimeout=10 ADMIN@ADDRESS 'sudo -n git -C /etc/nixos remote set-url origin CONFIG_URL'
    ```
 
-5. **Create HOST's identity.** Its age key decrypts its secrets and its deploy key fetches them. Both are made on the host and never leave it.
+5. **Create HOST's identity.** Its age key decrypts its secrets, its deploy key fetches them, and its configuration key fetches a private configuration. All are made on the host and never leave it; init makes only what is missing.
 
    ```
    $ SSH_AUTH_SOCK=AGENT ssh -A -o BatchMode=yes -o ConnectTimeout=10 ADMIN@ADDRESS 'sudo -n fleet-secrets-sync init --state /var/lib/fleet --host HOST'
@@ -70,13 +70,15 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 9. **Register HOST's deploy key, read-only.** It is how HOST fetches the private secrets repository. Read-only: a host never writes to it.
 
-10. **Sync HOST.** Its first sync with secrets: fetch and verify them, then its configuration.
+10. **Register HOST's configuration key, read-only.** Its configuration is private (conf.fleet.repo.hostKey), and this key is how HOST fetches it. Read-only, like the deploy key.
+
+11. **Sync HOST.** Its first sync with secrets: fetch and verify them, then its configuration.
 
    ```
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'sudo -n systemctl start config-auto-update'
    ```
 
-11. **Check HOST.** fleet host check, as support with nothing forwarded: this also shows support works.
+12. **Check HOST.** fleet host check, as support with nothing forwarded: this also shows support works.
 
    ```
    $ fleet host check HOST --address ADDRESS --flake FLAKE

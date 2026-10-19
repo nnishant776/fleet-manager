@@ -36,12 +36,30 @@ func deployKeyText(extra string) engine.Step {
 	return engine.Step{
 		Title: "Register {{.host}}'s deploy key",
 		Why:   "The host fetches this repository with it; it must be read-only.",
-		Do: engine.Show("Deploy public key of {{.host}}:\n" +
-			"  {{.deploy_key}}\n\n" +
-			"Register it read-only on the forge (the web page, Settings -> Deploy keys,\n" +
-			"is the safer route), or with:\n" +
-			"  gh repo deploy-key add <file holding the key above> --title {{.host}}" + extra),
+		Do: engine.Seq(
+			engine.Show("Deploy public key of {{.host}}:\n"+
+				"  {{.deploy_key}}\n\n"+
+				"Register it read-only on the forge (the web page, Settings -> Deploy keys,\n"+
+				"is the safer route), or with:\n"+
+				"  gh repo deploy-key add <file holding the key above> --title {{.host}}"+extra),
+			engine.Func(configKeyText),
+		),
 	}
+}
+
+// configKeyText shows the host's configuration key, which enrollment files
+// list since hosts have one, for a fleet whose configuration is private.
+func configKeyText(x *engine.Ctx) error {
+	if x.Value("config_key") == "" {
+		return nil
+	}
+	x.UI.Blank()
+	x.Say("Configuration public key of {{.host}}:\n" +
+		"  {{.config_key}}\n\n" +
+		"If its configuration repository is private (conf.fleet.repo.hostKey),\n" +
+		"register this one read-only there, the same way:\n" +
+		"  gh repo deploy-key add <file holding the key above> --repo <owner>/<configuration repository> --title {{.host}}")
+	return nil
 }
 
 func absent(rel, msg string) engine.Step {

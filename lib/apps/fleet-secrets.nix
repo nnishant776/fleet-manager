@@ -149,8 +149,9 @@ pkgs.writeShellApplication {
     }
 
     # Reads an enrollment file (as written by fleet-secrets-sync init) and
-    # sets enrolledRecipient and enrolledDeployKey after checking it is for
-    # the given host.
+    # sets enrolledRecipient, enrolledDeployKey and enrolledConfigKey (empty
+    # in a file written before hosts had a configuration key) after checking
+    # it is for the given host.
     read_enrollment() {  # read_enrollment HOST SOURCE
       local doc version host
       if [ "$2" = "-" ]; then
@@ -163,6 +164,7 @@ pkgs.writeShellApplication {
       host="$(yq '.host' <<<"$doc")"
       enrolledRecipient="$(yq '.age_recipient' <<<"$doc")"
       enrolledDeployKey="$(yq '.deploy_pubkey' <<<"$doc")"
+      enrolledConfigKey="$(yq '.config_deploy_pubkey // ""' <<<"$doc")"
       [ "$version" = 1 ] || die "unsupported enrollment file version '$version'"
       [ "$host" = "$1" ] || die "enrollment file is for host '$host', not '$1'"
       case "$enrolledRecipient" in
@@ -173,6 +175,10 @@ pkgs.writeShellApplication {
       case "$enrolledDeployKey" in
         "ssh-ed25519 "*) ;;
         *) die "deploy_pubkey in the enrollment file is not an ssh-ed25519 key" ;;
+      esac
+      case "$enrolledConfigKey" in
+        ""|"ssh-ed25519 "*) ;;
+        *) die "config_deploy_pubkey in the enrollment file is not an ssh-ed25519 key" ;;
       esac
     }
 
@@ -192,6 +198,15 @@ pkgs.writeShellApplication {
       echo "Register it read-only on the forge (the web page, Settings -> Deploy keys,"
       echo "is the safer route), or with:"
       echo "  gh repo deploy-key add <file holding the key above> --title $1"
+      if [ -n "$enrolledConfigKey" ]; then
+        echo
+        echo "Configuration public key of $1:"
+        echo "  $enrolledConfigKey"
+        echo
+        echo "If its configuration repository is private (conf.fleet.repo.hostKey),"
+        echo "register this one read-only there, the same way:"
+        echo "  gh repo deploy-key add <file holding the key above> --repo <owner>/<configuration repository> --title $1"
+      fi
     }
 
     cmd_host_enroll() {

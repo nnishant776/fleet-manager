@@ -115,7 +115,7 @@ func Runbook(f *Flow) string {
 			}
 			b.WriteString("   ```\n")
 		}
-		if text, ok := s.Do.(show); ok {
+		for _, text := range shows(s.Do) {
 			b.WriteString("\n")
 			for _, line := range strings.Split(prose(docText(string(text))), "\n") {
 				b.WriteString("   > " + strings.TrimSpace(line) + "\n")
@@ -171,3 +171,18 @@ func cell(s string) string {
 // prose escapes what Markdown would take for HTML outside code, such as the
 // <name> in hosts/<name>.
 func prose(s string) string { return strings.ReplaceAll(s, "<", `\<`) }
+
+// shows is the fixed text an action shows, on its own or within a sequence.
+func shows(a Action) []show {
+	switch a := a.(type) {
+	case show:
+		return []show{a}
+	case seq:
+		var all []show
+		for _, s := range a {
+			all = append(all, shows(s)...)
+		}
+		return all
+	}
+	return nil
+}

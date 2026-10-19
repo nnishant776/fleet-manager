@@ -100,8 +100,13 @@ var HostEnroll = &engine.Flow{
 		},
 		{
 			Title: "Create {{.host}}'s identity",
-			Why:   "Its age key decrypts its secrets and its deploy key fetches them. Both are made on the host and never leave it.",
-			When:  unless("has_identity", "it has one"),
+			Why:   "Its age key decrypts its secrets, its deploy key fetches them, and its configuration key fetches a private configuration. All are made on the host and never leave it; init makes only what is missing.",
+			When: func(x *engine.Ctx) (bool, string) {
+				if x.Value("has_identity") == "true" && x.Value("has_config_key") == "true" {
+					return false, "it has one"
+				}
+				return true, ""
+			},
 			Do: fleet.OnAdmin("sudo -n fleet-secrets-sync init --state /var/lib/fleet --host {{.host}}").OK("created under /var/lib/fleet").
 				After(func(x *engine.Ctx) error {
 					x.Kept("identity", "{{.host}}'s new identity in /var/lib/fleet: the next run uses it, and removing it would lock the host out of the secrets it gets enrolled for")
@@ -129,6 +134,17 @@ var HostEnroll = &engine.Flow{
 			Title: "Register {{.host}}'s deploy key, read-only",
 			Why:   "It is how {{.host}} fetches the private secrets repository. Read-only: a host never writes to it.",
 			Do:    engine.Func(registerDeployKey),
+		},
+		{
+			Title: "Register {{.host}}'s configuration key, read-only",
+			Why:   "Its configuration is private (conf.fleet.repo.hostKey), and this key is how {{.host}} fetches it. Read-only, like the deploy key.",
+			When: func(x *engine.Ctx) (bool, string) {
+				if x.Value("config_host_key") != "true" {
+					return false, "its configuration repository needs no key (conf.fleet.repo.hostKey is not set)"
+				}
+				return true, ""
+			},
+			Do: engine.Func(registerConfigKey),
 		},
 		{
 			Title: "Sync {{.host}}",
@@ -166,6 +182,7 @@ echo "login=$(id -un)"
 sudo -n true 2>/dev/null && echo sudo=true || echo sudo=false
 command -v fleet-secrets-sync >/dev/null && echo has_tooling=true || echo has_tooling=false
 sudo -n test -f /var/lib/fleet/age.key && echo has_identity=true || echo has_identity=false
+sudo -n test -f /var/lib/fleet/config_ed25519 && echo has_config_key=true || echo has_config_key=false
 test -d /etc/nixos/.git && echo has_checkout=true || echo has_checkout=false
 echo "origin=$(git -C /etc/nixos remote get-url origin 2>/dev/null)"
 id support >/dev/null 2>&1 && echo has_support=true || echo has_support=false`).RunQuiet(x)
@@ -195,6 +212,10 @@ id support >/dev/null 2>&1 && echo has_support=true || echo has_support=false`).
 	// Where the configuration says the host syncs from, if the flake can tell.
 	if url, err := engine.Silently(x, nil, "nix", "eval", "--raw", x.Value("flake")+"#nixosConfigurations."+x.Value("host")+".config.conf.fleet.repo.url"); err == nil {
 		x.Values["config_url"] = url
+	}
+	// Whether it fetches that with its own configuration key: a private one.
+	if v, err := engine.Silently(x, nil, "nix", "eval", "--json", x.Value("flake")+"#nixosConfigurations."+x.Value("host")+".config.conf.fleet.repo.hostKey"); err == nil {
+		x.Values["config_host_key"] = v
 	}
 	return nil
 }
@@ -256,6 +277,9 @@ func copyEnrollment(x *engine.Ctx) error {
 		if v, ok := strings.CutPrefix(line, "deploy_pubkey: "); ok {
 			x.Values["deploy_key"] = v
 		}
+		if v, ok := strings.CutPrefix(line, "config_deploy_pubkey: "); ok {
+			x.Values["config_key"] = v
+		}
 	}
 	if x.Options.DryRun {
 		x.UI.Skip("dry run: checksums match (" + remote[:16] + "…), not copied to " + path)
@@ -316,24 +340,41 @@ func aheadOfUpstream(x *engine.Ctx) (bool, string) {
 var githubRemote = regexp.MustCompile(`github\.com[:/]([^/]+/[^/]+?)(\.git)?$`)
 
 func registerDeployKey(x *engine.Ctx) error {
-	key := x.Value("deploy_key")
-	if x.Options.DryRun && key == "" {
-		key = "<deploy key>"
+	origin, _ := engine.Silently(x, nil, "git", "-C", x.Value("repo"), "remote", "get-url", "origin")
+	return registerKey(x, "deploy_key", origin, "the secrets repository")
+}
+
+// registerConfigKey registers the configuration key on the repository the
+// host's configuration fetches, conf.fleet.repo.url.
+func registerConfigKey(x *engine.Ctx) error {
+	if x.Value("config_key") == "" && !x.Options.DryRun {
+		return errors.New("its enrollment file lists no configuration key: the fleet-secrets-sync it runs predates them;" +
+			" let it sync a configuration of fleet-manager that has conf.fleet.repo.hostKey, then run this again")
 	}
-	x.Values["deploy_key_line"] = key
+	return registerKey(x, "config_key", x.Value("config_url"), "the configuration repository")
+}
+
+// registerKey adds the public key in the value keyValue to the GitHub
+// repository at remote as a read-only deploy key, with gh, or has the person
+// add it on the web page; what names the repository in what is said.
+func registerKey(x *engine.Ctx, keyValue, remote, what string) error {
+	key := x.Value(keyValue)
+	if x.Options.DryRun && key == "" {
+		key = "<" + strings.ReplaceAll(keyValue, "_", " ") + ">"
+	}
+	x.Values["key_line"] = key
 	x.UI.Text(key)
 	if cmd := x.Value("register-with"); cmd != "" {
-		_, err := engine.Cmd("sh", "-c", cmd).StdinFrom("deploy_key_line").StdinNote("the deploy public key").Run(x)
+		_, err := engine.Cmd("sh", "-c", cmd).StdinFrom("key_line").StdinNote("the public key").Run(x)
 		return err
 	}
-	origin, _ := engine.Silently(x, nil, "git", "-C", x.Value("repo"), "remote", "get-url", "origin")
-	m := githubRemote.FindStringSubmatch(origin)
+	m := githubRemote.FindStringSubmatch(remote)
 	_, noGh := x.LookPath("gh")
 	if noGh == nil && m != nil {
 		_, noGh = engine.Silently(x, nil, "gh", "auth", "status")
 	}
 	if noGh != nil || m == nil {
-		x.UI.Note("Add it on the forge: the secrets repository → Settings → Deploy keys → Add deploy key, title " +
+		x.UI.Note("Add it on the forge: " + what + " → Settings → Deploy keys → Add deploy key, title " +
 			x.Value("host") + ", with write access left unticked.")
 		return engine.WaitFor(x, "Added it, read-only?")
 	}

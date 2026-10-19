@@ -192,7 +192,16 @@ func ReadEnrollment() engine.Step {
 			if !strings.HasPrefix(field["deploy_pubkey"], "ssh-ed25519 ") {
 				return errors.New("deploy_pubkey in the enrollment file is not an ssh-ed25519 key")
 			}
-			x.Values["recipient"], x.Values["deploy_key"] = r, field["deploy_pubkey"]
+			// Absent from files written before hosts had a configuration key.
+			res, err := engine.Cmd("yq", `.config_deploy_pubkey // ""`).StdinFrom("enrollment").StdinNote("the enrollment file").RunQuiet(x)
+			if err != nil {
+				return err
+			}
+			configKey := strings.TrimSpace(res.Stdout)
+			if configKey != "" && !strings.HasPrefix(configKey, "ssh-ed25519 ") {
+				return errors.New("config_deploy_pubkey in the enrollment file is not an ssh-ed25519 key")
+			}
+			x.Values["recipient"], x.Values["deploy_key"], x.Values["config_key"] = r, field["deploy_pubkey"], configKey
 			x.UI.OK("for " + field["host"] + ", recipient " + r)
 			return nil
 		}),

@@ -35,6 +35,7 @@ func enrollHost(identity, enrolled, tamper bool) func(engine.Spec) (engine.Resul
 		case s.Name == "ssh" && strings.Contains(last, "has_tooling"):
 			return engine.Result{Stdout: "login=admin\nsudo=true\nhas_tooling=true\n" +
 				"has_identity=" + map[bool]string{true: "true", false: "false"}[identity] + "\n" +
+				"has_config_key=" + map[bool]string{true: "true", false: "false"}[identity] + "\n" +
 				"has_checkout=true\norigin=https://github.com/nnishant776/fleet-manager.git\nhas_support=true\n"}, nil
 		case s.Name == "nix" && strings.Contains(strings.Join(s.Args, " "), "conf.fleet.repo.url"):
 			return engine.Result{Stdout: "https://github.com/nnishant776/fleet-manager.git"}, nil
@@ -174,5 +175,40 @@ func TestEnrollSyncsAsSupportWithNothingForwarded(t *testing.T) {
 	s := syncs[0].String()
 	if !strings.Contains(s, "support@pi") || !strings.Contains(s, "ForwardAgent=no") || strings.Contains(s, "SSH_AUTH_SOCK") {
 		t.Fatalf("the sync did not go in as support with nothing forwarded: %s", s)
+	}
+}
+
+// A host enrolled before hosts had a configuration key, whose configuration
+// is now private: init adds the key, and both keys are registered.
+func TestEnrollAddsAndRegistersTheConfigurationKey(t *testing.T) {
+	base := enrollHost(true, true, false)
+	doc := enrollDoc + "config_deploy_pubkey: ssh-ed25519 AAAACONFIG fleet-config@pi\n"
+	sum := sha256.Sum256([]byte(doc))
+	err, fake, out := runEnroll(t, func(s engine.Spec) (engine.Result, error) {
+		args := strings.Join(s.Args, " ")
+		switch {
+		case s.Name == "ssh" && strings.Contains(args, "has_tooling"):
+			r, err := base(s)
+			r.Stdout = strings.Replace(r.Stdout, "has_config_key=true", "has_config_key=false", 1)
+			return r, err
+		case s.Name == "ssh" && strings.Contains(args, "pi.enroll"):
+			return engine.Result{Stdout: doc + hex.EncodeToString(sum[:]) + "  /var/lib/fleet/pi.enroll\n"}, nil
+		case s.Name == "nix" && strings.Contains(args, "conf.fleet.repo.hostKey"):
+			return engine.Result{Stdout: "true"}, nil
+		case s.Name == "nix" && strings.Contains(args, "conf.fleet.repo.url"):
+			return engine.Result{Stdout: "git@github.com:nnishant776/fleet-inventory.git"}, nil
+		}
+		return base(s)
+	})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if n := len(ranMatching(fake, "fleet-secrets-sync init")); n != 1 {
+		t.Errorf("init ran %d times, want once to add the configuration key\n%s", n, out)
+	}
+	registered := ranMatching(fake, "cat >> /forge/authorized_keys")
+	if len(registered) != 2 || !strings.Contains(registered[0].Stdin, "fleet-deploy@pi") ||
+		!strings.Contains(registered[1].Stdin, "AAAACONFIG") {
+		t.Errorf("registered %d keys, want the deploy key then the configuration key\n%s", len(registered), out)
 	}
 }
