@@ -15,11 +15,14 @@
 #   other Linux         installs Lix; only Home Manager is supported there
 #
 # FLAKE overrides the flake, e.g. FLAKE=github:org/repo/v1.2 or FLAKE=path:.
+# A private fleet's, git+ssh://git@github.com/org/fleet-inventory, is
+# installed with fleet-manager's os-install --private (see README).
 # FLEET_RELEASES overrides where fleet is fetched from.
 # POSIX sh on purpose: macOS ships bash 3.2.
 set -eu
 
-flake="${FLAKE:-github:nnishant776/fleet-manager}"
+library="github:nnishant776/fleet-manager"
+flake="${FLAKE:-$library}"
 releases="${FLEET_RELEASES:-https://github.com/nnishant776/fleet-manager/releases/latest/download}"
 nixFlags="--extra-experimental-features nix-command --extra-experimental-features flakes"
 
@@ -99,12 +102,19 @@ case "$(uname -s)" in
         # os-install and takes the same flags; without it, os-install runs
         # by itself.
         [ -n "$host" ] && set -- -H "$host" "$@"
+        # A private configuration, git+ssh://, can be read only with the
+        # host's own key, which it does not have yet: os-install comes from
+        # fleet-manager, makes the identity first and waits for its keys.
+        installer="$flake"
+        case "$flake" in
+          git+ssh://*) installer="$library"; set -- --private --flake "$flake" "$@" ;;
+        esac
         if fleet="$(fetch_fleet)"; then
           exec "$fleet" install --flake "$flake" "$@" <"$tty"
         fi
         say "could not fetch fleet; running os-install by itself"
         # shellcheck disable=SC2086
-        exec nix $nixFlags run "$flake#os-install" -- "$@" <"$tty"
+        exec nix $nixFlags run "$installer#os-install" -- "$@" <"$tty"
       fi
       # The flake goes along too: system-switch otherwise builds from
       # /etc/nixos, which a machine new to this flake does not have.

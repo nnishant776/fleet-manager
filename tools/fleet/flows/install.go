@@ -39,12 +39,18 @@ var Install = &engine.Flow{
 		{Name: "no-enroll", Prompt: "Skip waiting for the enrollment?", Help: "Do not wait for the host to be enrolled; it retries after boot", Bool: true},
 		{Name: "enroll-out", Prompt: "Also copy the enrollment file to", Help: "A path, for example on a mounted USB stick",
 			Optional: true},
+		{Name: "private", Prompt: "Is the configuration private?", Bool: true,
+			Help: "The flake is a private repository, git+ssh://…, that the host reads with its own key (conf.fleet.repo.hostKey); " +
+				"os-install, from fleet-manager, makes its identity first and waits for its keys to be registered. Set for a git+ssh:// flake",
+			Default: func(x *engine.Ctx) (string, error) {
+				return fmt.Sprint(strings.HasPrefix(x.Value("flake"), "git+ssh://")), nil
+			}},
 	},
 	Needs: []string{"nix"},
 	Steps: []engine.Step{
 		{
 			Title: "Check the network",
-			Why:   "Everything comes over the network: the configuration from {{.flake}}, and the packages from the binary cache. A cable usually works by itself; Wi-Fi needs joining.",
+			Why:   "Everything comes over the network: the configuration and fleet-manager, and the packages from the binary cache. A cable usually works by itself; Wi-Fi needs joining.",
 			Do:    engine.Func(checkNetwork),
 		},
 		{
@@ -61,11 +67,13 @@ var Install = &engine.Flow{
 		{
 			Title: "Look at {{.host}}",
 			Why:   "What os-install will do: the disks the layout names, whether they are encrypted, and whether the host needs enrolling. os-install reads the same again.",
+			When:  unlessPrivate("os-install reads it once the host's keys are registered"),
 			Do:    engine.Func(readHostFacts),
 		},
 		{
 			Title: "Choose the disks",
 			Why:   "Each disk the layout names needs a device on this machine. Everything on those devices is erased. The disk the installer runs from is never offered.",
+			When:  unlessPrivate("os-install offers them once it can read the configuration"),
 			Do:    engine.Func(chooseDisks),
 		},
 		{
@@ -88,7 +96,13 @@ var Install = &engine.Flow{
 
 func checkNetwork(x *engine.Ctx) error {
 	for {
-		_, err := fleet.Nix("flake", "metadata", "{{.flake}}").ReadOnly().Quiet().OK("{{.flake}} is reachable").Run(x)
+		// A private flake cannot be read yet; fleet-manager, whose os-install
+		// runs then, stands for the network.
+		x.Values["reach"] = x.Value("flake")
+		if x.Value("private") == "true" {
+			x.Values["reach"] = fleet.Upstream
+		}
+		_, err := fleet.Nix("flake", "metadata", "{{.reach}}").ReadOnly().Quiet().OK("{{.reach}} is reachable").Run(x)
 		if err == nil {
 			return nil
 		}
@@ -110,6 +124,9 @@ func checkNetwork(x *engine.Ctx) error {
 }
 
 func chooseHost(x *engine.Ctx) error {
+	if x.Value("private") == "true" {
+		return errors.New("no host given: give -H HOST; a private configuration cannot be read before the host is enrolled")
+	}
 	hosts, err := fleet.Hosts(x)
 	if err != nil {
 		return err
@@ -263,8 +280,20 @@ func mapValues(m map[string]string) []string {
 
 func runOSInstall(x *engine.Ctx) error {
 	args := []string{"run", "{{.flake}}#os-install", "--", "-H", "{{.host}}"}
-	for _, d := range strings.Split(x.Value("disks"), "\n") {
-		args = append(args, "-d", d)
+	disks := x.Value("disks")
+	if x.Value("private") == "true" {
+		// fleet-manager's os-install, since the host's own flake cannot be
+		// read yet; it clones that with the host's key, and offers the disks
+		// not given here.
+		args = []string{"run", fleet.Upstream + "#os-install", "--", "--private", "--flake", "{{.flake}}", "-H", "{{.host}}"}
+		disks = x.Value("disk")
+		// A private configuration needs the host's identity, in the usual place.
+		x.Values["state_path"] = "/var/lib/fleet"
+	}
+	for _, d := range strings.Split(disks, "\n") {
+		if d != "" {
+			args = append(args, "-d", d)
+		}
 	}
 	if x.Options.Yes {
 		args = append(args, "--yes")
@@ -282,6 +311,9 @@ func runOSInstall(x *engine.Ctx) error {
 		x.UI.Text("When it shows the enrollment file and its QR code, on the maintainer's machine:")
 		x.Say("  fleet secrets host-enroll {{.host}} --from <the file>")
 		x.UI.Text("  add the deploy key it prints to the secrets repository, read-only")
+		if x.Value("private") == "true" {
+			x.UI.Text("  and the configuration key to the configuration repository, read-only")
+		}
 		x.Say("  fleet secrets user-password <account> {{.host}}, for each account")
 		x.UI.Text("  push the secrets repository; then press Enter here")
 	}
@@ -329,4 +361,15 @@ func afterInstall(x *engine.Ctx) error {
 	}
 	x.Say("Then, from the maintainer's machine: fleet host check {{.host}}")
 	return nil
+}
+
+// unlessPrivate skips a step that has to read the host's configuration,
+// which a private one cannot be before the host is enrolled.
+func unlessPrivate(reason string) func(*engine.Ctx) (bool, string) {
+	return func(x *engine.Ctx) (bool, string) {
+		if x.Value("private") == "true" {
+			return false, reason
+		}
+		return true, ""
+	}
 }

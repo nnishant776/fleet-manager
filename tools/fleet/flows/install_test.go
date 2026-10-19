@@ -92,3 +92,28 @@ func TestInstallDryRunNamesWhatIsMissing(t *testing.T) {
 		}
 	}
 }
+
+func TestInstallFromAPrivateConfiguration(t *testing.T) {
+	x, fake, out := newFakeCtx(installer(t, true))
+	flake := "git+ssh://git@github.com/nnishant776/fleet-inventory"
+	err := engine.RunWith(x, Install, map[string]string{"flake": flake, "host": "nas", "disk": "main=/dev/vda"})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	cmds := strings.Join(fake.Commands(), "\n")
+	want := "nix --extra-experimental-features 'nix-command flakes' run 'github:nnishant776/fleet-manager#os-install' --" +
+		" --private --flake " + flake + " -H nas -d main=/dev/vda --yes"
+	if !strings.Contains(cmds, want) {
+		t.Errorf("os-install was not run as\n  %s\nbut:\n%s", want, cmds)
+	}
+	for _, unwanted := range []string{"flake metadata " + flake, "nixosConfigurations"} {
+		if strings.Contains(cmds, unwanted) {
+			t.Errorf("read the private flake before the host was enrolled: %q in\n%s", unwanted, cmds)
+		}
+	}
+	for _, w := range []string{"the configuration key to the configuration repository", "sudo -n test -f /mnt/var/lib/fleet/age.key"} {
+		if !strings.Contains(out.String()+cmds, w) {
+			t.Errorf("lacks %q:\n%s", w, out)
+		}
+	}
+}

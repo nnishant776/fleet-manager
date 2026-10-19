@@ -29,7 +29,7 @@ pkgs.writeShellApplication {
     usage() {
       cat >&2 <<'EOF'
     usage: os-install [-H HOST] [-d [NAME=]DEVICE]... [--flake REF] [--yes]
-                      [--identity FILE] [--no-enroll] [--enroll-out PATH]
+                      [--identity FILE] [--no-enroll] [--enroll-out PATH] [--private]
 
       -H, --host HOST        host to install (a directory under hosts/)
       -d, --disk [NAME=]DEV  physical device for a disk in the host's layout;
@@ -42,6 +42,10 @@ pkgs.writeShellApplication {
           --no-enroll        do not wait for the host to be enrolled
           --enroll-out PATH  also copy the enrollment file to PATH, for
                              example on a mounted USB stick
+          --private          the flake is a private repository, git+ssh://…, that
+                             the host reads with its own configuration key: its
+                             identity is made first, in memory, and the install
+                             waits until its keys are registered
 
     Anything not given as a flag is chosen from a list, when run in a terminal.
     A host with an encrypted layout asks for one passphrase, used for every
@@ -59,9 +63,15 @@ pkgs.writeShellApplication {
     fi
 
     passfile=""
+    ramState=""
     cleanup() {
       if [ -n "$passfile" ]; then
         rm -f "$passfile"
+      fi
+      # The identity made in memory for a private flake; by now it is on the
+      # new disk, or the install did not happen.
+      if [ -n "$ramState" ]; then
+        rm -rf "$ramState"
       fi
     }
     trap cleanup EXIT
@@ -84,6 +94,7 @@ pkgs.writeShellApplication {
     identity=""
     noEnroll=false
     enrollOut=""
+    private=false
 
     while [ $# -gt 0 ]; do
       case "$1" in
@@ -99,6 +110,7 @@ pkgs.writeShellApplication {
         --identity) identity="''${2:?--identity needs a value}"; shift 2 ;;
         --no-enroll) noEnroll=true; shift ;;
         --enroll-out) enrollOut="''${2:?--enroll-out needs a value}"; shift 2 ;;
+        --private)  private=true; shift ;;
         -h|--help)  usage 0 ;;
         *)          echo "os-install: unknown argument '$1'" >&2; usage ;;
       esac
@@ -131,6 +143,74 @@ pkgs.writeShellApplication {
       fzf --height=40% --layout=reverse --border --no-multi --header="$1" \
         || { echo "os-install: nothing chosen; nothing was changed" >&2; exit 1; }
     }
+
+    # A private flake (conf.fleet.repo.hostKey) can only be read with the
+    # host's own configuration key, so the identity comes first, made in
+    # memory (/run is a tmpfs), and is enrolled before anything is fetched.
+    # The flake is cloned with that key and installed from the clone, which
+    # keeps its revision. The identity reaches the new disk below, as one
+    # carried over with --identity does.
+    if $private; then
+      case "$flake" in
+        git+ssh://*) ;;
+        *) echo "os-install: --private needs the flake as git+ssh://…, not $flake" >&2; exit 1 ;;
+      esac
+      if [ -z "$host" ]; then
+        echo "os-install: --private needs the host (-H): its flake cannot be read to list them yet" >&2
+        exit 1
+      fi
+      ramState="$(umask 077; mktemp -d /run/os-install-identity.XXXXXX)"
+      initArgs=(--state "$ramState" --host "$host")
+      if [ -n "$identity" ]; then
+        initArgs+=(--from-identity "$identity")
+      fi
+      fleet-secrets-sync init "''${initArgs[@]}"
+      if [ -z "$identity" ]; then
+        echo
+        echo "Enrollment file for $host:"
+        cat "$ramState/$host.enroll"
+        echo
+        fleet-identity --state "$ramState" --qr
+        if [ -n "$enrollOut" ]; then
+          cp -- "$ramState/$host.enroll" "$enrollOut"
+          echo "os-install: enrollment file copied to $enrollOut"
+        fi
+        echo "On the maintainer's machine: fleet secrets host-enroll $host --from <that file>,"
+        echo "push, then register its deploy key read-only on the secrets repository and"
+        echo "its configuration key read-only on the configuration repository."
+      fi
+      # The document the step after nixos-install reads, as with --identity.
+      fleet-identity --state "$ramState" --export > "$ramState/identity.yaml"
+      identity="$ramState/identity.yaml"
+
+      # git+ssh://git@github.com/o/r?ref=x is what git clones, and a branch.
+      url="''${flake#git+}"
+      cloneArgs=(-q)
+      case "$url" in
+        *"?ref="*) ref="''${url##*\?ref=}"; cloneArgs+=(--branch "''${ref%%&*}") ;;
+      esac
+      url="''${url%%\?*}"
+      clone="$ramState/flake"
+      export GIT_SSH_COMMAND="ssh -i $ramState/config_ed25519 -o IdentitiesOnly=yes -o UserKnownHostsFile=$ramState/known_hosts -o StrictHostKeyChecking=accept-new"
+      attempt=0
+      until git clone "''${cloneArgs[@]}" -- "$url" "$clone"; do
+        rm -rf "$clone"
+        attempt=$((attempt + 1))
+        if $interactive; then
+          read -r -p "Could not fetch $url yet. Once its keys are registered, press Enter to try again (Ctrl-D stops) " _ \
+            || { echo; echo "os-install: stopped; nothing was changed" >&2; exit 1; }
+        elif [ "$attempt" -ge 60 ]; then
+          echo "os-install: could not fetch $url for 30 minutes; nothing was changed" >&2
+          exit 1
+        else
+          echo "os-install: could not fetch $url; trying again in 30 seconds" >&2
+          sleep 30
+        fi
+      done
+      unset GIT_SSH_COMMAND
+      flake="git+file://$clone"
+      echo "os-install: fetched $url at $(git -C "$clone" rev-parse --short HEAD)"
+    fi
 
     if [ -z "$host" ]; then
       need "the host"
