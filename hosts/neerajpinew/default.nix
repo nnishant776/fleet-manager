@@ -22,9 +22,9 @@
     # The same network setup as the card: systemd-networkd and wpa_supplicant.
     networking = {
       backend = "networkd";
-      # Interfaces are named after their bus and MAC from the next boot: the
-      # built-in Wi-Fi becomes wls<MAC>, the Ethernet enp<MAC>. `ip link`
-      # shows them.
+      # Interfaces are named after their bus and MAC at boot: the built-in
+      # Wi-Fi is wls<MAC> (SDIO), the Ethernet eno<MAC> (onboard), here
+      # wls2ccf67579ff5 and eno2ccf67579ff4. `ip link` shows them.
       macNames = true;
       wireless = {
         countryCode = "IN";
