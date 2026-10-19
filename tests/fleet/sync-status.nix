@@ -1,12 +1,19 @@
-# Test that a fleet sync which stops on a problem tells every account, on a
-# host built from this flake's modules (tests/fleet/host) whose upstream is a
-# local repository. The checks:
+# Test that a fleet sync which stops on a problem tells every account, and
+# that it does not take the machine back to an older commit, on a host built
+# from this flake's modules (tests/fleet/host) whose upstream is a local
+# repository. The checks:
 # - an unsigned commit stops the sync and is recorded in
 #   /var/lib/fleet-sync/status, readable by everyone, with the commit;
 # - an unprivileged user sees the notice at login, and `fleet-sync-status`
 #   prints it;
 # - the same problem on the next run keeps its first time;
-# - a different problem (a signed commit that does not build) replaces it.
+# - a different problem (a signed commit that does not build) replaces it;
+# - a signed commit that builds is applied, and recorded, readable by
+#   everyone, in /var/lib/fleet-sync/accepted as the last commit this machine
+#   accepted; the commit that did not build was recorded too;
+# - a branch taken back to an older signed commit is refused, with the
+#   checkout and the record left as they were;
+# - removing the record lets the sync accept that older commit.
 # The graphical notification is not covered: the VM has no session.
 # Run it with `nix build .#checks.x86_64-linux.fleet-sync-status`.
 { pkgs, inputs }:
@@ -35,6 +42,29 @@ let
     shift
     # shellcheck disable=SC2086 # the -c options are meant to split
     ${git} -c user.name=root -c user.email=root@localhost $sign "$@"
+  '';
+
+  # Stands in for a configuration that builds, since the VM cannot evaluate a
+  # real one: a flake with no inputs, so it needs no network, whose system is
+  # a directory with the nixos-version file nixos-rebuild looks for and a
+  # switch-to-configuration that does nothing. The sync builds it and
+  # nixos-rebuild switches to it as they would for a real one, and the
+  # machine stays as it is. nixos-rebuild first builds the new
+  # configuration's own nixos-rebuild to run in its place; this one has none
+  # in it, so nixos-rebuild carries on as itself.
+  buildable = pkgs.writeText "flake.nix" ''
+    {
+      outputs = _: {
+        nixosConfigurations.checkout.config.system.build = {
+          toplevel = ./system;
+          nixos-rebuild = ./system;
+        };
+      };
+    }
+  '';
+  noSwitch = pkgs.writeScript "switch-to-configuration" ''
+    #!/bin/sh
+    exit 0
   '';
 in
 pkgs.testers.runNixOSTest {
@@ -66,6 +96,12 @@ pkgs.testers.runNixOSTest {
 
     def field(name):
         return checkout.succeed(f"sed -n 's/^{name}=//p' /var/lib/fleet-sync/status").strip()
+
+    def accepted():
+        return checkout.succeed("cat /var/lib/fleet-sync/accepted").strip()
+
+    def head(repo):
+        return checkout.succeed(f"${git} -C {repo} rev-parse HEAD").strip()
 
     # Upstream with one signed commit, and the root-owned checkout from it.
     checkout.succeed(
@@ -124,5 +160,49 @@ pkgs.testers.runNixOSTest {
         out = checkout.succeed("su -l bob -c true 2>&1")
         assert "does not build" in out, out
         assert "not signed" not in out, out
+
+    with subtest("a signed commit that builds is applied and recorded"):
+        # The commit that does not build was verified and checked out, so it
+        # is recorded; the fix goes on top of it.
+        assert accepted() == head("/srv/work"), accepted()
+        checkout.succeed(
+            "cp --no-preserve=mode ${buildable} /srv/work/flake.nix",
+            "install -D -m 0755 ${noSwitch} /srv/work/system/bin/switch-to-configuration",
+            "echo stand-in > /srv/work/system/nixos-version",
+            "${upstream} signed add flake.nix system",
+            "${upstream} signed commit -q -m four",
+            "${upstream} signed push -q origin HEAD:main",
+        )
+        four = head("/srv/work")
+        checkout.succeed("systemctl start config-auto-update.service")
+        assert accepted() == four, accepted()
+        checkout.succeed("test \"$(stat -c %a /var/lib/fleet-sync/accepted)\" = 644")
+        checkout.fail("test -e /var/lib/fleet-sync/status")
+
+    with subtest("a rollback to an older signed commit is refused"):
+        # An empty commit builds the same system. Once it is applied, the
+        # branch is forced back to the commit before it.
+        checkout.succeed(
+            "${upstream} signed commit -q --allow-empty -m five",
+            "${upstream} signed push -q origin HEAD:main",
+            "systemctl start config-auto-update.service",
+        )
+        five = head("/srv/work")
+        assert accepted() == five, accepted()
+        checkout.succeed(f"${upstream} unsigned push -q --force origin {four}:refs/heads/main")
+        checkout.fail("systemctl start config-auto-update.service")
+        assert field("kind") == "rollback", field("kind")
+        assert field("commit") == four, field("commit")
+        assert head("/etc/nixos") == five, head("/etc/nixos")
+        assert accepted() == five, accepted()
+
+    with subtest("removing the record accepts it"):
+        checkout.succeed(
+            "rm /var/lib/fleet-sync/accepted",
+            "systemctl start config-auto-update.service",
+        )
+        assert accepted() == four, accepted()
+        assert head("/etc/nixos") == four, head("/etc/nixos")
+        checkout.fail("test -e /var/lib/fleet-sync/status")
   '';
 }

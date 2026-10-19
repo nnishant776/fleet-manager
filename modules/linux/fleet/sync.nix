@@ -75,6 +75,7 @@ let
           case "$rc" in
             10) exit 1 ;;  # the fetch failed; the next run retries
             11) stop secrets-signature "The latest change to this machine's secrets is not signed by a trusted key, so the machine is not updating. It keeps running its current configuration." ;;
+            16) stop secrets-rollback "The latest change to this machine's secrets does not follow the one it last accepted, so it is not updating; it could be an attempt to bring back old secrets. It keeps running its current configuration. If the history was rewritten on purpose, remove /var/lib/fleet/accepted on this machine to accept it." ;;
             *)  stop secrets "This machine could not refresh or verify its secrets, so it is not updating. It keeps running its current configuration." ;;
           esac
         fi
@@ -123,6 +124,19 @@ let
         stop signature "The latest configuration change is not signed by a trusted key, so this machine is not applying it. It keeps running its current configuration."
       fi
 
+      # A signature says who made a commit, not that it is the latest: anyone
+      # who can push could serve an old signed commit again and take the
+      # machine back to it. So the machine remembers the last commit it
+      # accepted, and takes only that commit or one that follows it.
+      accepted=/var/lib/fleet-sync/accepted
+      if [ -s "$accepted" ]; then
+        last="$(cat "$accepted")"
+        if ! git -C "$repo" merge-base --is-ancestor "$last" "$target" 2>/dev/null; then
+          log "refusing: $target on $ref does not follow $last, the last commit this machine accepted"
+          stop rollback "The latest configuration change does not follow the one this machine last applied, so it is not applying it; it could be an attempt to take the machine back to an older configuration. It keeps running its current configuration. If the history was rewritten on purpose, remove /var/lib/fleet-sync/accepted on this machine to accept it."
+        fi
+      fi
+
       ${if au.resetLocalChanges then ''
         git -C "$repo" reset --hard "$target"
       '' else ''
@@ -133,6 +147,9 @@ let
         fi
       ''}
 
+      # Recorded now, before the build: the commit is verified and checked
+      # out, and a build that fails is fixed by a newer commit on top of it.
+      printf '%s\n' "$target" > "$accepted.tmp" && chmod 0644 "$accepted.tmp" && mv -f "$accepted.tmp" "$accepted"
       after="$(git -C "$repo" rev-parse HEAD)"
       log "revision $before -> $after (tracking $ref)"${lib.optionalString secretsOn ''
 
@@ -277,7 +294,8 @@ in
         PrivateTmp = true;
         ExecStart = lib.getExe syncScript;
         # /var/lib/fleet-sync, readable by every account, holds the status
-        # file the notice in fleet/sync-status.nix reads.
+        # file the notice in fleet/sync-status.nix reads, and the last commit
+        # this machine accepted.
         StateDirectory = "fleet-sync";
         StateDirectoryMode = "0755";
       };

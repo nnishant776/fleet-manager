@@ -833,7 +833,8 @@ key (`deploy_ed25519`) that only fetches ciphertext. `os-install` erases the
 whole disk, so it generates new ones, or restores them with `--identity`. No
 copy exists anywhere else, so a reinstall either carries the identity over by hand or re-keys the host. Each
 sync fetches the secrets repository into a temporary directory, verifies the
-commit signature, copies only this host's files into a snapshot in
+commit signature, checks that the commit follows the one it accepted last
+(kept in `<statePath>/accepted`), copies only this host's files into a snapshot in
 `<statePath>/secrets`, and deletes the clone; sops-nix decrypts the snapshot
 at activation. Before building, the sync also refuses a new configuration that
 needs a secret the snapshot lacks.
@@ -1155,6 +1156,18 @@ The sync verifies the tip of the tracked branch. GitHub's rebase, squash and
 merge buttons drop your signature or replace it with GitHub's own, so after
 such a merge every host stops updating, and everyone at those hosts sees the
 notice below. Merge locally and push instead.
+
+**A host never goes back to an older commit.** Each host remembers the last
+commit it accepted: for its configuration in `/var/lib/fleet-sync/accepted`,
+for its secrets in `<statePath>/accepted`. It takes a new tip only if it is that
+commit or built on it. An older signed commit served again, by someone who can
+push but holds only old signatures, is refused, and the notice says so. Fix a
+mistake with a new commit on top, a revert included, and never rewind `main` or
+the secrets repository with a force push. When a history is rewritten on
+purpose, remove the record on each host (`sudo rm /var/lib/fleet-sync/accepted`,
+or `/var/lib/fleet/accepted` for the secrets); the next sync then takes what it
+fetches. A new install records the revision it was installed from; a host
+without a record takes the first commit it fetches.
 
 **Everyone at a fleet host sees it when updates stop.** When a sync run stops
 on something a person has to fix, such as an unsigned commit, a configuration
