@@ -27,7 +27,7 @@ let
 
   bootstrap = pkgs.writeShellApplication {
     name = "fleet-bootstrap";
-    runtimeInputs = [ pkgs.git pkgs.openssh pkgs.coreutils ];
+    runtimeInputs = [ pkgs.git pkgs.openssh pkgs.coreutils pkgs.systemd ];
     text = ''
       repo=${lib.escapeShellArg cfg.localPath}${lib.optionalString secretsOn ''
 
@@ -86,6 +86,11 @@ let
         install -d -m 0755 /var/lib/fleet-sync
         printf '%s\n' "$installed" > "$accepted.tmp" && chmod 0644 "$accepted.tmp" && mv -f "$accepted.tmp" "$accepted"
       fi
+
+      # The audit rules loaded at boot, before the checkout existed, so they
+      # watch its path as a name only; loading them again watches everything
+      # in it from now on (audit/auditd.nix).
+      systemctl try-restart audit-rules-nixos.service || true
       echo "fleet-bootstrap: $repo at $(git -C "$repo" rev-parse HEAD)"
     '';
   };
