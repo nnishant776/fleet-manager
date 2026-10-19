@@ -314,7 +314,7 @@ what it does and why, shows the exact command, asks before it changes
 anything, and checks the result. `fleet` alone shows a menu, and
 `fleet <command> --help` explains a command.
 
-No account gets it by default; it comes with the Raspberry Pi image only.
+It is not installed anywhere by default.
 Install it yourself where you want it:
 
 ```bash
