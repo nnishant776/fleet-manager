@@ -204,7 +204,8 @@ func SetRecipient() engine.Step {
 	return engine.Step{
 		Title: "Record {{.host}} in fleet.yaml",
 		Why:   "The registry is the one thing the rules in .sops.yaml are rendered from.",
-		Do:    cmd("yq", "-i", ".hosts[strenv(h)] = strenv(r)", "fleet.yaml").Env("h={{.host}}", "r={{.recipient}}"),
+		Do: cmd("yq", "-i", ".hosts[strenv(h)] = strenv(r)", "fleet.yaml").Env("h={{.host}}", "r={{.recipient}}").
+			Before(Restoring("fleet.yaml")),
 	}
 }
 
@@ -248,6 +249,9 @@ func Render() engine.Step {
 			x.UI.Text(b.String())
 			ok, err := x.Approve("Write it?")
 			if !ok || err != nil {
+				return err
+			}
+			if err := RestoreOnStop(x, "{{.repo}}", ".sops.yaml"); err != nil {
 				return err
 			}
 			if err := os.WriteFile(in(x, ".sops.yaml"), b.Bytes(), 0o644); err != nil {
@@ -304,7 +308,7 @@ func UpdateKeys(title, why string, files func(*engine.Ctx) []string) engine.Step
 				return nil
 			}
 			for _, f := range fs {
-				if _, err := cmd("sops", "updatekeys", "-y", f).Run(x); err != nil {
+				if _, err := cmd("sops", "updatekeys", "-y", f).Before(Restoring(f)).Run(x); err != nil {
 					return err
 				}
 			}
@@ -340,6 +344,9 @@ func CreateEmpty(title, rel string) engine.Step {
 			if x.Options.DryRun {
 				return nil
 			}
+			if err := RestoreOnStop(x, "{{.repo}}", rel); err != nil {
+				return err
+			}
 			if err := os.MkdirAll(filepath.Dir(in(x, rel)), 0o755); err != nil {
 				return err
 			}
@@ -367,14 +374,20 @@ func Commit(message string, paths ...string) engine.Step {
 				}
 				args = append(args, strings.Fields(e)...)
 			}
-			if _, err := cmd("git", args...).Run(x); err != nil {
+			added := args[1:]
+			if _, err := cmd("git", args...).Before(func(x *engine.Ctx) error {
+				return Unstage(x, "{{.repo}}", added)
+			}).Run(x); err != nil {
 				return err
 			}
 			msg, err := x.Expand(message)
 			if err != nil {
 				return err
 			}
-			_, err = cmd("git", "commit", "-q", "-m", msg).OK("committed: " + msg).Run(x)
+			_, err = cmd("git", "commit", "-q", "-m", msg).OK("committed: " + msg).After(func(x *engine.Ctx) error {
+				Committed(x, "{{.repo}}", msg)
+				return nil
+			}).Run(x)
 			return err
 		}),
 	}
@@ -393,5 +406,6 @@ func JSON(s string) string {
 // Set sets one key of an encrypted file from a value, passed on stdin so it
 // never appears in a process listing.
 func Set(file, key, value, note string) *engine.Command {
-	return cmd("sops", "set", "--value-stdin", file, `["`+key+`"]`).StdinFrom(value).StdinNote(note)
+	return cmd("sops", "set", "--value-stdin", file, `["`+key+`"]`).StdinFrom(value).StdinNote(note).
+		Before(Restoring(file))
 }

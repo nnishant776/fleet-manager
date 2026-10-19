@@ -133,6 +133,35 @@ pkgs.runCommand "fleet-secrets-parity" {
       || { echo "$repo: beta's files are still there"; exit 1; }
   done
 
+  # A run that does not finish leaves the repository as it found it. With
+  # commits that cannot be signed, each command below writes its files, then
+  # fails at the commit, and must put everything back: a new host's files,
+  # a re-key of committed files, a new user's file, a key in an existing one.
+  state() {
+    git -C go rev-parse HEAD
+    git -C go status --porcelain --untracked-files=all
+    (cd go && find . -path ./.git -prune -o -type f -print | sort | xargs sha256sum)
+    (cd go && find . -path ./.git -prune -o -type d -print | sort)
+  }
+  state > before.state
+  git -C go config commit.gpgSign true
+  git -C go config gpg.format ssh
+  git -C go config user.signingKey "$PWD/no-such-key.pub"
+  unfinished() {  # unfinished WHAT: the last command must have failed at its commit and put everything back
+    grep -q "stopped at step [0-9]*, Commit" go.out || { echo "$1: did not stop at the commit"; cat go.out; exit 1; }
+    grep -q "Put back what this run changed" go.out || { echo "$1: nothing was put back"; cat go.out; exit 1; }
+    state | diff before.state - || { echo "$1: the repository is not as it was"; exit 1; }
+  }
+  if go_tool host-enroll beta --from beta.enroll > go.out 2>&1; then echo "committed unsigned"; exit 1; fi
+  unfinished "host-enroll beta"
+  if go_tool host-rekey alpha --from alpha.enroll > go.out 2>&1; then echo "committed unsigned"; exit 1; fi
+  unfinished "host-rekey alpha"
+  if printf 'pw-carol' | go_tool user-password carol alpha --password-stdin > go.out 2>&1; then echo "committed unsigned"; exit 1; fi
+  unfinished "user-password carol alpha"
+  if go_tool user-key alice alpha > go.out 2>&1; then echo "committed unsigned"; exit 1; fi
+  unfinished "user-key alice alpha"
+  git -C go config --unset commit.gpgSign
+
   # Both refuse the same mistakes.
   if go_tool host-enroll alpha --from alpha2.enroll 2>&1 | tee go.err; then echo "enrolled alpha twice"; exit 1; fi
   grep -q "already enrolled; use host-rekey" go.err

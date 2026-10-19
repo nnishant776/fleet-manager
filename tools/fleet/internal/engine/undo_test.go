@@ -128,3 +128,26 @@ func TestNothingIsPutBackAfterSuccessOrInADryRun(t *testing.T) {
 		t.Errorf("dry run: ran %s\n%s", got, out)
 	}
 }
+
+// What a command started elsewhere is said to run on only after an
+// interruption: a command that failed by itself waited for it to end.
+func TestRunningNotesShowOnlyAfterAnInterruption(t *testing.T) {
+	flow := func(name string) *Flow {
+		return &Flow{Path: []string{"t"}, Title: "t", Steps: []Step{{Title: "one",
+			Do: Cmd(name).ReadOnly().Before(func(x *Ctx) error { x.Running("sync", "the sync may still be running"); return nil })}}}
+	}
+	x, _, out := newCtx(Options{}, failing("fails"))
+	_ = RunWith(x, flow("fails"), nil)
+	if strings.Contains(out.String(), "still running") || strings.Contains(out.String(), "[stop]") {
+		t.Errorf("a failure reported the sync running:\n%s", out)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	x, _, out = newCtx(Options{}, func(Spec) (Result, error) { cancel(); return Result{Code: -1}, errors.New("signal: terminated") })
+	x.Context = ctx
+	_ = RunWith(x, flow("slow"), nil)
+	if !strings.Contains(out.String(), "– kept: the sync may still be running") {
+		t.Errorf("an interruption did not report the sync running:\n%s", out)
+	}
+}

@@ -190,3 +190,42 @@ func StopAgent(x *engine.Ctx) {
 		_ = os.RemoveAll(dir)
 	}
 }
+
+// StillRunning notes, while c runs, that an interruption leaves what it
+// started on the host running there, where it finishes by itself, and how
+// to follow it: unit is the systemd unit it runs as, login the account to
+// look with.
+func StillRunning(c *engine.Command, what, unit, login string) *engine.Command {
+	key := "running " + unit
+	return c.Before(func(x *engine.Ctx) error {
+		x.Running(key, what+" on {{.host}} may still be running there, and finishes by itself; follow it with: ssh "+
+			login+"@{{.address}} journalctl -fu "+unit)
+		return nil
+	}).After(func(x *engine.Ctx) error {
+		x.Running(key, "")
+		return nil
+	})
+}
+
+// Creates registers, before c runs, removing the files it is about to
+// create (templated), should it not finish. Once it has, they stay, and the
+// note says so.
+func Creates(c *engine.Command, note string, files ...string) *engine.Command {
+	key := "create " + strings.Join(files, " ")
+	return c.Before(func(x *engine.Ctx) error {
+		var paths []string
+		for _, f := range files {
+			p, err := x.Expand(f)
+			if err != nil {
+				return err
+			}
+			paths = append(paths, p)
+		}
+		x.Undo(key, engine.Cmd("rm", append([]string{"-f", "--"}, paths...)...).OK("removed what it had started to write"))
+		return nil
+	}).After(func(x *engine.Ctx) error {
+		x.Done(key)
+		x.Kept(key, note)
+		return nil
+	})
+}

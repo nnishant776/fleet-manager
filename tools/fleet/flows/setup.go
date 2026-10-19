@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/nnishant776/fleet-manager/tools/fleet/internal/engine"
+	"github.com/nnishant776/fleet-manager/tools/fleet/internal/fleet"
 	"github.com/nnishant776/fleet-manager/tools/fleet/internal/secrets"
 )
 
@@ -63,8 +64,9 @@ var Setup = &engine.Flow{
 				}
 				return true, ""
 			},
-			Do: engine.Cmd("sh", "-c", `umask 077 && mkdir -p "$(dirname "$1")" && age-keygen | age -p -o "$1"`, "sh", "{{.recovery}}").
+			Do: fleet.Creates(engine.Cmd("sh", "-c", `umask 077 && mkdir -p "$(dirname "$1")" && age-keygen | age -p -o "$1"`, "sh", "{{.recovery}}").
 				Interactive().OK("written to {{.recovery}}"),
+				"your recovery identity, {{.recovery}}; keep a copy offline", "{{.recovery}}"),
 		},
 		{
 			Title: "Find your recovery identity's recipient",
@@ -80,7 +82,8 @@ var Setup = &engine.Flow{
 				}
 				return true, ""
 			},
-			Do: engine.Cmd("ssh-keygen", "-t", "ed25519", "-a", "100", "-C", "fleet signing", "-f", "{{.signing-key}}").Interactive(),
+			Do: fleet.Creates(engine.Cmd("ssh-keygen", "-t", "ed25519", "-a", "100", "-C", "fleet signing", "-f", "{{.signing-key}}").Interactive(),
+				"your signing key, {{.signing-key}}", "{{.signing-key}}", "{{.signing-key}}.pub"),
 		},
 		{
 			Title: "Sign every commit in both checkouts",
@@ -103,9 +106,14 @@ var Setup = &engine.Flow{
 				return true, ""
 			},
 			Do: engine.Seq(
-				engine.Cmd("yq", "-i", ".maintainer = strenv(r)", "fleet.yaml").In("{{.repo}}").Env("r={{.recipient}}"),
-				engine.Cmd("git", "commit", "-q", "-m", "fleet: set maintainer recipient", "fleet.yaml").In("{{.repo}}"),
-				engine.Cmd("git", "push").In("{{.repo}}"),
+				engine.Cmd("yq", "-i", ".maintainer = strenv(r)", "fleet.yaml").In("{{.repo}}").Env("r={{.recipient}}").
+					Before(secrets.Restoring("fleet.yaml")),
+				engine.Cmd("git", "commit", "-q", "-m", "fleet: set maintainer recipient", "fleet.yaml").In("{{.repo}}").
+					After(func(x *engine.Ctx) error {
+						secrets.Committed(x, "{{.repo}}", "fleet: set maintainer recipient")
+						return nil
+					}),
+				secrets.Push(),
 			),
 		},
 		{
@@ -220,6 +228,9 @@ func trustKey(x *engine.Ctx) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
+	if err := secrets.RestoreOnStop(x, "{{.config}}", "fleet/allowed_signers"); err != nil {
+		return err
+	}
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
@@ -231,11 +242,17 @@ func trustKey(x *engine.Ctx) error {
 	if err := f.Close(); err != nil {
 		return err
 	}
-	if _, err := engine.Cmd("git", "-C", "{{.config}}", "add", "fleet/allowed_signers").Run(x); err != nil {
+	if _, err := engine.Cmd("git", "-C", "{{.config}}", "add", "fleet/allowed_signers").Before(func(x *engine.Ctx) error {
+		return secrets.Unstage(x, "{{.config}}", []string{"fleet/allowed_signers"})
+	}).Run(x); err != nil {
 		return err
 	}
 	// Only this file, whatever else is staged.
 	_, err = engine.Cmd("git", "-C", "{{.config}}", "commit", "-q", "-m", "feat(fleet): trust {{.label}}'s signing key", "--", "fleet/allowed_signers").
-		OK("committed; push it to main, merging locally").Run(x)
+		OK("committed; push it to main, merging locally").After(func(x *engine.Ctx) error {
+		x.Settled()
+		x.Kept("push {{.config}}", "the commit that trusts your key in {{.config}}, not pushed yet: push it to main, merging locally")
+		return nil
+	}).Run(x)
 	return err
 }

@@ -285,7 +285,15 @@ func runOSInstall(x *engine.Ctx) error {
 		x.Say("  fleet secrets user-password <account> {{.host}}, for each account")
 		x.UI.Text("  push the secrets repository; then press Enter here")
 	}
-	_, err := fleet.Nix(args...).Interactive().OK("{{.host}} is installed").Run(x)
+	// Partly written disks cannot be put back; the note says how to start over.
+	_, err := fleet.Nix(args...).Interactive().OK("{{.host}} is installed").Before(func(x *engine.Ctx) error {
+		x.Kept("install", "the disks as os-install left them, perhaps partly written; to start over: "+
+			"sudo umount -R /mnt; sudo swapoff -a; then fleet install again")
+		return nil
+	}).After(func(x *engine.Ctx) error {
+		x.Kept("install", "")
+		return nil
+	}).Run(x)
 	return err
 }
 

@@ -64,7 +64,8 @@ var SupportKeyRotate = &engine.Flow{
 					args = []string{"-t", "ed25519-sk", "-O", "resident", "-O", "verify-required",
 						"-O", "application=ssh:fleet-support", "-C", "fleet support", "-f", "{{.new-key}}"}
 				}
-				_, err := engine.Cmd("ssh-keygen", args...).Interactive().OK("made {{.new-key}}").Run(x)
+				_, err := fleet.Creates(engine.Cmd("ssh-keygen", args...).Interactive().OK("made {{.new-key}}"),
+					"the new key, {{.new-key}}", "{{.new-key}}", "{{.new-key}}.pub").Run(x)
 				return err
 			}),
 		},
@@ -93,7 +94,7 @@ var SupportKeyRotate = &engine.Flow{
 		{
 			Title: "Sync {{.host}} with the old key",
 			Why:   "It picks up the configuration that accepts both keys.",
-			Do:    asSupport("old-key", "sudo -n systemctl start config-auto-update"),
+			Do:    fleet.StillRunning(asSupport("old-key", "sudo -n systemctl start config-auto-update"), "the sync", "config-auto-update", "support"),
 		},
 		{
 			Title: "Test the new key",
@@ -121,7 +122,7 @@ var SupportKeyRotate = &engine.Flow{
 		{
 			Title: "Sync {{.host}} with the new key",
 			Why:   "It picks up the configuration without the old key.",
-			Do:    asSupport("new-key", "sudo -n systemctl start config-auto-update"),
+			Do:    fleet.StillRunning(asSupport("new-key", "sudo -n systemctl start config-auto-update"), "the sync", "config-auto-update", "support"),
 		},
 		{
 			Title: "Check the old key is refused",

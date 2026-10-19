@@ -101,7 +101,7 @@ var HostSecret = &engine.Flow{
 		{
 			Title: "Push",
 			Why:   "{{.host}} fetches it on its next sync, which checks the commit is signed by an allowed key.",
-			Do:    engine.Cmd("git", "push").In("{{.repo}}"),
+			Do:    secrets.Push(),
 		},
 		{
 			Title: "Use it in {{.host}}'s configuration",
@@ -114,7 +114,7 @@ var HostSecret = &engine.Flow{
 			Title: "Sync {{.host}}",
 			Why:   "It fetches the new secrets commit and its configuration, and activation decrypts the secret.",
 			When:  wantSync,
-			Do:    fleet.OnHost("sudo -n systemctl start config-auto-update"),
+			Do:    fleet.StillRunning(fleet.OnHost("sudo -n systemctl start config-auto-update"), "the sync", "config-auto-update", "{{.user}}"),
 		},
 		{
 			Title: "Check the secret arrived",

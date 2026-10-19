@@ -328,6 +328,12 @@ Every question has a flag, so a command also runs without prompts. `--dry-run`
 shows every step and command for a real host, and runs only the ones that
 look; `--yes` makes the changes without asking.
 
+A run that does not finish, because of Ctrl+C, a failed step or a "no", puts
+back what it changed on this machine, such as half-made changes in the secrets
+repository, and says what stays: commits already pushed, keys it made, a host's
+identity, or a sync still running on the host. Steps that are done are skipped,
+so the same command, run again, goes on from there.
+
 Each command has a page in [`tools/fleet/runbooks`](tools/fleet/runbooks/README.md)
 with its flags and its steps. `fleet docs` writes the pages from the commands
 themselves, and the tests fail when they are out of date.

@@ -134,7 +134,8 @@ var SecretsHostRetire = &engine.Flow{
 		{
 			Title: "Remove {{.host}} from fleet.yaml",
 			Why:   "Its recipient goes, and with it the two rules .sops.yaml has for it.",
-			Do:    engine.Cmd("yq", "-i", "del(.hosts[strenv(h)])", "fleet.yaml").In("{{.repo}}").Env("h={{.host}}"),
+			Do: engine.Cmd("yq", "-i", "del(.hosts[strenv(h)])", "fleet.yaml").In("{{.repo}}").Env("h={{.host}}").
+				Before(secrets.Restoring("fleet.yaml")),
 		},
 		secrets.Render(),
 		{
@@ -146,7 +147,7 @@ var SecretsHostRetire = &engine.Flow{
 					x.UI.Skip("it has no files")
 				}
 				for _, f := range files {
-					if _, err := engine.Cmd("git", "rm", "-q", "-f", f).In("{{.repo}}").Run(x); err != nil {
+					if _, err := engine.Cmd("git", "rm", "-q", "-f", f).In("{{.repo}}").Before(secrets.Restoring(f)).Run(x); err != nil {
 						return err
 					}
 				}

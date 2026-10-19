@@ -102,7 +102,11 @@ var HostEnroll = &engine.Flow{
 			Title: "Create {{.host}}'s identity",
 			Why:   "Its age key decrypts its secrets and its deploy key fetches them. Both are made on the host and never leave it.",
 			When:  unless("has_identity", "it has one"),
-			Do:    fleet.OnAdmin("sudo -n fleet-secrets-sync init --state /var/lib/fleet --host {{.host}}").OK("created under /var/lib/fleet"),
+			Do: fleet.OnAdmin("sudo -n fleet-secrets-sync init --state /var/lib/fleet --host {{.host}}").OK("created under /var/lib/fleet").
+				After(func(x *engine.Ctx) error {
+					x.Kept("identity", "{{.host}}'s new identity in /var/lib/fleet: the next run uses it, and removing it would lock the host out of the secrets it gets enrolled for")
+					return nil
+				}),
 		},
 		{
 			Title: "Copy its enrollment file here",
@@ -119,7 +123,7 @@ var HostEnroll = &engine.Flow{
 			Title: "Push the secrets repository",
 			Why:   "{{.host}} fetches from GitHub; it accepts the commit only if it is signed by an allowed key.",
 			When:  aheadOfUpstream,
-			Do:    engine.Cmd("git", "push").In("{{.repo}}"),
+			Do:    secrets.Push(),
 		},
 		{
 			Title: "Register {{.host}}'s deploy key, read-only",
@@ -130,7 +134,7 @@ var HostEnroll = &engine.Flow{
 			Title: "Sync {{.host}}",
 			Why:   "Its first sync with secrets: fetch and verify them, then its configuration.",
 			When:  wantSync,
-			Do:    fleet.OnHost("sudo -n systemctl start config-auto-update"),
+			Do:    fleet.StillRunning(fleet.OnHost("sudo -n systemctl start config-auto-update"), "the sync", "config-auto-update", "{{.user}}"),
 		},
 		{
 			Title: "Check {{.host}}",
@@ -215,11 +219,14 @@ func switchHost(x *engine.Ctx) error {
 	}
 	// systemd-run gives the service a minimal PATH; nixos-rebuild needs the
 	// system's (it runs `test`).
-	_, err = fleet.OnAdmin(`sudo -n systemctl reset-failed fleet-enroll-switch 2>/dev/null; ` +
-		`sudo -n systemd-run --wait --collect --unit=fleet-enroll-switch ` +
-		`--setenv=PATH=/run/wrappers/bin:/run/current-system/sw/bin ` +
-		`nixos-rebuild switch --flake {{.switch_ref}}#{{.host}}; s=$?; ` +
-		`sudo -n journalctl -u fleet-enroll-switch -o cat -n 15 --no-pager; exit $s`).OK("switched").Run(x)
+	// It runs as a unit on the host, so that a dropped connection or a stop
+	// here cannot cut it in half.
+	_, err = fleet.StillRunning(fleet.OnAdmin(`sudo -n systemctl reset-failed fleet-enroll-switch 2>/dev/null; `+
+		`sudo -n systemd-run --wait --collect --unit=fleet-enroll-switch `+
+		`--setenv=PATH=/run/wrappers/bin:/run/current-system/sw/bin `+
+		`nixos-rebuild switch --flake {{.switch_ref}}#{{.host}}; s=$?; `+
+		`sudo -n journalctl -u fleet-enroll-switch -o cat -n 15 --no-pager; exit $s`).OK("switched"),
+		"the switch", "fleet-enroll-switch", "{{.admin}}").Run(x)
 	return err
 }
 

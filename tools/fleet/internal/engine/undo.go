@@ -26,7 +26,10 @@ type undo struct {
 	do  Action
 }
 
-type note struct{ key, text string }
+type note struct {
+	key, text   string
+	interrupted bool // shown only if the run was interrupted
+}
 
 // Undo registers how to put back a change about to be made. A key that is
 // registered already stays as it is, so that something changed twice is put
@@ -58,7 +61,15 @@ func (c *Ctx) Settled() { c.undos = nil }
 
 // Kept sets the note under key, templated, about something this run made
 // that a stop leaves as it is, and how to go on; an empty text removes it.
-func (c *Ctx) Kept(key, text string) {
+func (c *Ctx) Kept(key, text string) { c.setNote(key, text, false) }
+
+// Running sets the note under key about what a command has started
+// elsewhere, such as a unit on a host, that keeps running if the run is
+// interrupted while it waits. It is shown only after an interruption: a
+// command that ended by itself waited for that to end too.
+func (c *Ctx) Running(key, text string) { c.setNote(key, text, true) }
+
+func (c *Ctx) setNote(key, text string, interrupted bool) {
 	if c.Options.DryRun {
 		return
 	}
@@ -67,20 +78,27 @@ func (c *Ctx) Kept(key, text string) {
 			if text == "" {
 				c.kept = append(c.kept[:i], c.kept[i+1:]...)
 			} else {
-				c.kept[i].text = text
+				c.kept[i] = note{key, text, interrupted}
 			}
 			return
 		}
 	}
 	if text != "" {
-		c.kept = append(c.kept, note{key, text})
+		c.kept = append(c.kept, note{key, text, interrupted})
 	}
 }
 
 // unwind runs the undos, newest first, and shows the kept notes. It runs on
 // a context of its own, since the run's may be cancelled, and asks nothing.
 func (c *Ctx) unwind() {
-	if len(c.undos) == 0 && len(c.kept) == 0 {
+	interrupted := c.Context.Err() != nil
+	var kept []note
+	for _, n := range c.kept {
+		if interrupted || !n.interrupted {
+			kept = append(kept, n)
+		}
+	}
+	if len(c.undos) == 0 && len(kept) == 0 {
 		return
 	}
 	c.Context = context.WithoutCancel(c.Context)
@@ -100,7 +118,7 @@ func (c *Ctx) unwind() {
 		}
 	}
 	c.undos = nil
-	for _, n := range c.kept {
+	for _, n := range kept {
 		text, err := c.Expand(n.text)
 		if err != nil {
 			text = n.text
