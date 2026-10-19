@@ -7,6 +7,7 @@
 #     inherit self;
 #     hosts = ./config/hosts;
 #     users = ./config/users;
+#     extraSystems = [ "x86_64-linux" ];
 #   };
 #
 # Modules see the calling flake as inputs.self: the revision a machine records
@@ -19,6 +20,9 @@
   hosts,
   # Per-user configuration, users/<user>/default.nix; null for none.
   users ? null,
+  # Systems to offer the apps on besides the hosts', such as the
+  # maintainer's machine and CI's: [ "x86_64-linux" ].
+  extraSystems ? [ ],
   # fleet-manager's own utilities, which no fleet needs: rpi-image and
   # secrets-harness. Off for a private fleet, which runs them from
   # fleet-manager itself.
@@ -59,7 +63,7 @@ let
   };
 
   # One set of apps per system any host uses; the scripts live in lib/apps.
-  systems = lib.unique (lib.attrValues (lib.attrsets.unionOfDisjoint linuxHosts darwinHosts));
+  systems = lib.unique (lib.attrValues (lib.attrsets.unionOfDisjoint linuxHosts darwinHosts) ++ extraSystems);
   apps = lib.genAttrs systems (system:
     import ./apps {
       inherit self libraryApps;
