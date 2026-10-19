@@ -1,9 +1,11 @@
 # End-to-end test of the host side of the secrets design: a `forge` node
 # serves signed bare repositories over sshd and a `fleet` node, built from the
 # scratch-secrets host, has to bootstrap, snapshot, activate and hold up
-# against a tampered repository and an older commit served again, and take
+# against a tampered repository and an older commit served again, take
 # secrets the maintainer adds with `fleet host secret` (the forge also plays
-# the maintainer). No network and no hosting service are involved. Run it with
+# the maintainer), and fetch its configuration from a private repository with
+# its own configuration key (conf.fleet.repo.hostKey), refusing what is not
+# signed. No network and no hosting service are involved. Run it with
 # `nix build .#checks.x86_64-linux.secrets-sync` (see README.md).
 { pkgs, inputs, self }:
 let
@@ -32,10 +34,11 @@ let
     recipient="$(age-keygen -y "$keys/host.key")"
 
     ssh-keygen -q -t ed25519 -N "" -C "fleet-deploy@${hostName}" -f "$keys/deploy_ed25519"
+    ssh-keygen -q -t ed25519 -N "" -C "fleet-config@${hostName}" -f "$keys/config_ed25519"
     ssh-keygen -q -t ed25519 -N "" -C "maintainer@test" -f "$keys/signing_ed25519"
     ssh-keygen -q -t ed25519 -N "" -C "support@test" -f "$keys/support_ed25519"
     echo "maintainer@test $(cut -d' ' -f1,2 "$keys/signing_ed25519.pub")" > "$out/allowed_signers"
-    cp "$keys/support_ed25519" "$keys/support_ed25519.pub" "$keys/deploy_ed25519.pub" "$out/"
+    cp "$keys/support_ed25519" "$keys/support_ed25519.pub" "$keys/deploy_ed25519.pub" "$keys/config_ed25519.pub" "$out/"
     # The maintainer's keys, for the forge to play the maintainer with fleet.
     cp "$keys/recovery.key" "$keys/signing_ed25519" "$out/"
 
@@ -48,6 +51,12 @@ let
       echo "deploy_key: |"
       sed 's/^/  /' "$keys/deploy_ed25519"
     } > "$out/identity.yaml"
+    # As exported before the configuration key existed, for init to add one.
+    cp "$out/identity.yaml" "$out/identity-without-config.yaml"
+    {
+      echo "config_key: |"
+      sed 's/^/  /' "$keys/config_ed25519"
+    } >> "$out/identity.yaml"
 
     signed_git() {
       git -c gpg.format=ssh -c "user.signingkey=$keys/signing_ed25519" \
@@ -113,7 +122,9 @@ let
   '';
 
   secretsUrl = "ssh://git@forge/var/lib/forge/secrets.git";
-  configUrl = "ssh://git@forge/var/lib/forge/config.git";
+  # A private configuration repository, as fleet-inventory is: its own account
+  # on the forge, which takes the host's configuration key and no other.
+  configUrl = "ssh://config@forge/var/lib/forge/config.git";
 in
 pkgs.testers.runNixOSTest {
   name = "secrets-sync";
@@ -133,6 +144,10 @@ pkgs.testers.runNixOSTest {
       isNormalUser = true;
       openssh.authorizedKeys.keys = [ (builtins.readFile "${fixtures}/deploy_ed25519.pub") ];
     };
+    users.users.config = {
+      isNormalUser = true;
+      openssh.authorizedKeys.keys = [ (builtins.readFile "${fixtures}/config_ed25519.pub") ];
+    };
 
     # sshd runs git-upload-pack through the user's login PATH; fleet is the
     # maintainer's tool.
@@ -148,6 +163,7 @@ pkgs.testers.runNixOSTest {
         mkdir -p /var/lib/forge
         cp -r --no-preserve=mode ${fixtures}/secrets.git ${fixtures}/config.git /var/lib/forge/
         chown -R git:users /var/lib/forge
+        chown -R config:users /var/lib/forge/config.git
       '';
     };
 
@@ -185,6 +201,9 @@ pkgs.testers.runNixOSTest {
         boot.loader.grub.enable = lib.mkForce false;
         conf.secrets.repo.url = lib.mkForce secretsUrl;
         conf.fleet.repo.url = lib.mkForce configUrl;
+        conf.fleet.repo.hostKey = true;
+        # Syncs run when a subtest starts one.
+        systemd.timers.config-auto-update.enable = false;
         conf.fleet.signing.allowedSignersFile = lib.mkForce "${fixtures}/allowed_signers";
         conf.fleet.support.sshKeys = lib.mkForce [
           (lib.removeSuffix "\n" (builtins.readFile "${fixtures}/support_ed25519.pub"))
@@ -192,18 +211,11 @@ pkgs.testers.runNixOSTest {
       }
     ];
 
-    # The first-boot configuration clone has no deploy-key secret in this
-    # test (that needs a host secret the fixtures do not carry), so root
-    # reaches the forge with the host's deploy key and pins nothing.
-    # To read back what fleet host secret stored, with the host's own key.
+    # Root has no ssh configuration for the forge: the secrets fetch uses the
+    # host's deploy key and the configuration fetch its configuration key
+    # (conf.fleet.repo.hostKey), each as the tools set it, or not at all.
+    # sops, to read back what fleet host secret stored, with the host's own key.
     environment.systemPackages = [ pkgs.sops ];
-
-    programs.ssh.extraConfig = ''
-      Host forge
-        IdentityFile /var/lib/fleet/deploy_ed25519
-        IdentitiesOnly yes
-        StrictHostKeyChecking accept-new
-    '';
 
     # Stands in for os-install's identity step: the keys of the fixtures
     # are put in place before fleet-bootstrap's own `init`, which then finds
@@ -372,5 +384,52 @@ pkgs.testers.runNixOSTest {
         out = fleet.succeed(sync_cmd + " 2>/dev/null").strip()
         assert out == older, f"sync printed {out}, expected {older}"
         assert fleet.succeed("cat /var/lib/fleet/accepted").strip() == older
+
+    def unsigned_config_commit():
+        # As anyone with write access to the repository, without the signing key.
+        forge.succeed(
+            "su config -c '"
+            "cd $(mktemp -d) && git clone -q /var/lib/forge/config.git w && cd w"
+            " && git -c user.name=x -c user.email=x@test -c commit.gpgsign=false"
+            " commit -q --allow-empty -m unsigned && git push -q origin main'"
+        )
+        return forge.succeed("su config -c 'git -C /var/lib/forge/config.git rev-parse main'").strip()
+
+    def recorded():
+        return fleet.succeed("cat /var/lib/fleet-sync/status")
+
+    with subtest("12: the configuration sync fetches with the host's own key, and verifies"):
+        unsigned = unsigned_config_commit()
+        fleet.execute("systemctl start config-auto-update.service")
+        # Only the configuration key opens the config account, so the commit
+        # can only have been fetched with it; then it is refused.
+        status = recorded()
+        assert "kind=signature" in status and f"commit={unsigned}" in status, status
+        fleet.succeed("test \"$(git -C /etc/nixos rev-parse HEAD)\" != " + unsigned)
+
+    with subtest("13: the sync fetches from the repository its configuration names"):
+        # As on a host whose configuration has just moved to another repository.
+        fleet.succeed("git -C /etc/nixos remote set-url origin ssh://git@forge/var/lib/forge/old.git")
+        unsigned = unsigned_config_commit()
+        fleet.execute("systemctl start config-auto-update.service")
+        url = fleet.succeed("git -C /etc/nixos remote get-url origin").strip()
+        assert url == "${configUrl}", f"origin is {url}"
+        assert f"commit={unsigned}" in recorded(), recorded()
+
+    with subtest("14: init adds a configuration key to an identity made without one"):
+        fleet.succeed(
+            "fleet-secrets-sync init --state /tmp/old --host ${hostName}"
+            " --from-identity ${fixtures}/identity-without-config.yaml"
+        )
+        pub = fleet.succeed("cat /tmp/old/config_ed25519.pub").strip()
+        fleet.succeed("test \"$(stat -c %a /tmp/old/config_ed25519)\" = 600")
+        enroll = fleet.succeed("cat /tmp/old/${hostName}.enroll")
+        assert f"config_deploy_pubkey: {pub}" in enroll, enroll
+        before = fleet.succeed("sha256sum /tmp/old/* | sort")
+        fleet.succeed("fleet-secrets-sync init --state /tmp/old --host ${hostName}")
+        assert fleet.succeed("sha256sum /tmp/old/* | sort") == before, "a second init changed the identity"
+        # The host's own enrollment file lists the key the config account takes.
+        real = fleet.succeed("cat /var/lib/fleet/${hostName}.enroll")
+        assert "config_deploy_pubkey: " + fleet.succeed("cat /var/lib/fleet/config_ed25519.pub").strip() in real, real
   '';
 }

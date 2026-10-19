@@ -99,9 +99,12 @@ let
       # work, on every run, so a stray `git push` from this checkout fails.
       # The real control is the read-only credential the machine holds.
       git -C "$repo" remote set-url --push origin no_push
-      ${lib.optionalString (cfg.repo.deployKeySecret != null) ''
-        export GIT_SSH_COMMAND="ssh -i ${config.sops.secrets.${cfg.repo.deployKeySecret}.path} -o IdentitiesOnly=yes"
-      ''}
+      # And it fetches from the URL its configuration names, set on every run,
+      # so a change of repository reaches the checkout: the next fetch comes
+      # from the new one, and resetLocalChanges moves the checkout over, even
+      # to an unrelated history. What it fetches is verified as always.
+      git -C "$repo" remote set-url origin ${lib.escapeShellArg cfg.repo.url}
+      ${import ./config-fetch.nix { inherit config lib; }}
 
       # The network may not be up yet on a machine that does not wait for it
       # at boot, so the fetch is retried with a growing pause.
@@ -247,6 +250,18 @@ in
           message =
             "conf.fleet.repo.deployKeySecret is set but conf.secrets.repo.url is null;"
             + " the key has to come from the host's file in the secrets repository.";
+        }
+        {
+          assertion = !cfg.repo.hostKey || config.conf.secrets.repo.url != null;
+          message =
+            "conf.fleet.repo.hostKey is set but conf.secrets.repo.url is null;"
+            + " the key is part of the identity a host gets with its secrets.";
+        }
+        {
+          assertion = !(cfg.repo.hostKey && cfg.repo.deployKeySecret != null);
+          message =
+            "conf.fleet.repo.hostKey and conf.fleet.repo.deployKeySecret are both set;"
+            + " the configuration is fetched with one key, so choose one.";
         }
         {
           assertion = cfg.repo.url == null || !(lib.hasPrefix "http://" cfg.repo.url);

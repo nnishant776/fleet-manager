@@ -32,6 +32,19 @@
           disabled regardless. Requires `conf.secrets.repo.url`.
         '';
       };
+      hostKey = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          Fetch a private `repo.url` with the host's own configuration key,
+          `<conf.secrets.statePath>/config_ed25519`. `fleet-secrets-sync init`
+          makes it on the host with the rest of its identity, so the private
+          key never leaves the machine, and the enrollment file lists its
+          public half as `config_deploy_pubkey`; register that read-only on
+          the configuration repository. Requires `conf.secrets.repo.url`; not
+          with `deployKeySecret`.
+        '';
+      };
     };
 
     localPath = lib.mkOption {

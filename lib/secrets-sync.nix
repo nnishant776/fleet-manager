@@ -97,9 +97,18 @@
             ssh-keygen -y -f deploy_ed25519 > deploy_ed25519.pub \
               || fail 14 "deploy key in $from_identity is not a valid private key"
             chmod 644 deploy_ed25519.pub
+            # Documents exported before the configuration key existed have none; one
+            # is made below.
+            if yq -e ".config_key" "$from_identity" >/dev/null 2>&1; then
+              yq ".config_key" "$from_identity" > config_ed25519 || fail 14 "cannot write config_ed25519"
+              chmod 600 config_ed25519
+              ssh-keygen -y -f config_ed25519 > config_ed25519.pub \
+                || fail 14 "configuration key in $from_identity is not a valid private key"
+              chmod 644 config_ed25519.pub
+            fi
           else
             if [ "$force" -eq 1 ]; then
-              rm -f age.key deploy_ed25519 deploy_ed25519.pub
+              rm -f age.key deploy_ed25519 deploy_ed25519.pub config_ed25519 config_ed25519.pub
             fi
             if [ ! -e age.key ]; then
               age-keygen -o age.key >/dev/null 2>&1 || fail 14 "age-keygen failed"
@@ -114,26 +123,44 @@
             fi
           fi
 
+          # The key that reads the configuration repository, for a fleet whose
+          # configuration is private (conf.fleet.repo.hostKey). Made like the
+          # others, and added to an identity made before it existed.
+          if [ ! -e config_ed25519 ]; then
+            rm -f config_ed25519.pub
+            ssh-keygen -q -t ed25519 -N "" -C "fleet-config@$host" -f config_ed25519 \
+              || fail 14 "ssh-keygen failed"
+            chmod 600 config_ed25519
+            chmod 644 config_ed25519.pub
+          fi
+
           # Keys may have been restored without their public half.
           if [ ! -e deploy_ed25519.pub ]; then
             ssh-keygen -y -f deploy_ed25519 > deploy_ed25519.pub || fail 14 "cannot derive deploy_ed25519.pub"
             chmod 644 deploy_ed25519.pub
           fi
+          if [ ! -e config_ed25519.pub ]; then
+            ssh-keygen -y -f config_ed25519 > config_ed25519.pub || fail 14 "cannot derive config_ed25519.pub"
+            chmod 644 config_ed25519.pub
+          fi
 
           recipient="$(age-keygen -y age.key)" || fail 14 "cannot read the recipient of age.key"
           pubkey="$(cat deploy_ed25519.pub)"
+          config_pubkey="$(cat config_ed25519.pub)"
 
           # Rewritten only when missing or out of step with the key files, so a
           # second run changes nothing.
           if [ ! -f "$host.enroll" ] \
              || [ "$(yq '.age_recipient' "$host.enroll")" != "$recipient" ] \
-             || [ "$(yq '.deploy_pubkey' "$host.enroll")" != "$pubkey" ]; then
+             || [ "$(yq '.deploy_pubkey' "$host.enroll")" != "$pubkey" ] \
+             || [ "$(yq '.config_deploy_pubkey' "$host.enroll")" != "$config_pubkey" ]; then
             {
               echo "version: 1"
               echo "host: $host"
               echo "created: $(date -u +%FT%TZ)"
               echo "age_recipient: $recipient"
               echo "deploy_pubkey: $pubkey"
+              echo "config_deploy_pubkey: $config_pubkey"
             } > "$host.enroll" || fail 14 "cannot write $host.enroll"
             chmod 644 "$host.enroll"
           fi
@@ -317,6 +344,10 @@
           sed 's/^/  /' "$state/age.key"
           echo "deploy_key: |"
           sed 's/^/  /' "$state/deploy_ed25519"
+          if [ -f "$state/config_ed25519" ]; then
+            echo "config_key: |"
+            sed 's/^/  /' "$state/config_ed25519"
+          fi
           ;;
       esac
     '';

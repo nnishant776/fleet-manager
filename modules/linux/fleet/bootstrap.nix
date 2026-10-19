@@ -47,9 +47,7 @@ let
           exit 1
         fi
       ''}
-      ${lib.optionalString (cfg.repo.deployKeySecret != null) ''
-        export GIT_SSH_COMMAND="ssh -i ${config.sops.secrets.${cfg.repo.deployKeySecret}.path} -o IdentitiesOnly=yes"
-      ''}
+      ${import ./config-fetch.nix { inherit config lib; }}
 
       # Clone beside the target and move it into place, so a half-finished
       # clone never looks like a checkout, and an existing empty directory is
