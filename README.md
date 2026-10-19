@@ -830,6 +830,7 @@ secrets in them, as they end up in the Nix store.
 | `desktop.fonts.packages` | listOf package | `[]` | **Replaces** the curated font set |
 | `desktop.fonts.extraPackages` | listOf package | `[]` | **Appends** to the font set |
 | `desktop.multimedia.enable` | toggle | `false` | Audio and video stack |
+| `desktop.browserPolicies` | attrsOf anything | Safe Browsing at the standard level, no card numbers in autofill | Chromium enterprise policies by name, enforced in Chromium and Brave and not changeable in their settings. A host overrides one by name; `null` unsets it |
 | `desktop.printing.enable` | bool | `true` | Print to network printers: CUPS on localhost, driverless discovery, Avahi discover-only |
 | `desktop.idleLockSeconds` | int | `600` | Idle time before the session locks. dconf policy on GNOME; a system-level `swayidle` unit on bare Hyprland and Sway. `0` disables it |
 

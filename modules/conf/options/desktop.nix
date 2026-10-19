@@ -52,6 +52,25 @@ in {
       '';
     };
 
+    browserPolicies = lib.mkOption {
+      type = lib.types.attrsOf lib.types.anything;
+      default = { };
+      example = lib.literalExpression ''
+        {
+          PasswordManagerEnabled = false;
+          ExtensionInstallBlocklist = [ "*" ];
+          ExtensionInstallAllowlist = [ "nngceckbapebfimnlniiiahkandclblb" ];
+        }
+      '';
+      description = ''
+        Chromium enterprise policies, by name, enforced in Chromium and Brave
+        (https://chromeenterprise.google/policies/). The desktop sets two as
+        defaults: Safe Browsing on at the standard level, and no card numbers
+        kept by autofill. A host overrides one by name, and `null` leaves a
+        policy unset.
+      '';
+    };
+
     printing.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
