@@ -6,6 +6,7 @@ package ui
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -44,6 +45,7 @@ type UI struct {
 	in     *os.File
 	tty    bool
 	reader *bufio.Reader
+	ctx    context.Context // see Bind
 
 	title, step, dim, good, bad, warn lipgloss.Style
 }
@@ -55,7 +57,7 @@ func New() *UI { return NewWith(os.Stdout, os.Stdin) }
 // terminal; tests pass a buffer and nil.
 func NewWith(out io.Writer, in *os.File) *UI {
 	tty := in != nil && term.IsTerminal(in.Fd())
-	u := &UI{out: out, in: in, tty: tty}
+	u := &UI{out: out, in: in, tty: tty, ctx: context.Background()}
 	if in != nil {
 		u.reader = bufio.NewReader(in)
 	}
@@ -141,9 +143,27 @@ func (u *UI) Confirm(question string, def bool) (bool, error) {
 		hint = "[y/N]"
 	}
 	_, _ = lipgloss.Fprint(u.out, Indent+question+" "+u.dim.Render(hint)+" ")
-	line, err := u.reader.ReadString('\n')
-	if err != nil && line == "" {
-		return false, err
+	// Read in the background, so that an interrupted run does not wait for
+	// Enter. The reader left behind ends with the process.
+	type answer struct {
+		line string
+		err  error
+	}
+	answers := make(chan answer, 1)
+	go func() {
+		line, err := u.reader.ReadString('\n')
+		answers <- answer{line, err}
+	}()
+	var line string
+	select {
+	case a := <-answers:
+		if a.err != nil && a.line == "" {
+			return false, a.err
+		}
+		line = a.line
+	case <-u.ctx.Done():
+		u.println("")
+		return false, ErrCancelled
 	}
 	switch strings.ToLower(strings.TrimSpace(line)) {
 	case "":
@@ -229,8 +249,8 @@ func (u *UI) form(field huh.Field, help bool) error {
 		WithShowHelp(help).
 		WithInput(u.in).
 		WithOutput(u.out).
-		Run()
-	if errors.Is(err, huh.ErrUserAborted) {
+		RunWithContext(u.ctx)
+	if errors.Is(err, huh.ErrUserAborted) || u.ctx.Err() != nil {
 		return ErrCancelled
 	}
 	return err
@@ -327,4 +347,19 @@ func (u *UI) Using(values []string) {
 		u.println("  " + u.dim.Render(line))
 	}
 	u.println("")
+}
+
+// Bind makes the prompts give up, with ErrCancelled, when ctx is done: when
+// the run is interrupted while a question waits for an answer.
+func (u *UI) Bind(ctx context.Context) { u.ctx = ctx }
+
+// Section is a heading outside the numbered steps, such as the one a run
+// that does not finish shows over what it puts back.
+func (u *UI) Section(label, title, why string) {
+	u.println(u.warn.Render(label) + " " + u.title.Render(title))
+	if why != "" {
+		for _, line := range wrap(why, 72) {
+			u.println(Indent + line)
+		}
+	}
 }

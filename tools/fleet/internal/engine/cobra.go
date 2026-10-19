@@ -40,6 +40,7 @@ func Mount(root *cobra.Command, flows []*Flow, groups Groups, menu []Section) {
 
 	root.RunE = func(cmd *cobra.Command, args []string) error {
 		u := ui.New()
+		u.Bind(cmd.Context())
 		if !u.Interactive() {
 			return cmd.Help()
 		}
@@ -160,6 +161,7 @@ func runFlow(ctx context.Context, f *Flow, opts Options, flags map[string]string
 		Stdin:   os.Stdin,
 		flags:   flags,
 	}
+	x.UI.Bind(ctx)
 	err := Run(x, f)
 	if errors.Is(err, ErrStopped) || errors.Is(err, ui.ErrCancelled) {
 		return nil

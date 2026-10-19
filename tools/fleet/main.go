@@ -6,9 +6,13 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"image/color"
 	"io"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"charm.land/fang/v2"
 	"charm.land/lipgloss/v2"
@@ -35,15 +39,36 @@ func main() {
 	}
 	engine.Mount(root, flows.All(), flows.Groups, flows.Menu)
 
-	err := fang.Execute(context.Background(), root,
+	ctx, stop := interruptible()
+	defer stop()
+	err := fang.Execute(ctx, root,
 		fang.WithVersion(version),
 		fang.WithColorSchemeFunc(scheme),
 		fang.WithErrorHandler(errorHandler),
-		fang.WithNotifySignal(os.Interrupt),
 	)
-	if err != nil {
+	switch {
+	case errors.Is(err, engine.ErrInterrupted):
+		os.Exit(130)
+	case err != nil:
 		os.Exit(1)
 	}
+}
+
+// interruptible is the context every command runs in. Ctrl+C, closing the
+// terminal and kill all cancel it, so that the run stops between commands
+// and puts back what it changed; a second one quits at once.
+func interruptible() (context.Context, func()) {
+	ctx, cancel := context.WithCancel(context.Background())
+	signals := make(chan os.Signal, 2)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	go func() {
+		<-signals
+		cancel()
+		<-signals
+		fmt.Fprintln(os.Stderr, "\nquitting now; what this run changed is not put back")
+		os.Exit(130)
+	}()
+	return ctx, func() { signal.Stop(signals); cancel() }
 }
 
 // scheme keeps the help pages in fleet's palette: one accent, dim comments,

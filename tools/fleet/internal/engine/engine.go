@@ -99,6 +99,10 @@ type Ctx struct {
 	flags map[string]string // from the command line
 	n     int
 	total int
+
+	undos   []undo // see undo.go
+	kept    []note
+	undoing bool // putting back: commands run without asking
 }
 
 // Value returns an input's value, or a value a step captured.
@@ -141,14 +145,25 @@ func (c *Ctx) Expand(s string) (string, error) {
 var ErrStopped = errors.New("stopped")
 
 // Run resolves the inputs, then runs the steps in order and stops at the
-// first that fails.
-func Run(c *Ctx, f *Flow) error {
+// first that fails. A run that stops before its end puts back what it
+// changed here (see undo.go); cleanup runs however it ends.
+func Run(c *Ctx, f *Flow) (err error) {
 	if c.Values == nil {
 		c.Values = map[string]string{}
 	}
 	if f.Cleanup != nil {
-		defer f.Cleanup(c)
+		defer func() {
+			// After an interruption the run's context is cancelled, and a
+			// cancelled context starts no command, not even a cleanup's.
+			c.Context = context.WithoutCancel(c.Context)
+			f.Cleanup(c)
+		}()
 	}
+	defer func() {
+		if err != nil {
+			c.unwind()
+		}
+	}()
 	if c.LookPath == nil {
 		c.LookPath = exec.LookPath
 	}
@@ -176,6 +191,10 @@ func Run(c *Ctx, f *Flow) error {
 		if err != nil {
 			return err
 		}
+		if c.Context.Err() != nil {
+			c.UI.Skip("interrupted; nothing after this was run")
+			return &StepError{N: c.n, Title: title, Err: ErrInterrupted}
+		}
 		why, err := c.Expand(s.Why)
 		if err != nil {
 			return err
@@ -189,8 +208,16 @@ func Run(c *Ctx, f *Flow) error {
 			}
 		}
 		if err := s.Do.run(c); err != nil {
-			if errors.Is(err, ErrStopped) || errors.Is(err, ui.ErrCancelled) {
+			switch {
+			case c.Context.Err() != nil:
+				// Whatever the step says, it failed because the run was
+				// interrupted while it ran.
+				c.UI.Skip("interrupted here; nothing after this step was run")
+				c.UI.Blank()
+				return &StepError{N: c.n, Title: title, Err: ErrInterrupted}
+			case errors.Is(err, ErrStopped) || errors.Is(err, ui.ErrCancelled):
 				c.UI.Skip("stopped here; nothing after this step was run")
+				c.UI.Blank()
 				return err
 			}
 			if !errors.As(err, new(alreadyShown)) {
@@ -204,6 +231,7 @@ func Run(c *Ctx, f *Flow) error {
 			if f.Report && i+1 < len(f.Steps) {
 				c.UI.Skip("the steps after this one need it, so they were not run")
 			}
+			c.UI.Blank()
 			return &StepError{N: c.n, Title: title, Err: err}
 		}
 		c.UI.Blank()
@@ -360,7 +388,12 @@ type StepError struct {
 	Err   error
 }
 
-func (e *StepError) Error() string { return fmt.Sprintf("stopped at step %d, %s", e.N, e.Title) }
+func (e *StepError) Error() string {
+	if errors.Is(e.Err, ErrInterrupted) {
+		return fmt.Sprintf("interrupted at step %d, %s", e.N, e.Title)
+	}
+	return fmt.Sprintf("stopped at step %d, %s", e.N, e.Title)
+}
 func (e *StepError) Unwrap() error { return e.Err }
 
 // Approve asks before a change that Go code makes itself, such as writing a

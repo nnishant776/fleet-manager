@@ -5,6 +5,7 @@
 package fleet
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -178,8 +179,12 @@ func StartAgent(x *engine.Ctx) error {
 // StopAgent stops the agent StartAgent made, if it did.
 func StopAgent(x *engine.Ctx) {
 	if pid := x.Value("agent_pid"); pid != "" {
-		_, _ = x.Runner.Run(x.Context, engine.Spec{Name: "kill", Args: []string{pid}})
-		x.UI.Skip("stopped the one-key agent")
+		// Never on a cancelled context, which would not start the kill.
+		if _, err := x.Runner.Run(context.WithoutCancel(x.Context), engine.Spec{Name: "kill", Args: []string{pid}}); err != nil {
+			x.UI.Fail("could not stop the one-key agent; stop it with: kill " + pid)
+		} else {
+			x.UI.Skip("stopped the one-key agent")
+		}
 	}
 	if dir := x.Value("agent_dir"); dir != "" {
 		_ = os.RemoveAll(dir)

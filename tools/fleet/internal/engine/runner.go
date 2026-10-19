@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
+	"time"
 )
 
 // Spec is one command, fully expanded.
@@ -63,6 +65,11 @@ func (Exec) Run(ctx context.Context, s Spec) (Result, error) {
 		}
 	}
 	cmd := exec.CommandContext(ctx, name, s.Args...)
+	// An interrupted run asks the command to stop, rather than killing it, and
+	// gives it a moment: a fleet command run from a flow puts back what it
+	// changed, ssh closes its connection.
+	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
+	cmd.WaitDelay = 10 * time.Second
 	cmd.Dir = s.Dir
 	if len(s.Env) > 0 || len(s.Hidden) > 0 {
 		cmd.Env = append(append(os.Environ(), s.Env...), s.Hidden...)
@@ -75,6 +82,11 @@ func (Exec) Run(ctx context.Context, s Spec) (Result, error) {
 		cmd.Stdout, cmd.Stderr = &out, &errOut
 	}
 	err := cmd.Run()
+	// A command that exited well but left its output open, as one that starts
+	// a daemon may, succeeded.
+	if errors.Is(err, exec.ErrWaitDelay) && cmd.ProcessState != nil && cmd.ProcessState.Success() {
+		err = nil
+	}
 	res := Result{Stdout: out.String(), Stderr: errOut.String()}
 	var exitErr *exec.ExitError
 	switch {
@@ -94,7 +106,11 @@ type Fake struct {
 	Respond func(Spec) (Result, error)
 }
 
-func (f *Fake) Run(_ context.Context, s Spec) (Result, error) {
+func (f *Fake) Run(ctx context.Context, s Spec) (Result, error) {
+	// As exec does: a cancelled context starts nothing.
+	if err := ctx.Err(); err != nil {
+		return Result{Code: -1}, err
+	}
 	f.Ran = append(f.Ran, s)
 	if f.Respond == nil {
 		return Result{}, nil

@@ -26,7 +26,16 @@ type Command struct {
 	captureEnv  string // keep the output as hidden environment: NAME=output
 	stdinNote   string // what the shown command says about its stdin
 	explain     func(Result) string
+	before      func(*Ctx) error // runs just before the command does, and only if it does
+	after       func(*Ctx) error // runs when the command has succeeded
 }
+
+// Before runs f just before the command, once it is sure to run: to
+// register how to put back what it is about to change, for one.
+func (c *Command) Before(f func(*Ctx) error) *Command { c.before = f; return c }
+
+// After runs f once the command has succeeded.
+func (c *Command) After(f func(*Ctx) error) *Command { c.after = f; return c }
 
 // Explain sets how a failure of the command is said: given the result, the
 // reason in plain words and what to try, templated like the rest, or "" to
@@ -135,7 +144,9 @@ func (c *Command) exec(x *Ctx, asQuietCheck bool) (Result, error) {
 		}
 		return Result{}, nil
 	}
-	if !c.readOnly && !x.Options.Yes {
+	// Putting back what this run changed asks nothing: it is what the person
+	// agreed to, undone.
+	if !c.readOnly && !x.Options.Yes && !x.undoing {
 		if !x.UI.Interactive() {
 			return Result{}, errors.New("this step changes things: run on a terminal to be asked, or give --yes")
 		}
@@ -145,6 +156,11 @@ func (c *Command) exec(x *Ctx, asQuietCheck bool) (Result, error) {
 		}
 		if !ok {
 			return Result{}, ErrStopped
+		}
+	}
+	if c.before != nil {
+		if err := c.before(x); err != nil {
+			return Result{}, err
 		}
 	}
 	stop := func() {}
@@ -186,6 +202,11 @@ func (c *Command) exec(x *Ctx, asQuietCheck bool) (Result, error) {
 	}
 	if c.captureEnv != "" {
 		x.Hidden = append(x.Hidden, c.captureEnv+"="+strings.TrimSpace(res.Stdout))
+	}
+	if c.after != nil {
+		if err := c.after(x); err != nil {
+			return res, err
+		}
 	}
 	if !asQuietCheck {
 		msg := c.ok
@@ -239,6 +260,10 @@ func (cs checks) run(x *Ctx) error {
 		detail := ""
 		if err == nil && p.Expect != nil {
 			detail, err = p.Expect(res.Stdout)
+		}
+		if err != nil && x.Context.Err() != nil {
+			// Interrupted while it looked: that is all there is to say.
+			return err
 		}
 		if err != nil {
 			failed++
