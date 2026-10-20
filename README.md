@@ -223,71 +223,70 @@ host's secrets and checks that they decrypt. These flags control the step:
 | `--enroll-out PATH` | Also copy the enrollment file to `PATH`, for example a mounted USB stick |
 | `--flake git+ssh://…` | A private flake, which the host reads with its own configuration key: the identity is made first, the install waits until its keys are registered, then clones the flake and installs from it. See [A private fleet](#a-private-fleet) |
 
-The install and the enrollment, from the stock ISO, for a host whose
-configuration is public:
+What moves where when a host is installed from the stock ISO and enrolled. The
+numbers name the flows in the table below the diagram.
 
 ```mermaid
-sequenceDiagram
-    autonumber
-    participant I as Installer (stock ISO)
-    participant M as Maintainer's machine
-    participant S as Secrets repository
-    participant C as Configuration repository
-    participant H as New host
-
-    I->>I: bootstrap, then fleet install: network, host, disks
-    I->>I: os-install: erase, partition, nixos-install
-    I->>I: fleet-secrets-sync init: age key and both deploy keys, on the new disk
-    I-->>M: enrollment file, as a QR code or on a USB stick
-    Note over I: waits for Enter
-    M->>S: fleet secrets host-enroll HOST --from HOST.enroll
-    M->>S: fleet secrets user-password ACCOUNT HOST, for each account
-    M->>S: git push, signed
-    M->>S: register the secrets deploy key, read-only
-    M-->>I: press Enter
-    I->>S: fetch with the secrets deploy key
-    S-->>I: verified commit, and the host's files decrypt
-    I->>H: reboot
-    H->>H: activation decrypts the secrets, and accounts get their passwords
-    H->>C: first boot: clone into /etc/nixos, with no key (it is public)
-    loop every sync
-        H->>S: secrets: a signed commit, never an older one
-        H->>C: configuration: a signed commit, never an older one, then rebuild
+flowchart TB
+    subgraph maintainer["Maintainer's machine"]
+        you["Maintainer"]
+        enroll(["fleet secrets host-enroll,<br/>user-password"])
     end
+    subgraph forge["Forge"]
+        secrets[("Secrets repository")]
+        config[("Configuration repository")]
+    end
+    subgraph host["New host"]
+        init(["fleet-secrets-sync init"])
+        identity[("Identity<br/>/var/lib/fleet")]
+        install(["os-install"])
+        sync(["Sync"])
+        snapshot[("Secrets snapshot")]
+        activation(["Activation, sops-nix"])
+        decrypted[("/run/secrets")]
+    end
+
+    you -- "1 host definition" --> config
+    init -- "2 private keys" --> identity
+    identity -- "3 enrollment file" --> you
+    you -- "4 enrollment file" --> enroll
+    enroll -- "5 signed commit" --> secrets
+    you -- "6 deploy public keys" --> secrets
+    you -- "6 deploy public keys" --> config
+    config -- "7 configuration" --> install
+    identity -- "8 deploy keys" --> sync
+    secrets -- "9 ciphertext" --> sync
+    config -- "10 signed commits" --> sync
+    sync -- "11 host's files" --> snapshot
+    snapshot -- "12 ciphertext" --> activation
+    identity -- "13 age key" --> activation
+    activation -- "14 secrets" --> decrypted
 ```
 
-For a host whose configuration is private (see [A private fleet](#a-private-fleet)),
-the host can't read its configuration until it is enrolled, so the
-enrollment comes before the install:
+| # | What flows | Where and how |
+|---|---|---|
+| 1 | The host's definition, in a signed commit | Pushed before the install |
+| 2 | Its age key, secrets deploy key and configuration deploy key | Made on the host; the private halves never leave it |
+| 3 | The enrollment file: the age recipient and both deploy public keys | Shown as a QR code, or copied to a USB stick with `--enroll-out` |
+| 4 | The enrollment file | `fleet secrets host-enroll HOST --from FILE` |
+| 5 | A signed commit: the host's recipient in `fleet.yaml`, the rules in `.sops.yaml`, and the host's and its accounts' files, encrypted to the host and the recovery key | `host-enroll`, then `user-password` for each account, then `git push` |
+| 6 | Deploy public keys, registered read-only | The secrets deploy key on the secrets repository; the configuration deploy key on the configuration repository, for a private one only |
+| 7 | The host's configuration | Cloned with the configuration deploy key when private |
+| 8 | The secrets deploy key, and the configuration deploy key when private | Each fetch uses its own key and offers no other |
+| 9 | The secrets, as ciphertext, in a signed commit | Verified, never older than the last one accepted, and only this host's files are kept |
+| 10 | Configuration commits, signed | Verified and never older; the host rebuilds from them |
+| 11 | This host's files | The snapshot in `/var/lib/fleet/secrets` |
+| 12 | The ciphertext | Read at activation |
+| 13 | The age key | Decrypts it |
+| 14 | Passwords, keys and other secrets | In `/run/secrets`, with the owner and mode each secret declares |
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant I as Installer (stock ISO)
-    participant M as Maintainer's machine
-    participant S as Secrets repository
-    participant C as Configuration repository
-    participant H as New host
-
-    I->>I: bootstrap with FLAKE=git+ssh://…, then fleet install
-    I->>I: os-install: fleet-secrets-sync init in memory, age key and both deploy keys
-    I-->>M: enrollment file, as a QR code or on a USB stick
-    M->>S: fleet secrets host-enroll, user-password, git push
-    M->>S: register the secrets deploy key, read-only
-    M->>C: register the configuration deploy key, read-only
-    I->>C: clone with the configuration deploy key
-    Note over I,C: refused until the key is registered, then press Enter to try again
-    C-->>I: the configuration, cloned
-    I->>I: disks, erase, partition, nixos-install from the clone
-    I->>I: write the identity onto the new disk
-    I->>S: fetch with the secrets deploy key, verified
-    I->>H: reboot
-    H->>C: first boot: clone into /etc/nixos with the configuration deploy key
-    loop every sync
-        H->>S: secrets: a signed commit, never an older one
-        H->>C: configuration: a signed commit, never an older one, then rebuild
-    end
-```
+The order depends on the configuration. A public one is installed first:
+`init` makes the identity on the new disk after `nixos-install`, and the
+installer waits while the host is enrolled, then fetches its secrets before
+the first boot. A private one can't be read until the host is enrolled, so
+`init` makes the identity first, in memory, the installer waits for both
+deploy keys to be registered, then clones the configuration, installs, and
+writes the identity onto the new disk.
 
 **Fleet machines pull; they cannot push.** The checkout's push URL is set to an
 unusable value by the first-boot clone and re-applied on every sync, so a `git push` from a
@@ -423,8 +422,8 @@ The key has to be a read-only deploy key of the private repository.
   repository yet, so the identity comes first. The install shows the
   enrollment file and waits while you enroll the host and register both of its
   keys. Then it clones the private flake with the configuration key and
-  installs. The second diagram under
-  [Installing a machine](#installing-a-machine) shows each step.
+  installs. The diagram under
+  [Installing a machine](#installing-a-machine) shows what moves where.
 - **Moving a running host to it:**
   1. Copy the host's folder there, with `repo.url` set to the private
      repository's SSH address, and push.
