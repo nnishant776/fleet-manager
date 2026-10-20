@@ -223,6 +223,72 @@ host's secrets and checks that they decrypt. These flags control the step:
 | `--enroll-out PATH` | Also copy the enrollment file to `PATH`, for example a mounted USB stick |
 | `--flake git+ssh://…` | A private flake, which the host reads with its own configuration key: the identity is made first, the install waits until its keys are registered, then clones the flake and installs from it. See [A private fleet](#a-private-fleet) |
 
+The install and the enrollment, from the stock ISO, for a host whose
+configuration is public:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant I as Installer (stock ISO)
+    participant M as Maintainer's machine
+    participant S as Secrets repository
+    participant C as Configuration repository
+    participant H as New host
+
+    I->>I: bootstrap, then fleet install: network, host, disks
+    I->>I: os-install: erase, partition, nixos-install
+    I->>I: fleet-secrets-sync init: age key and both deploy keys, on the new disk
+    I-->>M: enrollment file, as a QR code or on a USB stick
+    Note over I: waits for Enter
+    M->>S: fleet secrets host-enroll HOST --from HOST.enroll
+    M->>S: fleet secrets user-password ACCOUNT HOST, for each account
+    M->>S: git push, signed
+    M->>S: register the secrets deploy key, read-only
+    M-->>I: press Enter
+    I->>S: fetch with the secrets deploy key
+    S-->>I: verified commit, and the host's files decrypt
+    I->>H: reboot
+    H->>H: activation decrypts the secrets, and accounts get their passwords
+    H->>C: first boot: clone into /etc/nixos, with no key (it is public)
+    loop every sync
+        H->>S: secrets: a signed commit, never an older one
+        H->>C: configuration: a signed commit, never an older one, then rebuild
+    end
+```
+
+For a host whose configuration is private (see [A private fleet](#a-private-fleet)),
+the host can't read its configuration until it is enrolled, so the
+enrollment comes before the install:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant I as Installer (stock ISO)
+    participant M as Maintainer's machine
+    participant S as Secrets repository
+    participant C as Configuration repository
+    participant H as New host
+
+    I->>I: bootstrap with FLAKE=git+ssh://…, then fleet install
+    I->>I: os-install: fleet-secrets-sync init in memory, age key and both deploy keys
+    I-->>M: enrollment file, as a QR code or on a USB stick
+    M->>S: fleet secrets host-enroll, user-password, git push
+    M->>S: register the secrets deploy key, read-only
+    M->>C: register the configuration deploy key, read-only
+    I->>C: clone with the configuration deploy key
+    Note over I,C: refused until the key is registered, then press Enter to try again
+    C-->>I: the configuration, cloned
+    I->>I: disks, erase, partition, nixos-install from the clone
+    I->>I: write the identity onto the new disk
+    I->>S: fetch with the secrets deploy key, verified
+    I->>H: reboot
+    H->>C: first boot: clone into /etc/nixos with the configuration deploy key
+    loop every sync
+        H->>S: secrets: a signed commit, never an older one
+        H->>C: configuration: a signed commit, never an older one, then rebuild
+    end
+```
+
 **Fleet machines pull; they cannot push.** The checkout's push URL is set to an
 unusable value by the first-boot clone and re-applied on every sync, so a `git push` from a
 fleet machine fails. That is hygiene; the control is the credential: a public
@@ -357,7 +423,8 @@ The key has to be a read-only deploy key of the private repository.
   repository yet, so the identity comes first. The install shows the
   enrollment file and waits while you enroll the host and register both of its
   keys. Then it clones the private flake with the configuration key and
-  installs.
+  installs. The second diagram under
+  [Installing a machine](#installing-a-machine) shows each step.
 - **Moving a running host to it:**
   1. Copy the host's folder there, with `repo.url` set to the private
      repository's SSH address, and push.
