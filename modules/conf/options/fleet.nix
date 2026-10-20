@@ -160,5 +160,17 @@
         '';
       };
     };
+
+    logs.lokiUrl = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "http://loki.lan:3100/loki/api/v1/push";
+      description = ''
+        Push URL of a Loki that collects the fleet's logs. When set, Grafana
+        Alloy sends the journal there, audit records included, labelled with
+        the host, the unit, the priority and the transport (`audit` for the
+        audit records). `null` sends nothing.
+      '';
+    };
   };
 }

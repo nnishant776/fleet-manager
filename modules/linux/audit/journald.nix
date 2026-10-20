@@ -5,12 +5,6 @@
       SystemMaxUse=1G
       MaxRetentionSec=90day
     '';
-    # Log shipping is deferred until the organisation has a collector. When it
-    # does, this is where it goes, with the client certificate from
-    # conf.secrets:
-    #   services.journald.upload = {
-    #     enable = true;
-    #     settings.Upload.URL = "https://collector.example:19532";
-    #   };
+    # Sending it elsewhere: loki.nix, with conf.fleet.logs.lokiUrl.
   };
 }

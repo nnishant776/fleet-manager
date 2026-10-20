@@ -907,6 +907,7 @@ default `""`); no module reads them yet.
 | `fleet.autoUpdate.randomizedDelaySec` | int | `1800` | Jitter, so a fleet does not sync simultaneously |
 | `fleet.autoUpdate.allowReboot` | bool | `false` | Reboot when the kernel or initrd changed |
 | `fleet.autoUpdate.resetLocalChanges` | bool | `true` | Discard local edits in the checkout before building |
+| `fleet.logs.lokiUrl` | nullOr str | `null` | Push URL of the fleet's Loki (`http://loki.lan:3100/loki/api/v1/push`). When set, Grafana Alloy sends the journal there, audit records included, labelled `host`, `unit`, `level` and `transport` |
 | `fleet.autoUpdate.rollbackOnFailure` | bool | `true` | Return to the previous generation if activation fails |
 
 Point a canary group of machines at one `ref` and the rest at another, then
@@ -1343,7 +1344,8 @@ otherwise from `initialHashedPassword`; an account with neither is locked.
 logged-in person, and writes to the configuration checkout, the system
 profiles, identity files, `/etc/ssh` and, where Flatpak is on, `/var/lib/flatpak`.
 `ausearch -k root-exec` reads the first; the journal is capped at 1 GiB and
-90 days. Log shipping is not configured.
+90 days. With `conf.fleet.logs.lokiUrl` set, the journal goes to the fleet's Loki,
+audit records included: `{host="laptop1", transport="audit"}` finds them there.
 
 **Sessions lock on idle.** GNOME gets a locked dconf policy; Hyprland without a
 shell and Sway get a system-level `swayidle` unit that also locks before sleep
