@@ -1263,11 +1263,13 @@ privileged users join automatically and others join with
 on; desktops run CUPS and Avahi for printer discovery, which opens UDP 5353 but
 advertises nothing; core dumps are logged but not stored.
 
-Every Mac gets what nix-darwin can set, from `modules/darwin/baseline.nix`, all
-as `lib.mkDefault`: the application firewall in stealth mode, admitting signed
-software; no guest account; macOS updates installed automatically; and
-sandboxed Nix builds. FileVault, Gatekeeper, SIP and the screen lock are left to
-MDM; nix-darwin can set the screen lock for one user only.
+A Mac gets none of this yet. `modules/darwin/baseline.nix` holds what
+nix-darwin can set, all as `lib.mkDefault`: the application firewall in stealth
+mode, admitting signed software; no guest account; macOS updates installed
+automatically; and sandboxed Nix builds. It is commented out until its
+behaviour on a Mac that MDM manages is confirmed, since MDM may manage the same
+settings. FileVault, Gatekeeper, SIP and the screen lock stay with MDM;
+nix-darwin can set the screen lock for one user only.
 
 **System outputs must evaluate without `--impure`.** `nix run .#check-purity`
 enforces it. Reading machine state during evaluation, such as `/etc/os-release`,
