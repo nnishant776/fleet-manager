@@ -13,12 +13,32 @@ let
   withPassword = lib.filterAttrs (_: a: a.secrets.password) accounts;
   withSshKey = lib.filterAttrs (_: a: a.secrets.sshKey) accounts;
   userFile = name: "${cfg.statePath}/secrets/users/${name}/${host}.yaml";
+
+  # A user's secrets are that user's alone: every secret read from a file
+  # under users/<name>/, whoever declares it, belongs to that account or to
+  # root, with mode 0400. sops-nix sets whatever is declared, and its default
+  # group is the owner's, on NixOS usually `users`, which every account is in.
+  usersDir = "${cfg.statePath}/secrets/users/";
+  userOf = s:
+    let rest = lib.removePrefix usersDir (toString s.sopsFile);
+    in if rest == toString s.sopsFile then null else lib.head (lib.splitString "/" rest);
+  ownerOnly = lib.mapAttrsToList (n: s: let user = userOf s; in {
+    assertion = user == null || (lib.elem s.owner [ null "root" user ] && s.mode == "0400");
+    message = "sops.secrets.\"${n}\" comes from ${user}'s secrets file, so it must belong to ${user} or root, with mode 0400; it has owner ${toString s.owner} and mode ${s.mode}.";
+  }) config.sops.secrets;
+  # The names this module uses, as paths under /run/secrets: a host's own
+  # secret with one of them would collide with them there.
+  reserved = n: lib.elem n [ "users" "password" ] || lib.hasPrefix "users/" n || lib.hasPrefix "password/" n;
+  noClash = lib.mapAttrsToList (n: s: {
+    assertion = !(reserved n) || userOf s != null;
+    message = "sops.secrets.\"${n}\": names users, password, users/… and password/… are taken by the users' own secrets; give it another name.";
+  }) config.sops.secrets;
 in {
   config = lib.mkIf (cfg.repo.url != null) {
     assertions = lib.mapAttrsToList (name: a: {
       assertion = a.initialHashedPassword == null;
       message = "conf.users.accounts.${name}: `secrets.password` and `initialHashedPassword` are both set; on a host with conf.secrets.repo.url the password comes from the secrets repository, so remove `initialHashedPassword` or set `secrets.password = false`.";
-    }) withPassword;
+    }) withPassword ++ ownerOnly ++ noClash;
 
     sops.secrets =
       lib.mapAttrs' (name: _: lib.nameValuePair "password/${name}" {
@@ -37,7 +57,7 @@ in {
           sopsFile = userFile name;
           key = "ssh_key_pub";
           owner = name;
-          mode = "0444";
+          mode = "0400";
         };
       }) withSshKey;
 

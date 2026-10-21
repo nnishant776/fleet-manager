@@ -559,7 +559,7 @@ Each entry in `conf.users.accounts` takes these fields:
 | `sshKeys` | listOf str | `[]` | SSH public keys accepted for this account. NixOS only |
 | `sudoSshKeys` | listOf str | `[]` | SSH public keys that unlock sudo for this privileged account instead of its password. Not the same as `sshKeys`. Listing keys on an unprivileged account is an error. NixOS only. See below |
 | `secrets.password` | bool | `true` | Take the account's password hash from `users/<name>/<host>.yaml` in the secrets repository. Ignored on a host without `conf.secrets.repo.url`; setting `initialHashedPassword` as well is an error on an opted-in host |
-| `secrets.sshKey` | bool | `false` | Deploy a per-host SSH key from the same file to `/run/secrets/users/<name>/ssh_key`. Can be turned on any time after the account exists. Ignored on a host without `conf.secrets.repo.url`. NixOS only. Also deploys `ssh_key.pub` (mode 0444), and the key becomes the user's default SSH identity and git signing key |
+| `secrets.sshKey` | bool | `false` | Deploy a per-host SSH key from the same file to `/run/secrets/users/<name>/ssh_key`. Can be turned on any time after the account exists. Ignored on a host without `conf.secrets.repo.url`. NixOS only. Also deploys `ssh_key.pub` (mode 0400, as all of a user's secrets), and the key becomes the user's default SSH identity and git signing key |
 | `selfManagedHome` | bool | `false` | This user manages their own home instead of the system doing it |
 | `manageAccount` | nullOr bool | `null` | Whether the account itself is created here. `null` means true on Linux and false on macOS. `false` is an error on Linux. On macOS, `true` puts the account on nix-darwin's delete list, so removing it from `accounts` deletes the macOS account at the next switch |
 | `uid` | nullOr int | `null` | Numeric user id. Required on macOS when `manageAccount` is true |
@@ -1014,10 +1014,18 @@ needs a secret the snapshot lacks.
 |---|---|---|
 | `/run/secrets-for-users/password/alice` | root, 0400 | Account creation (`hashedPasswordFile`), available before accounts exist |
 | `/run/secrets/users/alice/ssh_key` | alice, 0400 | Her SSH client and git signing; only if `secrets.sshKey` is on |
-| `/run/secrets/users/alice/ssh_key.pub` | alice, 0444 | For reference |
+| `/run/secrets/users/alice/ssh_key.pub` | alice, 0400 | For reference |
 | `/run/secrets/<host secret>` | per module | Whichever module declared it |
 
-`/run/secrets` is a tmpfs rebuilt at every activation and boot, and the key is
+A user's secrets are that user's alone. Every secret read from a file under
+`users/<name>/`, whichever module or host declares it, must belong to that
+account or to root, with mode 0400, or the host does not build. sops-nix sets
+whatever is declared, and its default group is the owner's, which on NixOS is
+usually `users`, so 0440 would let every account read it. The names
+`users`, `password`, `users/…` and `password/…` are the users' own: a host
+secret named so does not build either.
+
+`/run/secrets` is kept in memory, in a ramfs that is never swapped, and rebuilt at every activation and boot, and the key is
 deliberately not placed in `~/.ssh`: nothing is copied to disk, and the Home
 Manager baseline points SSH and git at the `/run/secrets` path. Anyone with
 root on a machine can read what is encrypted to it, which is no more than root

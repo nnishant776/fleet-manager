@@ -129,6 +129,10 @@
         inherit inputs;
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
       };
+      secrets-user-owner-only = import ./tests/secrets/user-secrets.nix {
+        inherit inputs;
+        pkgs = nixpkgs.legacyPackages.x86_64-linux;
+      };
       fleet-enroll = import ./tests/fleet/enroll.nix {
         inherit inputs self;
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
