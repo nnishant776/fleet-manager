@@ -84,12 +84,15 @@ func cmd(name string, args ...string) *engine.Command {
 	return engine.Cmd(name, args...).In("{{.repo}}")
 }
 
-// Open checks the repository is one, and that the tree is clean: every
-// command commits exactly its own change.
+// Open checks the repository is one, that the tree is clean, since every
+// command commits exactly its own change, and that it can be trusted: its
+// newest commit is signed by a trusted key, and git does not run the
+// repository's own hook.
 func Open() engine.Step {
 	return engine.Step{
 		Title: "Open the secrets repository",
-		Why:   "Each command commits exactly its own change, so the tree must have no uncommitted changes.",
+		Why: "Each command commits exactly its own change, so the tree must have no uncommitted changes. " +
+			"It builds on the newest commit and encrypts for the recipients that commit names, so that commit must be one a trusted key signed, not whatever was pushed last.",
 		Do: engine.Checks(
 			engine.Probe{
 				What:   "fleet.yaml in {{.repo}}",
@@ -103,6 +106,24 @@ func Open() engine.Step {
 				Expect: func(out string) (string, error) {
 					if strings.TrimSpace(out) != "" {
 						return "", errors.New("the working tree has uncommitted changes; commit or discard them first")
+					}
+					return "", nil
+				},
+			},
+			engine.Probe{
+				What: "its newest commit signed by a trusted key",
+				Cmd: cmd("git", "verify-commit", "HEAD").Explain(func(engine.Result) string {
+					return "the newest commit is not signed by a key in gpg.ssh.allowedSignersFile (fleet setup sets it):" +
+						" look at it with git log --show-signature -1 before going on"
+				}),
+			},
+			engine.Probe{
+				What: "git runs a copy of the hook you have read",
+				Cmd:  cmd("git", "config", "--local", "--default", "", "--get", "core.hooksPath"),
+				Expect: func(out string) (string, error) {
+					if strings.TrimSpace(out) == ".githooks" {
+						return "", errors.New("git runs the repository's own hook (core.hooksPath is .githooks):" +
+							" run fleet setup, which installs a copy you have read in its place")
 					}
 					return "", nil
 				},

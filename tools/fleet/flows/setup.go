@@ -1,6 +1,7 @@
 package flows
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -91,6 +92,13 @@ var Setup = &engine.Flow{
 			Do:    engine.Func(configureSigning),
 		},
 		{
+			Title: "Install the secrets repository's commit check",
+			Why: "Its pre-commit hook refuses anything under hosts/ or users/ that is not ciphertext. Git runs a hook as you, with your agent at hand, " +
+				"so what is installed is a copy you have read, not the repository's own file, which anyone who can push could change.",
+			When: hookNotInstalled,
+			Do:   engine.Func(installHook),
+		},
+		{
 			Title: "Trust your key in fleet/allowed_signers",
 			Why:   "Hosts check every fetched commit against this file. Adding a key is itself a commit, which must be signed by a key already trusted, if there is one.",
 			When:  keyNotTrusted,
@@ -161,13 +169,7 @@ func configureSigning(x *engine.Ctx) error {
 		{"gpg.ssh.allowedSignersFile", filepath.Join(x.Value("config"), "fleet", "allowed_signers")},
 	}
 	for _, repo := range []string{x.Value("config"), x.Value("repo")} {
-		all := settings
-		if repo == x.Value("repo") {
-			// The secrets checkout also runs its pre-commit hook, which refuses
-			// anything under hosts/ or users/ that is not ciphertext.
-			all = append(all, [2]string{"core.hooksPath", ".githooks"})
-		}
-		for _, kv := range all {
+		for _, kv := range settings {
 			current, _ := engine.Silently(x, nil, "git", "-C", repo, "config", "--local", "--get", kv[0])
 			if sameSetting(repo, current, kv[1]) {
 				continue
@@ -178,6 +180,70 @@ func configureSigning(x *engine.Ctx) error {
 		}
 		x.UI.OK(repo + " signs every commit")
 	}
+	return nil
+}
+
+// hookPaths are the repository's own hook and where git looks for the
+// installed one.
+func hookPaths(x *engine.Ctx) (tracked, installed string) {
+	repo := x.Value("repo")
+	installed, err := engine.Silently(x, nil, "git", "-C", repo, "rev-parse", "--path-format=absolute", "--git-path", "hooks/pre-commit")
+	if err != nil || installed == "" {
+		installed = filepath.Join(repo, ".git", "hooks", "pre-commit")
+	}
+	return filepath.Join(repo, ".githooks", "pre-commit"), installed
+}
+
+func hookNotInstalled(x *engine.Ctx) (bool, string) {
+	want, err := os.ReadFile(filepath.Join(x.Value("repo"), ".githooks", "pre-commit"))
+	if err != nil {
+		return false, "the repository has no .githooks/pre-commit"
+	}
+	_, installed := hookPaths(x)
+	hooksPath, _ := engine.Silently(x, nil, "git", "-C", x.Value("repo"), "config", "--local", "--get", "core.hooksPath")
+	if have, err := os.ReadFile(installed); err == nil && bytes.Equal(have, want) && hooksPath != ".githooks" {
+		return false, "installed already, the same as the repository's"
+	}
+	return true, ""
+}
+
+// installHook shows the repository's hook, or how it changed since the copy
+// was installed, and installs it once approved. Git stops running the
+// repository's own file, which an older setup pointed core.hooksPath at.
+func installHook(x *engine.Ctx) error {
+	tracked, installed := hookPaths(x)
+	want, err := os.ReadFile(tracked)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(installed); err == nil {
+		diff, _ := engine.Silently(x, nil, "git", "diff", "--no-index", "--no-color", installed, tracked)
+		x.UI.Note("The repository's hook differs from the copy installed in " + installed + ":")
+		x.UI.Text(diff)
+	} else {
+		x.UI.Note("The repository's hook, " + tracked + ":")
+		x.UI.Text(strings.TrimRight(string(want), "\n"))
+	}
+	ok, err := x.Approve("Install it as " + installed + "?")
+	if !ok || err != nil {
+		return err
+	}
+	switch hooksPath, _ := engine.Silently(x, nil, "git", "-C", x.Value("repo"), "config", "--local", "--get", "core.hooksPath"); hooksPath {
+	case "":
+	case ".githooks":
+		if _, err := engine.Cmd("git", "-C", x.Value("repo"), "config", "--unset", "core.hooksPath").Run(x); err != nil {
+			return err
+		}
+	default:
+		x.UI.Note("core.hooksPath is " + hooksPath + ", so git runs the hooks there, not this copy.")
+	}
+	if err := os.MkdirAll(filepath.Dir(installed), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(installed, want, 0o755); err != nil {
+		return err
+	}
+	x.UI.OK("installed " + installed)
 	return nil
 }
 

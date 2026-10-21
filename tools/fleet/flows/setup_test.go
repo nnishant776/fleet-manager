@@ -37,6 +37,8 @@ func TestSetupOnAFreshMachine(t *testing.T) {
 	config, repo := filepath.Join(dir, "config"), filepath.Join(dir, "secrets")
 	_ = os.MkdirAll(filepath.Join(config, "fleet"), 0o755)
 	_ = os.MkdirAll(repo, 0o755)
+	_ = os.MkdirAll(filepath.Join(repo, ".githooks"), 0o755)
+	_ = os.WriteFile(filepath.Join(repo, ".githooks", "pre-commit"), []byte("#!/bin/sh\nexit 0\n"), 0o755)
 	x, fake, out := newFakeCtx(func(s engine.Spec) (engine.Result, error) {
 		switch {
 		case s.Name == "ssh-keygen":
@@ -57,7 +59,7 @@ func TestSetupOnAFreshMachine(t *testing.T) {
 	}
 	cmds := strings.Join(fake.Commands(), "\n")
 	for _, want := range []string{"age-keygen | age -p -o", "ssh-keygen -t ed25519", "config gpg.format ssh",
-		"config core.hooksPath .githooks", "add fleet/allowed_signers", "trust me@test",
+		"add fleet/allowed_signers", "trust me@test",
 		"yq -i '.maintainer = strenv(r)' fleet.yaml", "set maintainer recipient", "git push"} {
 		if !strings.Contains(cmds, want) {
 			t.Errorf("did not run %q:\n%s", want, cmds)
@@ -66,6 +68,17 @@ func TestSetupOnAFreshMachine(t *testing.T) {
 	signers, _ := os.ReadFile(filepath.Join(config, "fleet", "allowed_signers"))
 	if string(signers) != "me@test namespaces=\"git\" ssh-ed25519 AAAAC3NzaFRESH\n" {
 		t.Errorf("allowed_signers is %q", signers)
+	}
+	// The hook is shown, then copied into .git/hooks: git never runs the
+	// repository's own file.
+	if hook, _ := os.ReadFile(filepath.Join(repo, ".git", "hooks", "pre-commit")); string(hook) != "#!/bin/sh\nexit 0\n" {
+		t.Errorf("the installed hook is %q", hook)
+	}
+	if !strings.Contains(out.String(), "exit 0") {
+		t.Errorf("the hook was not shown before it was installed:\n%s", out)
+	}
+	if strings.Contains(cmds, "core.hooksPath .githooks") {
+		t.Error("pointed git at the repository's own hook")
 	}
 	for _, r := range fake.Ran {
 		if r.Name == "yq" && strings.Contains(strings.Join(r.Args, " "), ".maintainer =") {
@@ -85,10 +98,13 @@ func TestSetupSkipsWhatIsDone(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(dir, "signing"), []byte("private"), 0o600)
 	_ = os.WriteFile(filepath.Join(dir, "signing.pub"), []byte("ssh-ed25519 AAAAC3NzaDONE fleet\n"), 0o644)
 	_ = os.WriteFile(filepath.Join(config, "fleet", "allowed_signers"), []byte("me@test namespaces=\"git\" ssh-ed25519 AAAAC3NzaDONE\n"), 0o644)
+	for _, d := range []string{".githooks", ".git/hooks"} {
+		_ = os.MkdirAll(filepath.Join(repo, d), 0o755)
+		_ = os.WriteFile(filepath.Join(repo, d, "pre-commit"), []byte("#!/bin/sh\nexit 0\n"), 0o755)
+	}
 	want := map[string]string{
 		"gpg.format": "ssh", "user.signingKey": filepath.Join(dir, "signing") + ".pub", "commit.gpgSign": "true",
 		"tag.gpgSign": "true", "gpg.ssh.allowedSignersFile": filepath.Join(config, "fleet", "allowed_signers"),
-		"core.hooksPath": ".githooks",
 	}
 	x, fake, out := newFakeCtx(func(s engine.Spec) (engine.Result, error) {
 		switch {

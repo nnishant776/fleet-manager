@@ -309,6 +309,9 @@ pkgs.testers.runNixOSTest {
         assert status == 11, f"sync after unsigned commit exited {status}, expected 11: {out}"
         after = fleet.succeed("basename $(readlink /var/lib/fleet/secrets)").strip()
         assert after == current, f"snapshot moved from {current} to {after}"
+        # The forge goes back to the signed commit before it: the maintainer's
+        # tools refuse to build on one that no trusted key signed.
+        forge.succeed("su git -c 'git -C /var/lib/forge/secrets.git update-ref refs/heads/main refs/heads/main~1'")
 
     # The forge as the maintainer's machine: a signing clone of the secrets
     # repository, the recovery key for sops, and the support key for the
@@ -324,7 +327,8 @@ pkgs.testers.runNixOSTest {
         " && git -C /home/git/w config user.email maintainer@test"
         " && git -C /home/git/w config gpg.format ssh"
         " && git -C /home/git/w config user.signingKey /home/git/signing_ed25519"
-        " && git -C /home/git/w config commit.gpgSign true'",
+        " && git -C /home/git/w config commit.gpgSign true"
+        " && git -C /home/git/w config gpg.ssh.allowedSignersFile ${fixtures}/allowed_signers'",
     )
 
     def maintainer(args, stdin=""):

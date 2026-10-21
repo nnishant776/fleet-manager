@@ -131,7 +131,8 @@ pkgs.testers.runNixOSTest {
         " && git -C /home/git/w config user.email maintainer@test"
         " && git -C /home/git/w config gpg.format ssh"
         " && git -C /home/git/w config user.signingKey /home/git/signing"
-        " && git -C /home/git/w config commit.gpgSign true'",
+        " && git -C /home/git/w config commit.gpgSign true"
+        " && git -C /home/git/w config gpg.ssh.allowedSignersFile ${fixtures}/allowed_signers'",
     )
 
     def enroll():

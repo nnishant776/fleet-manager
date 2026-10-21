@@ -48,9 +48,11 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 4. **Sign every commit in both checkouts.** Hosts accept only signed commits. These settings belong to the checkouts only, not your other repositories.
 
-5. **Trust your key in fleet/allowed_signers.** Hosts check every fetched commit against this file. Adding a key is itself a commit, which must be signed by a key already trusted, if there is one.
+5. **Install the secrets repository's commit check.** Its pre-commit hook refuses anything under hosts/ or users/ that is not ciphertext. Git runs a hook as you, with your agent at hand, so what is installed is a copy you have read, not the repository's own file, which anyone who can push could change.
 
-6. **Name yourself as the maintainer in fleet.yaml.** Every secrets file is encrypted to the maintainer as well as to its host; fleet secrets refuses to enroll hosts until this is set.
+6. **Trust your key in fleet/allowed_signers.** Hosts check every fetched commit against this file. Adding a key is itself a commit, which must be signed by a key already trusted, if there is one.
+
+7. **Name yourself as the maintainer in fleet.yaml.** Every secrets file is encrypted to the maintainer as well as to its host; fleet secrets refuses to enroll hosts until this is set.
 
    ```
    $ cd REPO && r=RECIPIENT yq -i '.maintainer = strenv(r)' fleet.yaml
@@ -58,7 +60,7 @@ A value that is neither given nor has a default is asked for on a terminal.
    $ cd REPO && git push
    ```
 
-7. **Next.** With that, hosts can be enrolled.
+8. **Next.** With that, hosts can be enrolled.
 
    > Push the allowed_signers commit to fleet-manager's main if one was made, merging
    > locally: GitHub's merge buttons drop the signature. Then, for each host:

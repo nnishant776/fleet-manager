@@ -27,11 +27,13 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 ## Steps
 
-1. **Open the secrets repository.** Each command commits exactly its own change, so the tree must have no uncommitted changes.
+1. **Open the secrets repository.** Each command commits exactly its own change, so the tree must have no uncommitted changes. It builds on the newest commit and encrypts for the recipients that commit names, so that commit must be one a trusted key signed, not whatever was pushed last.
 
    ```
    $ cd REPO && test -f fleet.yaml
    $ cd REPO && git status --porcelain --untracked-files=no
+   $ cd REPO && git verify-commit HEAD
+   $ cd REPO && git config --local --default '' --get core.hooksPath
    ```
 
 2. **Look up HOST in fleet.yaml.** fleet.yaml lists every enrolled host with its age recipient.

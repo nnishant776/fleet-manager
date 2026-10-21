@@ -23,6 +23,14 @@ pkgs.runCommand "fleet-secrets-parity" {
   git config --global user.name test
   git config --global user.email test@example.com
   git config --global init.defaultBranch main
+  # Every commit is signed, as in the real repository: both tools refuse to
+  # build on one that is not.
+  ssh-keygen -q -t ed25519 -N "" -f signing
+  echo "test namespaces=\"git\" $(cut -d' ' -f1,2 signing.pub)" > allowed_signers
+  git config --global gpg.format ssh
+  git config --global user.signingKey "$PWD/signing"
+  git config --global commit.gpgSign true
+  git config --global gpg.ssh.allowedSignersFile "$PWD/allowed_signers"
 
   # The maintainer, two hosts, and a second identity for the first host.
   age-keygen -o maint.key 2>/dev/null
@@ -146,8 +154,6 @@ pkgs.runCommand "fleet-secrets-parity" {
     (cd go && find . -path ./.git -prune -o -type d -print | sort)
   }
   state > before.state
-  git -C go config commit.gpgSign true
-  git -C go config gpg.format ssh
   git -C go config user.signingKey "$PWD/no-such-key.pub"
   unfinished() {  # unfinished WHAT: the last command must have failed at its commit and put everything back
     grep -q "stopped at step [0-9]*, Commit" go.out || { echo "$1: did not stop at the commit"; cat go.out; exit 1; }
@@ -162,7 +168,26 @@ pkgs.runCommand "fleet-secrets-parity" {
   unfinished "user-password carol alpha"
   if go_tool user-key alice alpha > go.out 2>&1; then echo "committed unsigned"; exit 1; fi
   unfinished "user-key alice alpha"
-  git -C go config --unset commit.gpgSign
+  git -C go config --unset user.signingKey
+
+  # Neither builds on a newest commit that no trusted key signed, such as one
+  # someone else pushed, nor runs while git runs the repository's own hook.
+  refused() {  # refused WHAT MESSAGE: both tools must refuse host-retire with MESSAGE
+    if sh_tool host-retire alpha > sh.err 2>&1; then echo "sh: $1"; exit 1; fi
+    grep -q "$2" sh.err || { echo "sh: $1, without saying so"; cat sh.err; exit 1; }
+    if go_tool host-retire alpha > go.err 2>&1; then echo "go: $1"; exit 1; fi
+    grep -q "$2" go.err || { echo "go: $1, without saying so"; cat go.err; exit 1; }
+  }
+  for repo in sh go; do
+    git -C $repo -c commit.gpgSign=false commit -q --allow-empty -m "pushed by someone else"
+  done
+  refused "built on an unsigned commit" "not signed by a key in gpg.ssh.allowedSignersFile"
+  for repo in sh go; do
+    git -C $repo commit -q --allow-empty -m "signed again"
+    git -C $repo config core.hooksPath .githooks
+  done
+  refused "ran the repository's own hook" "core.hooksPath is .githooks"
+  for repo in sh go; do git -C $repo config --unset core.hooksPath; done
 
   # Both refuse the same mistakes.
   if go_tool host-enroll alpha --from alpha2.enroll 2>&1 | tee go.err; then echo "enrolled alpha twice"; exit 1; fi
