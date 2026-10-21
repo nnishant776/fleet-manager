@@ -5,6 +5,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -117,6 +120,86 @@ func TestEnrollDoesWhatIsMissingInOrder(t *testing.T) {
 	reg := ranMatching(fake, "authorized_keys")
 	if len(reg) != 1 || !strings.HasPrefix(reg[0].Stdin, "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDdBK90") {
 		t.Fatalf("the deploy key was not handed to the registering command: %+v", reg)
+	}
+}
+
+// noTooling answers like a host that does not run a fleet configuration yet,
+// whose configuration here sets conf.secrets.repo.url, with upstream main at
+// abc123.
+func noTooling(respond func(engine.Spec) (engine.Result, error)) func(engine.Spec) (engine.Result, error) {
+	return func(s engine.Spec) (engine.Result, error) {
+		res, err := respond(s)
+		args := strings.Join(s.Args, " ")
+		switch {
+		case s.Name == "ssh" && strings.Contains(args, "has_tooling"):
+			res.Stdout = strings.Replace(res.Stdout, "has_tooling=true", "has_tooling=false", 1)
+		case s.Name == "nix" && strings.Contains(args, "conf.secrets.repo.url"):
+			res.Stdout = "git@github.com:example-org/secrets.git"
+		case s.Name == "git" && strings.Contains(args, "rev-parse FETCH_HEAD"):
+			res.Stdout = "abc123\n"
+		}
+		return res, err
+	}
+}
+
+// runSwitch enrolls pi, which needs a switch, from a checkout with a signers
+// file.
+func runSwitch(t *testing.T, respond func(engine.Spec) (engine.Result, error)) (error, *engine.Fake, string) {
+	t.Helper()
+	flake := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(flake, "fleet"), 0o755)
+	_ = os.WriteFile(filepath.Join(flake, "fleet", "allowed_signers"), []byte("me namespaces=\"git\" ssh-ed25519 AAAA\n"), 0o644)
+	var out bytes.Buffer
+	fake := &engine.Fake{Respond: respond}
+	x := &engine.Ctx{
+		Context: context.Background(), UI: ui.NewWith(&out, nil), Runner: fake,
+		Options: engine.Options{Yes: true}, Values: map[string]string{}, Stdin: strings.NewReader(""),
+		LookPath: func(t string) (string, error) { return "/fake/bin/" + t, nil },
+	}
+	err := engine.RunWith(x, HostEnroll, map[string]string{
+		"host": "pi", "flake": flake, "key": "/keys/home", "repo": t.TempDir(), "recovery": "",
+		"register-with": "true", "sync": "false",
+	})
+	return err, fake, out.String()
+}
+
+// The first switch takes main's newest commit only once it is signed by a
+// key the checkout here trusts, and builds exactly that commit, fetched with
+// git.
+func TestEnrollSwitchesToASignedCommitOfMain(t *testing.T) {
+	err, fake, out := runSwitch(t, noTooling(enrollHost(false, false, false)))
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	cmds := strings.Join(fake.Commands(), "\n")
+	order := []string{"fetch -q --depth=1 https://github.com/nnishant776/fleet-manager refs/heads/main",
+		// Quoted for the host's shell, then again as part of the ssh command.
+		"verify-commit abc123", `nixos-rebuild switch --flake '\''git+https://github.com/nnishant776/fleet-manager?rev=abc123#pi'\''`}
+	pos := 0
+	for _, want := range order {
+		i := strings.Index(cmds[pos:], want)
+		if i < 0 {
+			t.Fatalf("%q missing or out of order in:\n%s", want, cmds)
+		}
+		pos += i
+	}
+}
+
+func TestEnrollDoesNotSwitchToAnUnsignedCommit(t *testing.T) {
+	err, fake, out := runSwitch(t, noTooling(func(s engine.Spec) (engine.Result, error) {
+		if s.Name == "git" && strings.Contains(strings.Join(s.Args, " "), "verify-commit") {
+			return engine.Result{Code: 1, Stderr: "No signature"}, errors.New("exited with code 1")
+		}
+		return enrollHost(false, false, false)(s)
+	}))
+	if err == nil {
+		t.Fatalf("switched to a commit no trusted key signed\n%s", out)
+	}
+	if !strings.Contains(out, "is not signed by a key in") {
+		t.Errorf("output:\n%s", out)
+	}
+	if got := ranMatching(fake, "nixos-rebuild"); len(got) > 0 {
+		t.Fatalf("switched anyway: %s", got[0])
 	}
 }
 

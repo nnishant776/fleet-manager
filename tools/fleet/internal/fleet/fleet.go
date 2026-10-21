@@ -18,6 +18,9 @@ import (
 // Upstream is the public configuration repository.
 const Upstream = "github:nnishant776/fleet-manager"
 
+// UpstreamURL is the same repository for git.
+const UpstreamURL = "https://github.com/nnishant776/fleet-manager"
+
 // FlakeInput is the configuration to read hosts from.
 var FlakeInput = engine.Input{
 	Name:   "flake",

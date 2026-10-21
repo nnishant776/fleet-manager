@@ -54,7 +54,7 @@ var HostEnroll = &engine.Flow{
 		secrets.RepoInput,
 		secrets.RecoveryInput,
 		{Name: "switch-to", Prompt: "Configuration to switch the host to, if it needs a switch",
-			Help:     "A flake reference; defaults to the newest commit of " + fleet.Upstream,
+			Help:     "A flake reference; defaults to the newest commit of " + fleet.Upstream + "'s main, once it is signed by a key in the checkout's fleet/allowed_signers",
 			Optional: true, Default: func(*engine.Ctx) (string, error) { return "", nil }},
 		{Name: "register-with", Prompt: "Command that registers the deploy key",
 			Help:     "Run with the public key on stdin, instead of gh or the web page; mostly for tests",
@@ -227,13 +227,17 @@ id support >/dev/null 2>&1 && echo has_support=true || echo has_support=false`).
 func switchHost(x *engine.Ctx) error {
 	ref := x.Value("switch-to")
 	if ref == "" {
-		out, err := engine.Silently(x, nil, "git", "ls-remote", "https://github.com/nnishant776/fleet-manager", "refs/heads/main")
-		if err != nil || len(strings.Fields(out)) == 0 {
-			return errors.New("could not read the newest commit of main; give --switch-to")
+		rev, err := signedUpstreamMain(x)
+		if err != nil {
+			return err
 		}
-		ref = fleet.Upstream + "/" + strings.Fields(out)[0]
+		// Fetched with git, so what the host builds is that commit's tree: a
+		// github: tarball is not checked against the commit it is named for.
+		ref = "git+" + fleet.UpstreamURL + "?rev=" + rev
 	}
 	x.Values["switch_ref"] = ref
+	// For the host's shell: a git+https reference has a ? in it.
+	x.Values["switch_target"] = engine.Quote(ref + "#" + x.Value("host"))
 	res, err := engine.Cmd("nix", "eval", "--raw", "{{.switch_ref}}#nixosConfigurations.{{.host}}.config.conf.secrets.repo.url").
 		ReadOnly().Quiet().OK("its configuration there sets conf.secrets.repo.url").Run(x)
 	if err != nil {
@@ -249,10 +253,47 @@ func switchHost(x *engine.Ctx) error {
 	_, err = fleet.StillRunning(fleet.OnAdmin(`sudo -n systemctl reset-failed fleet-enroll-switch 2>/dev/null; `+
 		`sudo -n systemd-run --wait --collect --unit=fleet-enroll-switch `+
 		`--setenv=PATH=/run/wrappers/bin:/run/current-system/sw/bin `+
-		`nixos-rebuild switch --flake {{.switch_ref}}#{{.host}}; s=$?; `+
+		`nixos-rebuild switch --flake {{.switch_target}}; s=$?; `+
 		`sudo -n journalctl -u fleet-enroll-switch -o cat -n 15 --no-pager; exit $s`).OK("switched"),
 		"the switch", "fleet-enroll-switch", "{{.admin}}").Run(x)
 	return err
+}
+
+// signedUpstreamMain fetches the newest commit of fleet-manager's main and
+// returns it once it is signed by a key in fleet/allowed_signers of the
+// configuration checkout here: a host's own sync takes no other, so neither
+// does its first switch.
+func signedUpstreamMain(x *engine.Ctx) (string, error) {
+	signers := filepath.Join(x.Value("flake"), "fleet", "allowed_signers")
+	if !fileExists(signers) && !x.Options.DryRun {
+		return "", fmt.Errorf("%s does not exist: the newest commit of main is checked against the signers file of a"+
+			" configuration checkout here, so give --flake a checkout, or name the commit with --switch-to", signers)
+	}
+	tmp, err := os.MkdirTemp("", "fleet-upstream-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(tmp)
+	x.Values["upstream_git"], x.Values["signers"] = tmp, signers
+	steps := []*engine.Command{
+		engine.Cmd("git", "init", "-q", "--bare", "{{.upstream_git}}"),
+		engine.Cmd("git", "-C", "{{.upstream_git}}", "fetch", "-q", "--depth=1", fleet.UpstreamURL, "refs/heads/main"),
+		engine.Cmd("git", "-C", "{{.upstream_git}}", "rev-parse", "FETCH_HEAD").Capture("upstream_rev"),
+		engine.Cmd("git", "-C", "{{.upstream_git}}", "-c", "gpg.ssh.allowedSignersFile={{.signers}}", "verify-commit", "{{.upstream_rev}}").
+			Explain(func(engine.Result) string {
+				return "main's newest commit, {{.upstream_rev}}, is not signed by a key in {{.signers}}: not switching {{.host}} to it"
+			}).OK("{{.upstream_rev}} is signed by a trusted key"),
+	}
+	for _, c := range steps {
+		if _, err := c.ReadOnly().Quiet().Run(x); err != nil {
+			return "", err
+		}
+	}
+	rev := x.Value("upstream_rev")
+	if x.Options.DryRun && rev == "" {
+		rev = "<newest commit of main>"
+	}
+	return rev, nil
 }
 
 func copyEnrollment(x *engine.Ctx) error {

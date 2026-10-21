@@ -127,6 +127,10 @@ func (f *Fake) Commands() []string {
 	return out
 }
 
+// Quote is quote, for commands a flow writes for a shell itself, such as one
+// run on a host over ssh.
+func Quote(s string) string { return quote(s) }
+
 // quote leaves plain words alone and single-quotes the rest.
 func quote(s string) string {
 	if s == "" {

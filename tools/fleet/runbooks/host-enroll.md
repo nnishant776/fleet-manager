@@ -30,7 +30,7 @@ fleet host enroll neerajpinew --key ~/.ssh/home_network_ssh_key --repo ~/Project
 | `--key` | A private key file; the only key the agent fleet starts holds and forwards |
 | `--repo` | The fleet-secrets checkout to change; defaults to FLEET_SECRETS_REPO, then this directory |
 | `--recovery` | Your passphrase-encrypted age identity (age -p). Empty: sops uses SOPS_AGE_KEY_FILE or SOPS_AGE_KEY |
-| `--switch-to` | A flake reference; defaults to the newest commit of github:nnishant776/fleet-manager |
+| `--switch-to` | A flake reference; defaults to the newest commit of github:nnishant776/fleet-manager's main, once it is signed by a key in the checkout's fleet/allowed_signers |
 | `--register-with` | Run with the public key on stdin, instead of gh or the web page; mostly for tests |
 | `--sync` | Sync the host at the end and run fleet host check (default true) |
 
