@@ -111,6 +111,9 @@ in {
         # No network yet on a machine that does not wait for it: keep trying.
         Restart = "on-failure";
         RestartSec = 60;
+        # As for the sync: the secrets clone in /tmp goes with the run, even
+        # one that is killed.
+        PrivateTmp = true;
       };
     };
 
