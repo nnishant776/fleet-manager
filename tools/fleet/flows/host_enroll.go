@@ -174,6 +174,14 @@ func unless(fact, reason string) func(*engine.Ctx) (bool, string) {
 	}
 }
 
+// enrollFacts are the values lookAtHost takes from the host's answer. Anything
+// else the host prints is ignored: a host it cannot trust yet must not be able
+// to set the address, the flake or the command that registers its key.
+var enrollFacts = map[string]bool{
+	"login": true, "sudo": true, "has_tooling": true, "has_identity": true,
+	"has_config_key": true, "has_checkout": true, "origin": true, "has_support": true,
+}
+
 // lookAtHost records what is done already as values: has_tooling,
 // has_identity, has_checkout, origin, has_support, config_url.
 func lookAtHost(x *engine.Ctx) error {
@@ -190,7 +198,7 @@ id support >/dev/null 2>&1 && echo has_support=true || echo has_support=false`).
 		return fmt.Errorf("could not log in as %s: %w", x.Value("admin"), err)
 	}
 	for _, line := range strings.Split(res.Stdout, "\n") {
-		if k, v, ok := strings.Cut(strings.TrimSpace(line), "="); ok {
+		if k, v, ok := strings.Cut(strings.TrimSpace(line), "="); ok && enrollFacts[k] {
 			x.Values[k] = v
 		}
 	}

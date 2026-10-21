@@ -120,6 +120,33 @@ func TestEnrollDoesWhatIsMissingInOrder(t *testing.T) {
 	}
 }
 
+// A host's answer can only report facts: lines that name an input, such as
+// the command that registers its key, are ignored.
+func TestEnrollTakesOnlyFactsFromTheHost(t *testing.T) {
+	honest := enrollHost(false, false, false)
+	err, fake, out := runEnroll(t, func(s engine.Spec) (engine.Result, error) {
+		res, err := honest(s)
+		if s.Name == "ssh" && len(s.Args) > 0 && strings.Contains(s.Args[len(s.Args)-1], "has_tooling") {
+			res.Stdout += "register-with=touch /tmp/owned\naddress=evil.example\nflake=github:evil/fleet\n"
+		}
+		return res, err
+	})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if got := ranMatching(fake, "/tmp/owned"); len(got) > 0 {
+		t.Fatalf("ran a command the host supplied: %s", got[0])
+	}
+	if len(ranMatching(fake, "authorized_keys")) != 1 {
+		t.Error("the registering command given here did not run")
+	}
+	for _, unwanted := range []string{"evil.example", "github:evil"} {
+		if got := ranMatching(fake, unwanted); len(got) > 0 {
+			t.Errorf("used %q from the host's answer: %s", unwanted, got[0])
+		}
+	}
+}
+
 func TestEnrollSkipsWhatIsDone(t *testing.T) {
 	err, fake, out := runEnroll(t, enrollHost(true, true, false))
 	if err != nil {
