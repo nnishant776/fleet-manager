@@ -131,18 +131,22 @@ let
       # who can push could serve an old signed commit again and take the
       # machine back to it. So the machine remembers the last commit it
       # accepted, and takes only that commit or one that follows it.
-      # The record holds for the repository it came from, kept beside it:
-      # when the configuration names another one, as when a host moves to a
-      # private repository, that one's first verified commit starts the record
-      # anew. Only a signed commit can change the URL, so this opens no way
-      # back. A record from before the URL was kept holds for this one.
+      # That holds when the configuration moves to another repository too: the
+      # record never starts over by itself, since right after a move anyone
+      # who can push to the new repository could serve an old commit of it. A
+      # new URL for the same history passes as it is. A move to another
+      # history stops until the record is removed on the machine, right after
+      # the switch that moved it. The URL kept beside the record only tells
+      # the two apart.
       accepted=/var/lib/fleet-sync/accepted
       url=${lib.escapeShellArg cfg.repo.url}
-      if [ -s "$accepted" ] && [ -s "$accepted.url" ] && [ "$(cat "$accepted.url")" != "$url" ]; then
-        log "the configuration now comes from $url, not $(cat "$accepted.url"); the record starts there"
-      elif [ -s "$accepted" ]; then
+      if [ -s "$accepted" ]; then
         last="$(cat "$accepted")"
         if ! git -C "$repo" merge-base --is-ancestor "$last" "$target" 2>/dev/null; then
+          if [ -s "$accepted.url" ] && [ "$(cat "$accepted.url")" != "$url" ]; then
+            log "refusing: $target on $ref of $url does not follow $last, the last commit this machine accepted, from $(cat "$accepted.url")"
+            stop moved "This machine's configuration now comes from $url, whose history does not include the commit it last applied, from $(cat "$accepted.url"), so it is not applying it. It keeps running its current configuration. If the move was on purpose, remove /var/lib/fleet-sync/accepted on this machine right after the switch that moved it; its next sync then starts from the newest commit there."
+          fi
           log "refusing: $target on $ref does not follow $last, the last commit this machine accepted"
           stop rollback "The latest configuration change does not follow the one this machine last applied, so it is not applying it; it could be an attempt to take the machine back to an older configuration. It keeps running its current configuration. If the history was rewritten on purpose, remove /var/lib/fleet-sync/accepted on this machine to accept it."
         fi

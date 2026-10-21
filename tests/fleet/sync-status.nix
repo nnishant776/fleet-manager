@@ -14,8 +14,10 @@
 # - a branch taken back to an older signed commit is refused, with the
 #   checkout and the record left as they were;
 # - removing the record lets the sync accept that older commit;
-# - a record from another repository, as on a host whose configuration has
-#   just moved, does not hold back the repository the configuration names.
+# - a record of the same history under another address passes as it is;
+# - a record from another history, as on a host whose configuration has just
+#   moved, stops the sync until it is removed, which lets the sync start
+#   from the newest commit there.
 # The graphical notification is not covered: the VM has no session.
 # Run it with `nix build .#checks.x86_64-linux.fleet-sync-status`.
 { pkgs, inputs }:
@@ -207,14 +209,32 @@ pkgs.testers.runNixOSTest {
         assert head("/etc/nixos") == four, head("/etc/nixos")
         checkout.fail("test -e /var/lib/fleet-sync/status")
 
-    with subtest("a record from another repository does not hold back the one the configuration names"):
-        url = "file:///srv/upstream.git"
+    url = "file:///srv/upstream.git"
+
+    with subtest("a new address for the same history passes as it is"):
         assert checkout.succeed("cat /var/lib/fleet-sync/accepted.url").strip() == url
+        checkout.succeed(
+            "echo file:///srv/renamed.git > /var/lib/fleet-sync/accepted.url",
+            "systemctl start config-auto-update.service",
+        )
+        assert accepted() == four, accepted()
+        assert checkout.succeed("cat /var/lib/fleet-sync/accepted.url").strip() == url
+        checkout.fail("test -e /var/lib/fleet-sync/status")
+
+    with subtest("a move to another history stops until the record is removed"):
         # As on a host whose configuration has just moved to this repository:
         # the record names a commit of the old one, which four does not follow.
+        # Taking whatever the new one serves would let anyone who can push
+        # there serve an old commit of it.
         checkout.succeed(
             f"echo {five} > /var/lib/fleet-sync/accepted",
             "echo file:///srv/old.git > /var/lib/fleet-sync/accepted.url",
+        )
+        checkout.fail("systemctl start config-auto-update.service")
+        assert field("kind") == "moved", field("kind")
+        assert accepted() == five, accepted()
+        checkout.succeed(
+            "rm /var/lib/fleet-sync/accepted",
             "systemctl start config-auto-update.service",
         )
         assert accepted() == four, accepted()

@@ -452,11 +452,18 @@ The key has to be a read-only deploy key of the private repository.
      sudo env GIT_SSH_COMMAND="ssh -i /var/lib/fleet/config_deploy_ed25519 -o IdentitiesOnly=yes" \
        nixos-rebuild switch --flake git+ssh://git@github.com/example-org/inventory#<host>
      ```
-     Its next sync fetches from the private repository, and
-     `resetLocalChanges` (on by default) moves the checkout over. Do this after
-     the host has synced once from a fleet-manager that has this, so that its
-     record says which repository its last commit came from.
-  4. Delete the host's folder here.
+  4. Right after the switch, start the host's record over, and sync:
+     ```bash
+     sudo rm /var/lib/fleet-sync/accepted
+     sudo systemctl start config-auto-update
+     ```
+     The sync fetches from the private repository. Its history does not
+     include the commit the host last applied, so the sync would stop rather
+     than take whatever the new repository serves. With the record gone, it
+     takes the newest commit there. `/var/lib/fleet-sync/accepted` then names
+     that commit: it should be the one you just switched to.
+     `resetLocalChanges` (on by default) moves the checkout over.
+  5. Delete the host's folder here.
 
 ### The `fleet` tool
 
@@ -1339,11 +1346,14 @@ the secrets repository with a force push. When a history is rewritten on
 purpose, remove the record on each host (`sudo rm /var/lib/fleet-sync/accepted`,
 or `/var/lib/fleet/accepted` for the secrets); the next sync then takes what it
 fetches. A new install records the revision it was installed from; a host
-without a record takes the first commit it fetches. The configuration's record
-holds for the repository it came from (`accepted.url`, beside it): a host whose
-configuration names another repository, as when it moves to
-[a private fleet](#a-private-fleet), starts the record afresh there, from its
-first verified commit.
+without a record takes the first commit it fetches. The record holds when a
+host's configuration moves to another repository too. A new address for the
+same history passes as it is. A move to another history, as to
+[a private fleet](#a-private-fleet), stops the sync until you remove the
+record on the host, right after the switch that moved it. It never starts
+over by itself: right after a move, anyone who can push to the new repository
+could serve an old commit of it. `accepted.url`, beside the record, says
+where the record's commit came from.
 
 **Everyone at a fleet host sees it when updates stop.** When a sync run stops
 on something a person has to fix, such as an unsigned commit, a configuration
