@@ -193,12 +193,14 @@ pkgs.testers.runNixOSTest {
     environment.etc."test-keys/allowed_signers".source = "${fixtures}/allowed_signers";
   };
 
-  nodes.fleet = { config, pkgs, ... }: {
+  nodes.fleet = { config, pkgs, nodes, ... }: {
     imports = hostNode.modules ++ [
       {
         conf.hardware.disk.enable = lib.mkForce false;
         disko.devices = lib.mkForce { };
         networking.hostName = lib.mkForce "fleet";
+        # For subtest 16: github.com is the forge, as for one in the middle.
+        networking.hosts.${nodes.forge.networking.primaryIPAddress} = [ "github.com" ];
         # The test framework turns switching off unless a test asks for it;
         # step 3 runs the activation by hand.
         system.switch.enable = lib.mkForce true;
@@ -465,5 +467,17 @@ pkgs.testers.runNixOSTest {
         )
         fleet.succeed(sync_cmd)
         fleet.succeed("test -f /var/lib/fleet/secrets_deploy_ed25519 -a ! -e /var/lib/fleet/deploy_ed25519")
+
+    with subtest("16: a forge answering for github.com without GitHub's host key is refused"):
+        # github.com resolves to the forge here, as for a machine in the
+        # middle: it serves the same repository, with its own host key.
+        before = fleet.succeed("readlink /var/lib/fleet/secrets").strip()
+        status, out = fleet.execute(
+            sync_cmd.replace("${secretsUrl}", "ssh://git@github.com/var/lib/forge/secrets.git") + " 2>&1"
+        )
+        assert status == 10, f"sync through a forge posing as github.com exited {status}: {out}"
+        assert "did not show the host key this host knows" in out, out
+        assert fleet.succeed("readlink /var/lib/fleet/secrets").strip() == before
+        fleet.fail("grep -q github.com /var/lib/fleet/known_hosts")
   '';
 }

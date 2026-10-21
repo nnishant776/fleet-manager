@@ -1327,8 +1327,10 @@ leaving SSH password authentication on produces a warning.
 checkout it does not own.** `conf.fleet.signing.allowedSignersFile` is required
 alongside `repo.url`; `http://` fails evaluation; and the sync exits before
 building if `localPath` is not root-owned or is group- or world-writable. An
-`ssh://` remote additionally needs the Git host in `programs.ssh.knownHosts`,
-since root has no `known_hosts` of its own.
+SSH remote is checked against GitHub's published host keys, which the library
+carries (`lib/forge-host-keys.nix`), for the configuration, the secrets and
+the install alike; a key that does not match stops the fetch. Another forge's
+key is taken the first time a host connects, and held to after that.
 
 **Only the newest commit is checked, and GitHub's merge buttons break it.**
 The sync verifies the tip of the tracked branch. GitHub's rebase, squash and

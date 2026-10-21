@@ -2,6 +2,9 @@
 # script and the identity viewer. Built here, not in a module, so that the
 # fleet modules and os-install install exactly the same scripts.
 { pkgs, nix ? pkgs.nix }:
+let
+  pins = import ./forge-host-keys.nix;
+in
 {
   sync = pkgs.writeShellApplication {
     name = "fleet-secrets-sync";
@@ -194,7 +197,7 @@
           tmp="$(mktemp -d)"
           trap 'rm -rf "$tmp"' EXIT
 
-          export GIT_SSH_COMMAND="ssh -i $state/secrets_deploy_ed25519 -o IdentitiesOnly=yes -o UserKnownHostsFile=$state/known_hosts -o StrictHostKeyChecking=accept-new"
+          export GIT_SSH_COMMAND="ssh -i $state/secrets_deploy_ed25519 -o IdentitiesOnly=yes ${pins.options} -o UserKnownHostsFile=$state/known_hosts -o StrictHostKeyChecking=accept-new"
 
           # Partial and sparse where the forge allows it; some servers refuse
           # the filter outright, and a plain shallow clone then does the job.
@@ -215,6 +218,10 @@
           until clone_once; do
             attempt=$((attempt + 1))
             cat "$tmp/err" >&2
+            # Trying again does not change the key the forge shows.
+            if grep -q 'Host key verification failed' "$tmp/err"; then
+              fail 10 "the forge at $repo did not show the host key this host knows for it, so nothing was fetched; a machine in the middle would look like this"
+            fi
             if [ "$attempt" -ge 5 ]; then
               if grep -q 'Permission denied (publickey)' "$tmp/err"; then
                 echo "fleet-secrets-sync: the forge rejected this host's deploy key; it has to be enrolled:" >&2

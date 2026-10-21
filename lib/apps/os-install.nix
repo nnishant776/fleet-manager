@@ -19,6 +19,7 @@
 { pkgs, self }:
 let
   secretsSync = import ../secrets-sync.nix { inherit pkgs; };
+  pins = import ../forge-host-keys.nix;
 in
 pkgs.writeShellApplication {
   name = "os-install";
@@ -187,7 +188,7 @@ pkgs.writeShellApplication {
       esac
       url="''${url%%\?*}"
       clone="$ramState/flake"
-      export GIT_SSH_COMMAND="ssh -i $ramState/config_deploy_ed25519 -o IdentitiesOnly=yes -o UserKnownHostsFile=$ramState/known_hosts -o StrictHostKeyChecking=accept-new"
+      export GIT_SSH_COMMAND="ssh -i $ramState/config_deploy_ed25519 -o IdentitiesOnly=yes ${pins.options} -o UserKnownHostsFile=$ramState/known_hosts -o StrictHostKeyChecking=accept-new"
       attempt=0
       until git clone "''${cloneArgs[@]}" -- "$url" "$clone"; do
         rm -rf "$clone"
