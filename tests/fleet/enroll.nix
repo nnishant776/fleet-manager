@@ -7,13 +7,17 @@
 #   copies the enrollment file and checks it, enrolls the host with a signed
 #   commit, pushes, and registers the deploy key;
 # - the host can then fetch, verify and decrypt its secrets with that key;
-# - a second run finds everything done and changes nothing.
+# - a second run finds everything done and changes nothing;
+# - the script enroll runs before a host's first switch makes a checkout of
+#   something else the configuration's, keeping its history and remote, and
+#   refuses one with untracked files.
 # Run it with `nix build .#checks.x86_64-linux.fleet-enroll`.
 { pkgs, inputs, self }:
 let
   lib = pkgs.lib;
   mkHost = import ../../lib/mkHost.nix { inherit inputs; };
   hostNode = mkHost.modulesFor { hostName = "newhost"; hostDir = ./enroll-host; };
+  prepareScript = ../../tools/fleet/flows/prepare-etc-nixos.sh;
 
   fixtures = pkgs.runCommand "fleet-enroll-fixtures" {
     nativeBuildInputs = with pkgs; [ age openssh git ];
@@ -176,5 +180,34 @@ pkgs.testers.runNixOSTest {
             assert want in out, f"output lacks {want!r}:\n{out}"
         after = forge.succeed("su git -c 'git -C /var/lib/forge/secrets.git rev-parse main'")
         assert before == after, "a second run changed the secrets repository"
+
+    with subtest("a checkout of something else becomes the configuration's, keeping what it had"):
+        # What enroll runs on a host before its first switch, here on scratch
+        # directories in place of /etc/nixos and /var/lib/fleet-sync.
+        newhost.succeed(
+            "git init -q --bare -b main /srv/config.git",
+            "git clone -q /srv/config.git /tmp/c",
+            "git -C /tmp/c -c user.name=x -c user.email=x@test commit -q --allow-empty -m one",
+            "git -C /tmp/c push -q origin HEAD:main",
+            "git init -q -b main /tmp/etc-nixos",
+            "git -C /tmp/etc-nixos -c user.name=x -c user.email=x@test commit -q --allow-empty -m mine",
+            "git -C /tmp/etc-nixos remote add origin https://example.org/mine.git",
+        )
+        one = newhost.succeed("git -C /srv/config.git rev-parse main").strip()
+        mine = newhost.succeed("git -C /tmp/etc-nixos rev-parse HEAD").strip()
+        newhost.succeed(f"sh ${prepareScript} file:///srv/config.git main {one} /tmp/etc-nixos /tmp/fleet-sync")
+        git = "git -C /tmp/etc-nixos"
+        assert newhost.succeed(f"{git} rev-parse HEAD").strip() == one
+        assert newhost.succeed(f"{git} rev-parse before-fleet").strip() == mine
+        assert newhost.succeed(f"{git} remote get-url before-fleet").strip() == "https://example.org/mine.git"
+        assert newhost.succeed(f"{git} remote get-url origin").strip() == "file:///srv/config.git"
+        assert newhost.succeed(f"{git} remote get-url --push origin").strip() == "no_push"
+        assert newhost.succeed("cat /tmp/fleet-sync/accepted").strip() == one
+        assert newhost.succeed("cat /tmp/fleet-sync/accepted.url").strip() == "file:///srv/config.git"
+        # One with untracked files is refused, and left as it is.
+        newhost.succeed("git init -q -b main /tmp/dirty", "touch /tmp/dirty/hardware-configuration.nix")
+        newhost.fail(f"sh ${prepareScript} file:///srv/config.git main {one} /tmp/dirty /tmp/fleet-sync-dirty")
+        newhost.fail("git -C /tmp/dirty remote get-url origin")
+        newhost.fail("test -e /tmp/fleet-sync-dirty")
   '';
 }

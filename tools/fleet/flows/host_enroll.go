@@ -2,6 +2,7 @@ package flows
 
 import (
 	"crypto/sha256"
+	_ "embed"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -77,8 +78,22 @@ var HostEnroll = &engine.Flow{
 			Do:    engine.Func(lookAtHost),
 		},
 		{
+			Title: "Choose the commit to switch {{.host}} to",
+			Why: "It does not run a configuration with secrets yet. Unless --switch-to names one, it gets the newest commit of main, " +
+				"once a key this checkout trusts has signed it: its own sync will take no other.",
+			When: unless("has_tooling", "it already runs a configuration with secrets"),
+			Do:   engine.Func(chooseSwitch),
+		},
+		{
+			Title: "Make /etc/nixos the configuration repository's checkout",
+			Why: "Once the host runs its fleet configuration, the sync owns /etc/nixos and makes it the configuration repository's. What is there now is kept first: " +
+				"plain files move to /etc/nixos.before-fleet, with their permissions; a git checkout keeps its history on the branch before-fleet, and its remote under that name.",
+			When: needsEtcNixos,
+			Do:   engine.Func(prepareEtcNixos),
+		},
+		{
 			Title: "Switch {{.host}} to its fleet configuration",
-			Why:   "It does not run a configuration with secrets yet. The switch runs as a service on the host, so it finishes even if this connection drops.",
+			Why:   "The switch runs as a service on the host, so it finishes even if this connection drops.",
 			When:  unless("has_tooling", "it already runs a configuration with secrets"),
 			Do:    engine.Func(switchHost),
 		},
@@ -180,10 +195,13 @@ func unless(fact, reason string) func(*engine.Ctx) (bool, string) {
 var enrollFacts = map[string]bool{
 	"login": true, "sudo": true, "has_tooling": true, "has_identity": true,
 	"has_config_key": true, "has_checkout": true, "origin": true, "has_support": true,
+	"etc_nixos": true, "dirty": true,
 }
 
 // lookAtHost records what is done already as values: has_tooling,
-// has_identity, has_checkout, origin, has_support, config_url.
+// has_identity, has_checkout, origin, has_support, config_url; and what
+// /etc/nixos holds: etc_nixos is git, files or empty, and dirty says whether
+// a checkout there has changes of its own.
 func lookAtHost(x *engine.Ctx) error {
 	res, err := fleet.OnAdmin(`set -u
 echo "login=$(id -un)"
@@ -192,7 +210,12 @@ command -v fleet-secrets-sync >/dev/null && echo has_tooling=true || echo has_to
 sudo -n test -f /var/lib/fleet/age.key && echo has_identity=true || echo has_identity=false
 sudo -n test -f /var/lib/fleet/config_deploy_ed25519 && echo has_config_key=true || echo has_config_key=false
 test -d /etc/nixos/.git && echo has_checkout=true || echo has_checkout=false
-echo "origin=$(git -C /etc/nixos remote get-url origin 2>/dev/null)"
+g() { sudo -n git -c safe.directory=/etc/nixos -C /etc/nixos "$@"; }
+echo "origin=$(g remote get-url origin 2>/dev/null)"
+if sudo -n test -d /etc/nixos/.git; then echo etc_nixos=git
+elif [ -n "$(sudo -n ls -A /etc/nixos 2>/dev/null)" ]; then echo etc_nixos=files
+else echo etc_nixos=empty; fi
+if sudo -n test -d /etc/nixos/.git && [ -n "$(g status --porcelain 2>/dev/null)" ]; then echo dirty=true; else echo dirty=false; fi
 id support >/dev/null 2>&1 && echo has_support=true || echo has_support=false`).RunQuiet(x)
 	if err != nil {
 		return fmt.Errorf("could not log in as %s: %w", x.Value("admin"), err)
@@ -224,7 +247,9 @@ id support >/dev/null 2>&1 && echo has_support=true || echo has_support=false`).
 	return nil
 }
 
-func switchHost(x *engine.Ctx) error {
+// chooseSwitch settles what the host switches to, as switch_ref, and as
+// switch_rev the commit when it is main's, checked here.
+func chooseSwitch(x *engine.Ctx) error {
 	ref := x.Value("switch-to")
 	if ref == "" {
 		rev, err := signedUpstreamMain(x)
@@ -234,6 +259,7 @@ func switchHost(x *engine.Ctx) error {
 		// Fetched with git, so what the host builds is that commit's tree: a
 		// github: tarball is not checked against the commit it is named for.
 		ref = "git+" + fleet.UpstreamURL + "?rev=" + rev
+		x.Values["switch_rev"] = rev
 	}
 	x.Values["switch_ref"] = ref
 	// For the host's shell: a git+https reference has a ? in it.
@@ -246,11 +272,66 @@ func switchHost(x *engine.Ctx) error {
 	if !x.Options.DryRun && strings.TrimSpace(res.Stdout) == "" {
 		return fmt.Errorf("%s does not set conf.secrets.repo.url for %s: add it, with conf.fleet.repo.url, the signers file and support's key, and push", ref, x.Value("host"))
 	}
+	return nil
+}
+
+func needsEtcNixos(x *engine.Ctx) (bool, string) {
+	switch {
+	case x.Value("has_tooling") == "true":
+		return false, "it already runs a configuration with secrets"
+	case x.Value("etc_nixos") == "files":
+		return true, ""
+	case x.Value("etc_nixos") != "git":
+		return false, "/etc/nixos is empty; the first-boot clone makes the checkout"
+	case x.Value("origin") == x.Value("config_url"):
+		return false, "it is a checkout of " + x.Value("origin") + " already"
+	}
+	return true, ""
+}
+
+//go:embed prepare-etc-nixos.sh
+var prepareEtcNixosScript string
+
+// prepareEtcNixos keeps what /etc/nixos holds before the switch: plain files
+// are moved aside, and a git checkout becomes the configuration repository's
+// with its own history kept (prepare-etc-nixos.sh).
+func prepareEtcNixos(x *engine.Ctx) error {
+	if x.Value("etc_nixos") == "files" {
+		_, err := fleet.OnAdmin(`sudo -n sh -c 'test ! -e /etc/nixos.before-fleet || { echo "/etc/nixos.before-fleet exists already: move it away first" >&2; exit 1; }; mv /etc/nixos /etc/nixos.before-fleet'`).
+			OK("moved to /etc/nixos.before-fleet; the first-boot clone makes the checkout").
+			After(func(x *engine.Ctx) error {
+				x.Kept("etc-nixos", "the files that were in /etc/nixos, now in /etc/nixos.before-fleet on {{.host}}")
+				return nil
+			}).Run(x)
+		return err
+	}
+	if x.Value("config_url") == "" {
+		return errors.New("could not read conf.fleet.repo.url from " + x.Value("flake"))
+	}
+	if x.Value("dirty") == "true" {
+		return fmt.Errorf("/etc/nixos on %s has uncommitted changes or untracked files: commit, move or remove them, then run this again", x.Value("host"))
+	}
+	ref, err := engine.Silently(x, nil, "nix", "eval", "--raw", x.Value("flake")+"#nixosConfigurations."+x.Value("host")+".config.conf.fleet.repo.ref")
+	if err != nil || ref == "" {
+		return errors.New("could not read conf.fleet.repo.ref from " + x.Value("flake"))
+	}
+	x.Values["prepare_script"] = prepareEtcNixosScript
+	x.Values["prepare_args"] = strings.Join([]string{engine.Quote(x.Value("config_url")), engine.Quote(ref), engine.Quote(x.Value("switch_rev"))}, " ")
+	_, err = fleet.OnAdmin("sudo -n sh -s -- {{.prepare_args}}").StdinFrom("prepare_script").StdinNote("prepare-etc-nixos.sh").
+		After(func(x *engine.Ctx) error {
+			x.Values["origin"], x.Values["has_checkout"] = x.Value("config_url"), "true"
+			x.Kept("etc-nixos", "/etc/nixos's own history on {{.host}}, on its branch before-fleet, and its old remote, as before-fleet")
+			return nil
+		}).Run(x)
+	return err
+}
+
+func switchHost(x *engine.Ctx) error {
 	// systemd-run gives the service a minimal PATH; nixos-rebuild needs the
 	// system's (it runs `test`).
 	// It runs as a unit on the host, so that a dropped connection or a stop
 	// here cannot cut it in half.
-	_, err = fleet.StillRunning(fleet.OnAdmin(`sudo -n systemctl reset-failed fleet-enroll-switch 2>/dev/null; `+
+	_, err := fleet.StillRunning(fleet.OnAdmin(`sudo -n systemctl reset-failed fleet-enroll-switch 2>/dev/null; `+
 		`sudo -n systemd-run --wait --collect --unit=fleet-enroll-switch `+
 		`--setenv=PATH=/run/wrappers/bin:/run/current-system/sw/bin `+
 		`nixos-rebuild switch --flake {{.switch_target}}; s=$?; `+

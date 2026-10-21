@@ -203,6 +203,73 @@ func TestEnrollDoesNotSwitchToAnUnsignedCommit(t *testing.T) {
 	}
 }
 
+// withEtcNixos answers that /etc/nixos holds kind (git, files or empty),
+// with changes of its own if dirty, fetching origin; the configuration's ref
+// is main.
+func withEtcNixos(respond func(engine.Spec) (engine.Result, error), kind string, dirty bool, origin string) func(engine.Spec) (engine.Result, error) {
+	return func(s engine.Spec) (engine.Result, error) {
+		res, err := respond(s)
+		args := strings.Join(s.Args, " ")
+		switch {
+		case s.Name == "ssh" && strings.Contains(args, "has_tooling"):
+			// Later lines win, as a host's answer is read.
+			res.Stdout += "etc_nixos=" + kind + "\ndirty=" + map[bool]string{true: "true", false: "false"}[dirty] + "\norigin=" + origin + "\n"
+		case s.Name == "nix" && strings.Contains(args, "conf.fleet.repo.ref"):
+			res.Stdout = "main"
+		}
+		return res, err
+	}
+}
+
+// Plain files in /etc/nixos are moved aside, with their permissions, before
+// the switch; the first-boot clone then makes the checkout.
+func TestEnrollMovesAStockEtcNixosAside(t *testing.T) {
+	err, fake, out := runSwitch(t, withEtcNixos(noTooling(enrollHost(false, false, false)), "files", false, ""))
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	cmds := strings.Join(fake.Commands(), "\n")
+	moved, switched := strings.Index(cmds, "mv /etc/nixos /etc/nixos.before-fleet"), strings.Index(cmds, "nixos-rebuild switch")
+	if moved < 0 || switched < 0 || moved > switched {
+		t.Fatalf("/etc/nixos was not moved aside before the switch:\n%s", cmds)
+	}
+	if !strings.Contains(out, "moved to /etc/nixos.before-fleet") {
+		t.Errorf("did not say where the files are:\n%s", out)
+	}
+}
+
+// A checkout of something else becomes the configuration repository's, at
+// the commit the host switches to, before the switch.
+func TestEnrollMakesAnExistingCheckoutTheConfigurations(t *testing.T) {
+	err, fake, out := runSwitch(t, withEtcNixos(noTooling(enrollHost(false, false, false)), "git", false, "https://example.org/mine.git"))
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	prepared := ranMatching(fake, "sudo -n sh -s -- https://github.com/nnishant776/fleet-manager.git main abc123")
+	if len(prepared) != 1 || !strings.Contains(prepared[0].Stdin, "remote rename origin before-fleet") {
+		t.Fatalf("the checkout was not prepared with the script: %+v\n%s", prepared, strings.Join(fake.Commands(), "\n"))
+	}
+	cmds := strings.Join(fake.Commands(), "\n")
+	if strings.Index(cmds, "sh -s --") > strings.Index(cmds, "nixos-rebuild switch") {
+		t.Fatalf("prepared /etc/nixos after the switch:\n%s", cmds)
+	}
+	if strings.Contains(cmds, "remote set-url origin") {
+		t.Error("pointed origin elsewhere again after preparing the checkout")
+	}
+}
+
+func TestEnrollStopsOnAnEtcNixosWithChangesOfItsOwn(t *testing.T) {
+	err, fake, out := runSwitch(t, withEtcNixos(noTooling(enrollHost(false, false, false)), "git", true, "https://example.org/mine.git"))
+	if err == nil || !strings.Contains(out, "uncommitted changes or untracked files") {
+		t.Fatalf("went on with changes in /etc/nixos: %v\n%s", err, out)
+	}
+	for _, unwanted := range []string{"sh -s --", "nixos-rebuild"} {
+		if got := ranMatching(fake, unwanted); len(got) > 0 {
+			t.Errorf("ran %s", got[0])
+		}
+	}
+}
+
 // A host's answer can only report facts: lines that name an input, such as
 // the command that registers its key, are ignored.
 func TestEnrollTakesOnlyFactsFromTheHost(t *testing.T) {
