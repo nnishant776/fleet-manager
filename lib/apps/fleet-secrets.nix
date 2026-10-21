@@ -53,11 +53,13 @@ pkgs.writeShellApplication {
     command="$1"
     shift
 
-    # The recovery identity lives in the environment of this process only, so
-    # it is never written to disk; age prompts for its passphrase.
+    # The recovery identity lives in a variable of this process only, so it is
+    # never written to disk; age prompts for its passphrase. It is not
+    # exported: only sops gets it, never git, whose hooks come from the
+    # repository, nor ssh.
     if [ -n "$recovery" ]; then
-      SOPS_AGE_KEY="$(age -d "$recovery")" || die "could not decrypt $recovery"
-      export SOPS_AGE_KEY
+      recovery_key="$(age -d "$recovery")" || die "could not decrypt $recovery"
+      sops() { SOPS_AGE_KEY="$recovery_key" command sops "$@"; }
     fi
 
     cd "$repo" || die "no such directory: $repo"

@@ -293,8 +293,10 @@ func TestSecretOutputAndHiddenEnvAreNeverShown(t *testing.T) {
 		return Result{Stdout: "ok"}, nil
 	})
 	f := &Flow{Title: "t", Steps: []Step{
-		{Title: "unlock", Do: Cmd("age", "-d", "recovery.age").ReadOnly().Prompts().CaptureEnv("SOPS_AGE_KEY")},
+		{Title: "unlock", Do: Cmd("age", "-d", "recovery.age").ReadOnly().Prompts().CaptureEnv("SOPS_AGE_KEY", "sops")},
 		{Title: "use", Do: Cmd("sops", "updatekeys", "f.yaml")},
+		{Title: "commit", Do: Cmd("git", "commit", "-m", "x")},
+		{Title: "look", Do: Func(func(x *Ctx) error { _, err := Silently(x, nil, "git", "status"); return err })},
 	}}
 	if err := RunWith(x, f, nil); err != nil {
 		t.Fatal(err)
@@ -307,6 +309,12 @@ func TestSecretOutputAndHiddenEnvAreNeverShown(t *testing.T) {
 	}
 	if strings.Contains(fake.Ran[1].String(), "SOPS_AGE_KEY") {
 		t.Fatal("the hidden environment is part of the shown command")
+	}
+	// git runs the repository's hooks: the identity must not reach it.
+	for _, s := range fake.Ran[2:] {
+		if len(s.Hidden) > 0 {
+			t.Errorf("%s got the hidden environment %q", s.Name, s.Hidden)
+		}
 	}
 }
 

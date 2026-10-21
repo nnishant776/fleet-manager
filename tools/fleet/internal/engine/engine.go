@@ -12,7 +12,9 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"text/template"
 
@@ -92,9 +94,9 @@ type Ctx struct {
 	Stdin   io.Reader // for --NAME-stdin inputs
 	// LookPath finds a tool on PATH; exec.LookPath unless a test replaces it.
 	LookPath func(string) (string, error)
-	// Hidden is environment every command gets but nobody sees; see
+	// Hidden is environment some commands get but nobody sees; see
 	// Command.CaptureEnv.
-	Hidden []string
+	Hidden []HiddenEnv
 
 	flags map[string]string // from the command line
 	n     int
@@ -103,6 +105,24 @@ type Ctx struct {
 	undos   []undo // see undo.go
 	kept    []note
 	undoing bool // putting back: commands run without asking
+}
+
+// HiddenEnv is one entry of hidden environment, KEY=value, and the names of
+// the commands it goes to.
+type HiddenEnv struct {
+	Entry string
+	To    []string
+}
+
+// hiddenFor is the hidden environment the command name gets.
+func (c *Ctx) hiddenFor(name string) []string {
+	var env []string
+	for _, h := range c.Hidden {
+		if slices.Contains(h.To, filepath.Base(name)) {
+			env = append(env, h.Entry)
+		}
+	}
+	return env
 }
 
 // Value returns an input's value, or a value a step captured.

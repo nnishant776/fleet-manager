@@ -122,7 +122,7 @@ func Unlock() engine.Step {
 			}
 			return true, ""
 		},
-		Do: engine.Cmd("age", "-d", "{{.recovery}}").ReadOnly().Prompts().CaptureEnv("SOPS_AGE_KEY").OK("unlocked for this run"),
+		Do: engine.Cmd("age", "-d", "{{.recovery}}").ReadOnly().Prompts().CaptureEnv("SOPS_AGE_KEY", "sops").OK("unlocked for this run"),
 	}
 }
 

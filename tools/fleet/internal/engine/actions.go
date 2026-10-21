@@ -21,10 +21,11 @@ type Command struct {
 	quiet       bool
 	ok          string
 	expect      func(Result) error
-	prompts     bool   // asks on the terminal by itself; no spinner
-	secret      bool   // its output is never shown
-	captureEnv  string // keep the output as hidden environment: NAME=output
-	stdinNote   string // what the shown command says about its stdin
+	prompts     bool     // asks on the terminal by itself; no spinner
+	secret      bool     // its output is never shown
+	captureEnv  string   // keep the output as hidden environment: NAME=output
+	captureTo   []string // the commands that get it
+	stdinNote   string   // what the shown command says about its stdin
 	explain     func(Result) string
 	before      func(*Ctx) error // runs just before the command does, and only if it does
 	after       func(*Ctx) error // runs when the command has succeeded
@@ -64,20 +65,26 @@ func (c *Command) Prompts() *Command { c.prompts = true; return c }
 // it, not even with --verbose.
 func (c *Command) CaptureSecret(name string) *Command { c.capture, c.secret = name, true; return c }
 
-// CaptureEnv keeps the output as environment for every later command,
-// passed on but never shown: an unlocked identity, for example.
-func (c *Command) CaptureEnv(name string) *Command { c.captureEnv, c.secret = name, true; return c }
+// CaptureEnv keeps the output as environment for the later commands named
+// in to, and for no other, passed on but never shown: an identity unlocked
+// for sops, for example, which so never reaches git, whose hooks come from
+// the repository, or ssh.
+func (c *Command) CaptureEnv(name string, to ...string) *Command {
+	c.captureEnv, c.captureTo, c.secret = name, to, true
+	return c
+}
 
 // StdinNote says what goes to stdin, for the shown command.
 func (c *Command) StdinNote(note string) *Command { c.stdinNote = note; return c }
 
 // spec expands the command against the values.
 func (c *Command) spec(x *Ctx) (Spec, error) {
-	s := Spec{Interactive: c.interactive, Prompts: c.prompts, Hidden: x.Hidden}
+	s := Spec{Interactive: c.interactive, Prompts: c.prompts}
 	var err error
 	if s.Name, err = x.Expand(c.name); err != nil {
 		return s, err
 	}
+	s.Hidden = x.hiddenFor(s.Name)
 	for _, a := range c.args {
 		e, err := x.Expand(a)
 		if err != nil {
@@ -201,7 +208,7 @@ func (c *Command) exec(x *Ctx, asQuietCheck bool) (Result, error) {
 		x.Values[c.capture] = strings.TrimSpace(res.Stdout)
 	}
 	if c.captureEnv != "" {
-		x.Hidden = append(x.Hidden, c.captureEnv+"="+strings.TrimSpace(res.Stdout))
+		x.Hidden = append(x.Hidden, HiddenEnv{Entry: c.captureEnv + "=" + strings.TrimSpace(res.Stdout), To: c.captureTo})
 	}
 	if c.after != nil {
 		if err := c.after(x); err != nil {
@@ -351,7 +358,7 @@ func WaitFor(x *Ctx, question string) error { return wait(question).run(x) }
 // for facts a step decides on (whether it runs at all), not for the steps'
 // own work, which is always shown. It returns the trimmed output.
 func Silently(x *Ctx, env []string, name string, args ...string) (string, error) {
-	res, err := x.Runner.Run(x.Context, Spec{Name: name, Args: args, Env: env, Hidden: x.Hidden})
+	res, err := x.Runner.Run(x.Context, Spec{Name: name, Args: args, Env: env, Hidden: x.hiddenFor(name)})
 	return strings.TrimSpace(res.Stdout), err
 }
 
