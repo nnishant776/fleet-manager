@@ -21,11 +21,14 @@ const Upstream = "github:nnishant776/fleet-manager"
 // UpstreamURL is the same repository for git.
 const UpstreamURL = "https://github.com/nnishant776/fleet-manager"
 
-// FlakeInput is the configuration to read hosts from.
+// FlakeInput is the configuration to read hosts from. With no checkout here
+// or in /etc/nixos it is asked for: never main straight from GitHub, which
+// nothing has checked the signature of, though what is read from it decides
+// where keys are registered and what a host switches to.
 var FlakeInput = engine.Input{
 	Name:   "flake",
 	Prompt: "Configuration flake",
-	Help:   "A checkout or a flake reference; defaults to this directory's flake, then /etc/nixos, then " + Upstream,
+	Help:   "A checkout or a flake reference; defaults to this directory's flake, then /etc/nixos",
 	Default: func(*engine.Ctx) (string, error) {
 		if v := os.Getenv("FLEET_FLAKE"); v != "" {
 			return v, nil
@@ -39,7 +42,7 @@ var FlakeInput = engine.Input{
 				return abs, nil
 			}
 		}
-		return Upstream, nil
+		return "", nil
 	},
 }
 

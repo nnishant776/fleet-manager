@@ -23,7 +23,7 @@ fleet support-key rotate neerajpinew --old-key ~/.ssh/home_network_ssh_key --new
 
 | Flag | |
 |---|---|
-| `--flake` | A checkout or a flake reference; defaults to this directory's flake, then /etc/nixos, then github:nnishant776/fleet-manager |
+| `--flake` | A checkout or a flake reference; defaults to this directory's flake, then /etc/nixos |
 | `--host` | A host of the configuration (hosts/\<name>) |
 | `--address` | A name or IP address for SSH; defaults to the host's name |
 | `--old-key` | Its private key file |

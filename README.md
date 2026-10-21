@@ -384,7 +384,7 @@ instead. That repository pins this one and builds its hosts with
 
 ```nix
 {
-  inputs.fleet-manager.url = "github:nnishant776/fleet-manager";
+  inputs.fleet-manager.url = "git+https://github.com/nnishant776/fleet-manager";
   outputs = { self, fleet-manager }: fleet-manager.lib.mkFleet {
     inherit self;
     hosts = ./config/hosts;             # one folder per host, as hosts/ here
@@ -400,6 +400,22 @@ configuration names, and builds with the fleet-manager its `flake.lock` pins.
 Moving to a newer fleet-manager is a signed commit there that updates the
 lock. A host's folder works the same there; only the path to a signers file
 changes with the depth, as in `../../../fleet/allowed_signers`.
+
+Your signature on that commit vouches for the fleet-manager it pins, so pin a
+commit whose signature you have checked, by its hash. Check it in a
+fleet-manager checkout of your own, set up by `fleet setup` to check
+signatures:
+
+```bash
+git -C <fleet-manager checkout> fetch origin
+git -C <fleet-manager checkout> verify-commit origin/main
+nix flake lock --override-input fleet-manager \
+  "git+https://github.com/nnishant776/fleet-manager?rev=$(git -C <fleet-manager checkout> rev-parse origin/main)"
+```
+
+The input is `git+https://`, not `github:`. With git, the files Nix gets are
+the ones the commit's hash names. A `github:` input is a tarball that GitHub
+makes, and nothing checks it against the commit.
 
 A private repository needs a key to read. GitHub allows a deploy key on one
 repository only, and each host's deploy key is on the secrets repository, so
@@ -454,11 +470,19 @@ It is not installed anywhere by default.
 Install it yourself where you want it:
 
 ```bash
-nix profile install github:nnishant776/fleet-manager#fleet   # for your account
-nix profile install .#fleet                                  # or from a checkout
-nix run .#fleet -- host check neerajpinew                    # once, without installing
-nix profile upgrade fleet                                    # later, for a newer version
+nix profile install /etc/nixos#fleet        # on a NixOS machine of the fleet
+nix profile install .#fleet                 # or from a checkout you have checked
+nix run .#fleet -- host check neerajpinew   # once, without installing
+nix profile upgrade fleet                   # later, for a newer version
 ```
+
+Install it from a checkout, not with `github:` straight from main. It runs
+with your agent and, for secrets, your recovery key, so it should be code
+whose signature has been checked. `/etc/nixos` on a NixOS machine of the fleet
+is such a checkout: its sync checks every commit before checking it out. In a
+checkout of your own, run `git verify-commit HEAD` first. For the same reason,
+fleet reads hosts only from `--flake`, this directory's flake or `/etc/nixos`,
+and asks for `--flake` when there is none.
 
 Every question has a flag, so a command also runs without prompts. `--dry-run`
 shows every step and command for a real host, and runs only the ones that

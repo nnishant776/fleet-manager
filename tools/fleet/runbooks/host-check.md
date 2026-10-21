@@ -20,7 +20,7 @@ fleet host check pi-gw --address 192.168.0.9
 
 | Flag | |
 |---|---|
-| `--flake` | A checkout or a flake reference; defaults to this directory's flake, then /etc/nixos, then github:nnishant776/fleet-manager |
+| `--flake` | A checkout or a flake reference; defaults to this directory's flake, then /etc/nixos |
 | `--host` | A host of the configuration (hosts/\<name>) |
 | `--address` | A name or IP address for SSH; defaults to the host's name |
 | `--user` | The account to log in as; support by default, which has sudo without a password, so nothing needs forwarding |

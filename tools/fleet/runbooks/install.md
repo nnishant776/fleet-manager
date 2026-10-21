@@ -22,7 +22,7 @@ fleet install -H nas1 -d main=/dev/nvme0n1 -d data=/dev/sda --enroll-out /media/
 
 | Flag | |
 |---|---|
-| `--flake` | A checkout or a flake reference; defaults to this directory's flake, then /etc/nixos, then github:nnishant776/fleet-manager |
+| `--flake` | A checkout or a flake reference; defaults to this directory's flake, then /etc/nixos |
 | `-H`, `--host` | The host to install (hosts/\<name>); chosen from a list when not given |
 | `-d`, `--disk` | [NAME=]DEVICE for a disk of the host's layout, as os-install takes it; chosen from a list when not given; may be given more than once |
 | `--identity` | An identity document from 'fleet-identity --export' on the old install, instead of a new identity |

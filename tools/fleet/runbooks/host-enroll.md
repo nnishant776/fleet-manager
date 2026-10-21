@@ -22,7 +22,7 @@ fleet host enroll neerajpinew --key ~/.ssh/home_network_ssh_key --repo ~/Project
 
 | Flag | |
 |---|---|
-| `--flake` | A checkout or a flake reference; defaults to this directory's flake, then /etc/nixos, then github:nnishant776/fleet-manager |
+| `--flake` | A checkout or a flake reference; defaults to this directory's flake, then /etc/nixos |
 | `--host` | A host of the configuration (hosts/\<name>) |
 | `--address` | A name or IP address for SSH; defaults to the host's name |
 | `--admin` | The account to log in as until the host has support; admin by default |
