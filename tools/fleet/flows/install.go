@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -39,9 +40,18 @@ var Install = &engine.Flow{
 		{Name: "no-enroll", Prompt: "Skip waiting for the enrollment?", Help: "Do not wait for the host to be enrolled; it retries after boot", Bool: true},
 		{Name: "enroll-out", Prompt: "Also copy the enrollment file to", Help: "A path, for example on a mounted USB stick",
 			Optional: true},
+		{Name: "rev", Prompt: "fleet-manager commit to install with", Help: "A full commit hash from fleet install prep: os-install comes from it, not from main",
+			Pattern: `^[0-9a-f]{40}$`, Optional: true},
+		{Name: "unpinned", Prompt: "Install commits nobody checked?", Help: "Install a private host's newest commit with the newest os-install, as before fleet install prep; refused otherwise", Bool: true},
 	},
 	Needs: []string{"nix"},
 	Steps: []engine.Step{
+		{
+			Title: "Check what is installed",
+			Why: "An install should run, and install, only commits whose signatures were checked on your machine: fleet install prep there checks them and prints the line that pins them. " +
+				"Otherwise it takes what main has now, which anyone who can push could have changed.",
+			Do: engine.Func(checkPinned),
+		},
 		{
 			Title: "Check the network",
 			Why:   "Everything comes over the network: the configuration and fleet-manager, and the packages from the binary cache. A cable usually works by itself; Wi-Fi needs joining.",
@@ -94,7 +104,7 @@ func checkNetwork(x *engine.Ctx) error {
 		// runs then, stands for the network.
 		x.Values["reach"] = x.Value("flake")
 		if private(x) {
-			x.Values["reach"] = fleet.Upstream
+			x.Values["reach"] = installerFlake(x)
 		}
 		_, err := fleet.Nix("flake", "metadata", "{{.reach}}").ReadOnly().Quiet().OK("{{.reach}} is reachable").Run(x)
 		if err == nil {
@@ -279,7 +289,7 @@ func runOSInstall(x *engine.Ctx) error {
 		// fleet-manager's os-install, since the host's own flake cannot be
 		// read yet; it clones that with the host's key, and offers the disks
 		// not given here.
-		args = []string{"run", fleet.Upstream + "#os-install", "--", "--flake", "{{.flake}}", "-H", "{{.host}}"}
+		args = []string{"run", installerFlake(x) + "#os-install", "--", "--flake", "{{.flake}}", "-H", "{{.host}}"}
 		disks = x.Value("disk")
 		// A private configuration needs the host's identity, in the usual place.
 		x.Values["state_path"] = "/var/lib/fleet"
@@ -364,6 +374,43 @@ func private(x *engine.Ctx) bool { return strings.HasPrefix(x.Value("flake"), "g
 
 // unlessPrivate skips a step that has to read the host's configuration,
 // which a private one cannot be before the host is enrolled.
+// installerFlake is the fleet-manager a private host's os-install comes from: the
+// commit --rev names, fetched with git so the files are that commit's, or
+// main as it is now for an unpinned install.
+func installerFlake(x *engine.Ctx) string {
+	if rev := x.Value("rev"); rev != "" {
+		return "git+" + fleet.UpstreamURL + "?rev=" + rev
+	}
+	return fleet.Upstream
+}
+
+// pinnedFlake is whether the flake names its commit: ?rev= on a git URL, or
+// github:owner/repo/<commit>.
+var pinnedFlake = regexp.MustCompile(`[?&]rev=[0-9a-f]{40}(&|$)|^github:[^/]+/[^/]+/[0-9a-f]{40}$`)
+
+// checkPinned refuses a private install of commits nobody checked, unless
+// --unpinned asks for it, and warns about a public one. It guards against
+// forgetting fleet install prep; the protection is the pinned line itself,
+// since whoever can change main can also change this check.
+func checkPinned(x *engine.Ctx) error {
+	pinned := pinnedFlake.MatchString(x.Value("flake"))
+	if private(x) {
+		pinned = pinned && x.Value("rev") != ""
+	}
+	switch {
+	case pinned:
+		x.UI.OK("the commits to install are pinned")
+	case x.Value("unpinned") == "true":
+		x.UI.Note("Installing what main has now, unchecked, as --unpinned asks.")
+	case private(x):
+		return errors.New("a private host is installed only from commits checked on your machine: run fleet install prep " +
+			x.Value("host") + " there and paste the line it prints, or give --unpinned")
+	default:
+		x.UI.Note("Not pinned: this installs what main has now, which nobody checked. fleet install prep on your machine prints a line that pins checked commits.")
+	}
+	return nil
+}
+
 func unlessPrivate(reason string) func(*engine.Ctx) (bool, string) {
 	return func(x *engine.Ctx) (bool, string) {
 		if private(x) {

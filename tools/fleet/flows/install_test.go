@@ -93,16 +93,58 @@ func TestInstallDryRunNamesWhatIsMissing(t *testing.T) {
 	}
 }
 
+const (
+	pinnedFM  = "1111111111111111111111111111111111111111"
+	pinnedINV = "2222222222222222222222222222222222222222"
+)
+
+// A private host's install is refused unless fleet install prep pinned both
+// commits, or --unpinned asks for what main has now.
+func TestInstallRefusesAnUnpinnedPrivateHost(t *testing.T) {
+	x, fake, out := newFakeCtx(installer(t, true))
+	err := engine.RunWith(x, Install, map[string]string{"flake": "git+ssh://git@github.com/example-org/inventory", "host": "nas", "disk": "main=/dev/vda"})
+	if err == nil || !strings.Contains(out.String(), "run fleet install prep nas there") {
+		t.Fatalf("installed an unpinned private host: %v\n%s", err, out)
+	}
+	if strings.Contains(strings.Join(fake.Commands(), "\n"), "os-install") {
+		t.Error("os-install ran")
+	}
+}
+
+func TestInstallsAnUnpinnedPrivateHostWhenAsked(t *testing.T) {
+	x, fake, out := newFakeCtx(installer(t, true))
+	err := engine.RunWith(x, Install, map[string]string{"flake": "git+ssh://git@github.com/example-org/inventory", "host": "nas", "disk": "main=/dev/vda", "unpinned": "true"})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if !strings.Contains(strings.Join(fake.Commands(), "\n"), "run 'github:nnishant776/fleet-manager#os-install'") {
+		t.Errorf("did not run main's os-install:\n%s", strings.Join(fake.Commands(), "\n"))
+	}
+}
+
+// A public host's unpinned install goes ahead, with a warning.
+func TestInstallWarnsAboutAnUnpinnedPublicHost(t *testing.T) {
+	x, _, out := newFakeCtx(installer(t, true))
+	err := engine.RunWith(x, Install, map[string]string{"flake": "github:x/y", "host": "nas", "disk": "data=/dev/vdb\nmain=/dev/vda"})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if !strings.Contains(out.String(), "Not pinned: this installs what main has now") {
+		t.Errorf("no warning:\n%s", out)
+	}
+}
+
 func TestInstallFromAPrivateConfiguration(t *testing.T) {
 	x, fake, out := newFakeCtx(installer(t, true))
-	flake := "git+ssh://git@github.com/example-org/inventory"
-	err := engine.RunWith(x, Install, map[string]string{"flake": flake, "host": "nas", "disk": "main=/dev/vda"})
+	flake := "git+ssh://git@github.com/example-org/inventory?rev=" + pinnedINV
+	err := engine.RunWith(x, Install, map[string]string{"flake": flake, "rev": pinnedFM, "host": "nas", "disk": "main=/dev/vda"})
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
 	cmds := strings.Join(fake.Commands(), "\n")
-	want := "nix --extra-experimental-features 'nix-command flakes' run 'github:nnishant776/fleet-manager#os-install' --" +
-		" --flake " + flake + " -H nas -d main=/dev/vda --yes"
+	// os-install from the pinned commit of fleet-manager, fetched with git.
+	want := "nix --extra-experimental-features 'nix-command flakes' run 'git+https://github.com/nnishant776/fleet-manager?rev=" + pinnedFM + "#os-install' --" +
+		" --flake '" + flake + "' -H nas -d main=/dev/vda --yes"
 	if !strings.Contains(cmds, want) {
 		t.Errorf("os-install was not run as\n  %s\nbut:\n%s", want, cmds)
 	}
