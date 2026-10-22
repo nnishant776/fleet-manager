@@ -201,6 +201,11 @@ pkgs.testers.runNixOSTest {
         networking.hostName = lib.mkForce "fleet";
         # For subtest 16: github.com is the forge, as for one in the middle.
         networking.hosts.${nodes.forge.networking.primaryIPAddress} = [ "github.com" ];
+        # The test network has a fixed address and no DHCP. NetworkManager,
+        # which this host runs, would otherwise try DHCP on it when it sees
+        # the interface before the address, give up after a while and take
+        # the interface down: a slow boot then lost the forge.
+        networking.networkmanager.unmanaged = [ "eth1" ];
         # The test framework turns switching off unless a test asks for it;
         # step 3 runs the activation by hand.
         system.switch.enable = lib.mkForce true;
