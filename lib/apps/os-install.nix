@@ -20,12 +20,13 @@
 let
   secretsSync = import ../secrets-sync.nix { inherit pkgs; };
   pins = import ../forge-host-keys.nix;
+  cloneFlake = import ../clone-flake.nix { inherit pkgs; };
 in
 pkgs.writeShellApplication {
   name = "os-install";
   runtimeInputs = (with pkgs; [
     jq fzf util-linux coreutils nixos-install-tools age sops git openssh qrencode
-  ]) ++ [ secretsSync.sync secretsSync.identity ];
+  ]) ++ [ secretsSync.sync secretsSync.identity cloneFlake ];
   text = ''
     usage() {
       cat >&2 <<'EOF'
@@ -180,21 +181,19 @@ pkgs.writeShellApplication {
       fleet-identity --state "$ramState" --export > "$ramState/identity.yaml"
       identity="$ramState/identity.yaml"
 
-      # git+ssh://git@github.com/o/r?ref=x is what git clones, and a branch.
+      # git+ssh://git@github.com/o/r?ref=x&rev=y is what git clones, a branch,
+      # and the commit to install, which fleet install prep checked; without
+      # ?rev=, the newest commit there.
       url="''${flake#git+}"
-      cloneArgs=(-q)
-      case "$url" in
-        *"?ref="*) ref="''${url##*\?ref=}"; cloneArgs+=(--branch "''${ref%%&*}") ;;
-      esac
       url="''${url%%\?*}"
       clone="$ramState/flake"
       export GIT_SSH_COMMAND="ssh -i $ramState/config_deploy_ed25519 -o IdentitiesOnly=yes ${pins.options} -o UserKnownHostsFile=$ramState/known_hosts -o StrictHostKeyChecking=accept-new"
       attempt=0
-      until git clone "''${cloneArgs[@]}" -- "$url" "$clone"; do
+      until fleet-clone-flake "$flake" "$clone"; do
         rm -rf "$clone"
         attempt=$((attempt + 1))
         if $interactive; then
-          read -r -p "Could not fetch $url yet. Once its keys are registered, press Enter to try again (Ctrl-D stops) " _ \
+          read -r -p "Could not fetch $url yet. Once its keys are registered, or the commit pushed, press Enter to try again (Ctrl-D stops) " _ \
             || { echo; echo "os-install: stopped; nothing was changed" >&2; exit 1; }
         elif [ "$attempt" -ge 60 ]; then
           echo "os-install: could not fetch $url for 30 minutes; nothing was changed" >&2

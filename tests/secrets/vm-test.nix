@@ -227,8 +227,9 @@ pkgs.testers.runNixOSTest {
     # Root has no ssh configuration for the forge: the secrets fetch uses the
     # host's deploy key and the configuration fetch its configuration key
     # (its repo.url is an SSH address), each as the tools set it, or not at all.
-    # sops, to read back what fleet host secret stored, with the host's own key.
-    environment.systemPackages = [ pkgs.sops ];
+    # sops, to read back what fleet host secret stored, with the host's own key;
+    # fleet-clone-flake, the clone os-install makes of a private flake.
+    environment.systemPackages = [ pkgs.sops (import ../../lib/clone-flake.nix { inherit pkgs; }) ];
 
     # Stands in for os-install's identity step: the keys of the fixtures
     # are put in place before fleet-bootstrap's own `init`, which then finds
@@ -484,5 +485,21 @@ pkgs.testers.runNixOSTest {
         assert "did not show the host key this host knows" in out, out
         assert fleet.succeed("readlink /var/lib/fleet/secrets").strip() == before
         fleet.fail("grep -q github.com /var/lib/fleet/known_hosts")
+
+    with subtest("17: an install's clone of a private flake takes exactly the commit asked for"):
+        # As os-install clones it, with the host's configuration key. The
+        # commit before the newest stands for one checked on the maintainer's
+        # machine, with a newer one pushed since.
+        older = forge.succeed("su config -c 'git -C /var/lib/forge/config.git rev-parse main~1'").strip()
+        ssh = (
+            "ssh -i /var/lib/fleet/config_deploy_ed25519 -o IdentitiesOnly=yes"
+            " -o UserKnownHostsFile=/var/lib/fleet/known_hosts -o StrictHostKeyChecking=accept-new"
+        )
+        clone = f"GIT_SSH_COMMAND='{ssh}' fleet-clone-flake 'git+${configUrl}?ref=main&rev="
+        fleet.succeed(f"{clone}{older}' /tmp/pinned")
+        assert fleet.succeed("git -C /tmp/pinned rev-parse HEAD").strip() == older
+        status, out = fleet.execute(f"{clone}{'0' * 40}' /tmp/missing 2>&1")
+        assert status == 3 and "is it pushed?" in out, f"exit {status}: {out}"
+        fleet.fail("test -e /tmp/missing")
   '';
 }
