@@ -16,7 +16,7 @@ var Groups = engine.Groups{
 // host, then this machine, then the secrets repository one change at a time.
 var Menu = []engine.Section{
 	{Name: "Hosts", Flows: []*engine.Flow{HostCheck, HostSecret, HostEnroll, SupportKeyRotate}},
-	{Name: "This machine", Flows: []*engine.Flow{Install, Setup, Doctor}},
+	{Name: "This machine", Flows: []*engine.Flow{Install, InstallPrep, Setup, Doctor}},
 	{Name: "Secrets", Flows: []*engine.Flow{
 		SecretsUserPassword, SecretsUserKey, SecretsHostEnroll, SecretsHostRekey, SecretsHostRetire,
 	}},

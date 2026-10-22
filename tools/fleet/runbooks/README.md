@@ -14,6 +14,7 @@ no arguments offers these as a menu.
 | [`fleet host enroll`](host-enroll.md) | Enroll a running host: identity, enrollment, deploy key, first sync |
 | [`fleet support-key rotate`](support-key-rotate.md) | Replace the key that opens a host's support account, testing each step |
 | [`fleet install`](install.md) | Install a host from the configuration onto this machine's disks, from the installer |
+| [`fleet install prep`](install-prep.md) | Check the commits a host's install takes, and print the line to run on the installer |
 | [`fleet setup`](setup.md) | Set up this machine as the maintainer's: recovery identity, signing key, both checkouts |
 | [`fleet doctor`](doctor.md) | Check this machine has the tools fleet uses |
 | [`fleet secrets user-password`](secrets-user-password.md) | Set the user's password on that host |

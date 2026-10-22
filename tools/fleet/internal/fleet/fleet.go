@@ -21,6 +21,9 @@ const Upstream = "github:nnishant776/fleet-manager"
 // UpstreamURL is the same repository for git.
 const UpstreamURL = "https://github.com/nnishant776/fleet-manager"
 
+// UpstreamRaw serves its files by commit.
+const UpstreamRaw = "https://raw.githubusercontent.com/nnishant776/fleet-manager"
+
 // FlakeInput is the configuration to read hosts from. With no checkout here
 // or in /etc/nixos it is asked for: never main straight from GitHub, which
 // nothing has checked the signature of, though what is read from it decides
