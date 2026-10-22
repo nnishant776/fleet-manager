@@ -65,13 +65,35 @@ itself — and then hands over to the flake's own tools:
 | Running on | It does |
 |---|---|
 | macOS | installs Lix if needed, then switches to `<hostname>` with the nix-darwin this flake pins |
-| NixOS installer ISO | runs `fleet install`, a guided `os-install`, downloaded from the latest release and checked against its `SHA256SUMS`; if the download fails, `os-install` by itself. `<hostname>` is optional, and further arguments are passed on |
+| NixOS installer ISO | runs `fleet install`, a guided `os-install`: built from `REV` when given, otherwise downloaded from the latest release and checked against its `SHA256SUMS`; if neither works, `os-install` by itself. `<hostname>` is optional, and further arguments are passed on |
 | an installed NixOS host | runs `system-switch` for `<hostname>` (default: this machine's hostname), building from the same flake |
 | another Linux | installs Lix and stops; only Home Manager is supported there |
 
 `FLAKE=github:org/repo/<tag>` in front of `sh` makes it use another flake, or a
 pinned tag so that machines do not follow every commit on `main`. MDM can run
 the same command on a new Mac.
+
+**Installing from checked commits.** The command above takes whatever `main`
+has at that moment, which anyone who can push could have changed. To install
+only commits whose signatures you have checked, run this on your own machine,
+in a checkout of the configuration:
+
+```bash
+fleet install prep <hostname>
+```
+
+It checks that the checkout's newest commit is signed by a key in its
+`fleet/allowed_signers` and pushed, and so is the fleet-manager commit the
+installer comes from. Then it prints a line to run on the new machine instead.
+That line fetches `bootstrap` by that commit, checks it against a SHA-256
+worked out on your machine, and runs it with `REV` and `FLAKE` pinned to those
+two commits. Everything after that is fetched with git, by hash. On the
+installer ISO, set a password with `passwd` and paste the line over SSH rather
+than typing it.
+
+A private host is installed only this way: without the pins, `bootstrap`
+stops, unless `UNPINNED=1` is in front of `sh`. A public host is installed
+either way, with a warning when it is not pinned.
 
 On a Mac, the host is named explicitly the first time, since the machine still
 has its default hostname and the switch is what sets it. The accounts listed in
@@ -221,7 +243,7 @@ host's secrets and checks that they decrypt. These flags control the step:
 | `--identity FILE` | Restore a host identity exported by `fleet-identity --export` instead of generating one; no enrollment is needed |
 | `--no-enroll` | Do not wait for enrollment; the host boots with locked accounts and retries the secrets fetch until it is enrolled |
 | `--enroll-out PATH` | Also copy the enrollment file to `PATH`, for example a mounted USB stick |
-| `--flake git+ssh://…` | A private flake, which the host reads with its own configuration key: the identity is made first, the install waits until its keys are registered, then clones the flake and installs from it. See [A private fleet](#a-private-fleet) |
+| `--flake git+ssh://…` | A private flake, which the host reads with its own configuration key: the identity is made first, the install waits until its keys are registered, then clones the flake and installs from it. With `?rev=<commit>`, as `fleet install prep` gives it, it installs exactly that commit, and stops if the repository does not have it. See [A private fleet](#a-private-fleet) |
 
 What moves where when a host is installed from the stock ISO and enrolled. The
 numbers name the flows in the table below the diagram.
@@ -230,6 +252,7 @@ numbers name the flows in the table below the diagram.
 flowchart TB
     subgraph maintainer["Maintainer's machine"]
         you["Maintainer"]
+        prep(["fleet install prep"])
         enroll(["fleet secrets host-enroll,<br/>user-password"])
     end
     subgraph forge["Forge"]
@@ -247,6 +270,7 @@ flowchart TB
     end
 
     you -- "1 host definition" --> config
+    prep -- "1a pinned install line" --> install
     init -- "2 private keys" --> identity
     identity -- "3 enrollment file" --> you
     you -- "4 enrollment file" --> enroll
@@ -266,12 +290,13 @@ flowchart TB
 | # | What flows | Where and how |
 |---|---|---|
 | 1 | The host's definition, in a signed commit | Pushed before the install |
+| 1a | The line that runs the install: the configuration commit and the fleet-manager commit the installer comes from, and `bootstrap`'s SHA-256 | `fleet install prep HOST` checks both commits' signatures; the line is pasted on the installer |
 | 2 | Its age key, secrets deploy key and configuration deploy key | Made on the host; the private halves never leave it |
 | 3 | The enrollment file: the age recipient and both deploy public keys | Shown as a QR code, or copied to a USB stick with `--enroll-out` |
 | 4 | The enrollment file | `fleet secrets host-enroll HOST --from FILE` |
 | 5 | A signed commit: the host's recipient in `fleet.yaml`, the rules in `.sops.yaml`, and the host's and its accounts' files, encrypted to the host and the recovery key | `host-enroll`, then `user-password` for each account, then `git push` |
 | 6 | Deploy public keys, registered read-only | The secrets deploy key on the secrets repository; the configuration deploy key on the configuration repository, for a private one only |
-| 7 | The host's configuration | Cloned with the configuration deploy key when private |
+| 7 | The host's configuration, at the pinned commit | Cloned with the configuration deploy key when private; a repository without that commit stops the install |
 | 8 | The secrets deploy key, and the configuration deploy key when private | Each fetch uses its own key and offers no other |
 | 9 | The secrets, as ciphertext, in a signed commit | Verified, never older than the last one accepted, and only this host's files are kept |
 | 10 | Configuration commits, signed | Verified and never older; the host rebuilds from them |
@@ -432,9 +457,12 @@ conf.fleet.repo.url = "git@github.com:example-org/inventory.git";
 The key has to be a read-only deploy key of the private repository.
 `fleet host enroll <host> --flake <checkout>` registers it with `gh`.
 
-- **Installing a host from it:** run `bootstrap` with
-  `FLAKE=git+ssh://git@github.com/example-org/inventory`, or
-  `os-install --flake git+ssh://… -H <host>`. The host can't read the
+- **Installing a host from it:** run `fleet install prep <host> --flake
+  <checkout of it>` on your machine, and the line it prints on the installer
+  (see [First run](#first-run)). It sets
+  `FLAKE=git+ssh://git@github.com/example-org/inventory?rev=<commit>`, and
+  `os-install` installs exactly that commit. `os-install --flake
+  git+ssh://…?rev=<commit> -H <host>` does the same by hand. The host can't read the
   repository yet, so the identity comes first. The install shows the
   enrollment file and waits while you enroll the host and register both of its
   keys. Then it clones the private flake with the configuration key and
@@ -510,7 +538,9 @@ On the NixOS installer, `bootstrap` runs `fleet install` (see
 publishes static binaries for Linux and macOS as the latest release, with
 `SHA256SUMS` and an attestation for each; `gh attestation verify <file> --repo
 nnishant776/fleet-manager` checks where a binary came from. `.#fleet-static` builds
-it with Nix instead.
+it with Nix instead. With `REV`, as the line from `fleet install prep` gives
+it, `bootstrap` builds `fleet` from that commit rather than taking the latest
+release, which is whatever `main` had when CI last ran.
 
 `fleet secrets …` does what `fleet-secrets` does, with the same files and
 commit messages. `nix run .#fleet-secrets` is still the shell version.
