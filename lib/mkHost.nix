@@ -1,6 +1,7 @@
 # usersDir is the fleet's folder of per-user configuration, or null; modules get it
-# as fleetUsersDir, for the homes the system builds.
-{ inputs, usersDir ? null }:
+# as fleetUsersDir, for the homes the system builds. extraModules go to every
+# host, as lib.mkFleet's hostBranches does.
+{ inputs, usersDir ? null, extraModules ? [ ] }:
 let
   lib = inputs.nixpkgs.lib;
   flakeLib = import ./flakeLib.nix { inherit lib; };
@@ -40,7 +41,7 @@ let
     ../modules/conf
     ../modules/common
     ../modules/user/home-manager.nix
-  ];
+  ] ++ extraModules;
 
   # The module list and specialArgs of a Linux host, split out of mkHost so a
   # NixOS VM test can build a node from a host directory.

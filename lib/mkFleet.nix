@@ -27,11 +27,32 @@
   # secrets-harness. Off for a private fleet, which runs them from
   # fleet-manager itself.
   libraryApps ? false,
+  # Each host fetches only its own branch, host/<name>, which
+  # `fleet inventory publish` makes from main with that host's files alone,
+  # so no host gets the others' definitions. Sets conf.fleet.repo.ref by
+  # default; a host can still set its own.
+  hostBranches ? false,
+  # Paths, relative to the flake, that every host's branch gets as well,
+  # such as modules the hosts share: [ "config/common" ].
+  shared ? [ ],
 }:
 let
   lib = inputs.nixpkgs.lib;
   fleetInputs = inputs // { inherit self; };
-  mkHost = import ./mkHost.nix { inputs = fleetInputs; usersDir = users; };
+  hostBranch = { config, lib, ... }: {
+    conf.fleet.repo.ref = lib.mkDefault "host/${config.conf.host.name}";
+  };
+  mkHost = import ./mkHost.nix {
+    inputs = fleetInputs;
+    usersDir = users;
+    extraModules = lib.optional hostBranches hostBranch;
+  };
+
+  # A path of the flake as fleet inventory publish names it, relative to it.
+  relative = p:
+    let s = toString p; root = toString self + "/";
+    in if lib.hasPrefix root s then lib.removePrefix root s
+       else throw "lib.mkFleet: ${s} is not inside the flake";
   mkUser = import ./mkUser.nix { inputs = fleetInputs; };
 
   hostNames = builtins.attrNames (
@@ -72,4 +93,11 @@ let
     });
 in {
   inherit nixosConfigurations darwinConfigurations homeConfigurations apps;
+
+  # What fleet inventory publish needs to cut each host's branch.
+  fleetLayout = {
+    inherit hostBranches shared;
+    hosts = relative hosts;
+    users = if users == null then null else relative users;
+  };
 }
