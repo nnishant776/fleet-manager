@@ -525,6 +525,29 @@ cannot be limited to a branch.
   keys. Then it clones the private flake with the configuration key and
   installs. The diagram under
   [Installing a machine](#installing-a-machine) shows what moves where.
+- **Bringing in a running NixOS machine, without a reinstall:** add its folder
+  there, push, publish its branch, then run `fleet host enroll <host> --flake
+  <checkout of it>`. For a machine that does not run a fleet configuration
+  yet, enroll does this in order:
+  1. Checks the commit to install, as `fleet install prep` does.
+  2. Makes the host's identity with `fleet-secrets-sync` from the checked
+     fleet-manager commit.
+  3. Enrolls the host and registers both of its keys.
+  4. Checks the configuration fits the machine as it is.
+  5. Prepares `/etc/nixos`.
+  6. Switches, fetching the private configuration with the host's own key.
+
+  The configuration has to describe the machine as it is, since nothing is
+  reinstalled:
+  - `conf.hardware.disk.enable = false` and the machine's own
+    `hardware-configuration.nix`, from the machine. enroll refuses when what
+    the configuration mounts at `/` or `/boot` is not what the machine has.
+  - The boot loader the machine uses. enroll refuses a UEFI boot loader on a
+    machine without UEFI.
+  - Every account to keep, declared, with its password set in the secrets
+    repository before the switch. Accounts become fixed by the configuration,
+    and an undeclared one is removed. Keep one admin account with SSH-key
+    login, so a mistake cannot lock you out.
 - **Moving a running host to it:**
   1. Copy the host's folder there, with `repo.url` set to the private
      repository's SSH address, and push. With host branches, publish its
