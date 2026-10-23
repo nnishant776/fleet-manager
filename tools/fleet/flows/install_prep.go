@@ -105,12 +105,79 @@ func checkConfigCommit(x *engine.Ctx) error {
 		engine.Cmd("nix", "eval", "--raw", "{{.flake}}#nixosConfigurations.{{.host}}.config.conf.fleet.repo.url",
 			"--apply", `u: if u == null then "" else u`).
 			ReadOnly().Quiet().Capture("config_url").OK("read where {{.host}} syncs from"),
+		engine.Cmd("nix", "eval", "--raw", "{{.flake}}#nixosConfigurations.{{.host}}.config.conf.fleet.repo.ref").
+			ReadOnly().Quiet().Capture("config_ref").OK("{{.host}} tracks {{.config_ref}}"),
 	}
 	for _, c := range steps {
 		if _, err := c.Run(x); err != nil {
 			return err
 		}
 	}
+	if x.Value("config_ref") == "" {
+		x.Values["config_ref"] = "main"
+	}
+	x.Values["main_rev"] = x.Value("inv")
+	// With lib.mkFleet's hostBranches, the host installs from its own branch,
+	// which fleet inventory publish cut from this commit.
+	var l layout
+	if out, err := engine.Silently(x, nil, "nix", "eval", "--json", x.Value("flake")+"#fleetLayout"); err == nil {
+		_ = json.Unmarshal([]byte(out), &l)
+	}
+	if l.HostBranches && x.Value("config_ref") == "host/"+x.Value("host") {
+		return checkHostBranch(x, l)
+	}
+	// Otherwise this commit, which has to be on the branch the host tracks:
+	// the installer clones that branch alone.
+	if _, err := g("fetch", "-q", "origin", "+refs/heads/{{.config_ref}}:refs/remotes/origin/{{.config_ref}}").
+		OK("fetched {{.config_ref}}").Run(x); err != nil {
+		return err
+	}
+	_, err = g("merge-base", "--is-ancestor", "HEAD", "refs/remotes/origin/{{.config_ref}}").
+		Explain(func(engine.Result) string {
+			return "the newest commit, {{.inv}}, is not on {{.config_ref}}, the branch {{.host}} tracks: push it there"
+		}).OK("{{.inv}} is on {{.config_ref}}").Run(x)
+	return err
+}
+
+// checkHostBranch takes the commit to install from the host's own branch:
+// signed by a key you trust, and cut from the checkout's newest commit, the
+// one checked above, so that what is installed is what main says.
+func checkHostBranch(x *engine.Ctx, l layout) error {
+	steps := []*engine.Command{
+		publishGit("fetch", "-q", "origin", "+refs/heads/{{.config_ref}}:refs/remotes/origin/{{.config_ref}}").
+			Explain(func(engine.Result) string {
+				return "{{.config_ref}} could not be fetched: is it published? fleet inventory publish {{.host}} makes it"
+			}).OK("fetched {{.config_ref}}"),
+		publishGit("rev-parse", "refs/remotes/origin/{{.config_ref}}^{commit}").Capture("branch_rev").OK("its newest commit is {{.branch_rev}}"),
+		publishGit("-c", "gpg.ssh.allowedSignersFile={{.signers}}", "verify-commit", "{{.branch_rev}}").
+			Explain(func(engine.Result) string {
+				return "the newest commit of {{.config_ref}}, {{.branch_rev}}, is not signed by a key you trust ({{.signers}})"
+			}).OK("{{.branch_rev}} is signed by a key you trust"),
+		engine.Cmd("nix", "eval", "--json", "{{.flake}}#nixosConfigurations.{{.host}}.config.conf.users.accounts", "--apply", "builtins.attrNames").
+			ReadOnly().Quiet().Capture("host_accounts").OK("read {{.host}}'s accounts"),
+	}
+	for _, c := range steps {
+		if _, err := c.Run(x); err != nil {
+			return err
+		}
+	}
+	if x.Options.DryRun {
+		return nil
+	}
+	var accounts []string
+	if err := json.Unmarshal([]byte(x.Value("host_accounts")), &accounts); err != nil {
+		return fmt.Errorf("%s's accounts: %w", x.Value("host"), err)
+	}
+	want, err := sliceTree(x, x.Value("main_rev"), x.Value("host"), l, accounts)
+	if err != nil {
+		return err
+	}
+	if got, _ := engine.Silently(x, nil, "git", "-C", x.Value("flake"), "rev-parse", x.Value("branch_rev")+"^{tree}"); got != want {
+		return fmt.Errorf("%s was not published from %s: run fleet inventory publish %s, then this again",
+			x.Value("config_ref"), x.Value("main_rev"), x.Value("host"))
+	}
+	x.UI.OK(x.Value("config_ref") + " is published from " + x.Value("main_rev"))
+	x.Values["inv"] = x.Value("branch_rev")
 	return nil
 }
 
@@ -231,7 +298,7 @@ func printInstallLine(x *engine.Ctx) error {
 	fm, inv := x.Value("fm"), x.Value("inv")
 	env := "REV=" + fm
 	if fm != inv {
-		env += " FLAKE=" + engine.Quote(flakeAt(x.Value("config_url"), inv))
+		env += " FLAKE=" + engine.Quote(flakeAt(x.Value("config_url"), x.Value("config_ref"), inv))
 	}
 	x.UI.Text("curl -sSfL " + fleet.UpstreamRaw + "/" + fm + "/bootstrap -o /tmp/bootstrap \\\n" +
 		"  && echo '" + x.Value("bootstrap_sum") + "  /tmp/bootstrap' | sha256sum -c \\\n" +
@@ -239,15 +306,17 @@ func printInstallLine(x *engine.Ctx) error {
 	return nil
 }
 
-// flakeAt is a configuration repository's git URL as a flake reference at
-// commit rev: git@host:path and ssh:// become git+ssh://, https git+https://.
-func flakeAt(url, rev string) string {
+// flakeAt is a configuration repository's git URL as a flake reference to
+// commit rev of branch ref: git@host:path and ssh:// become git+ssh://, https
+// git+https://. The installer clones that branch alone.
+func flakeAt(url, ref, rev string) string {
+	query := "?ref=" + ref + "&rev=" + rev
 	switch {
 	case scpURL.MatchString(url):
 		userHost, path, _ := strings.Cut(url, ":")
 		url = "ssh://" + userHost + "/" + strings.TrimPrefix(path, "/")
 	case !strings.HasPrefix(url, "ssh://") && !strings.HasPrefix(url, "https://"):
-		return url + "?rev=" + rev
+		return url + query
 	}
-	return "git+" + url + "?rev=" + rev
+	return "git+" + url + query
 }

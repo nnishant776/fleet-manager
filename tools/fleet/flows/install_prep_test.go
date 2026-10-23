@@ -90,7 +90,7 @@ func TestPrepPrintsTheLineForAPrivateHost(t *testing.T) {
 	for _, want := range []string{
 		"curl -sSfL https://raw.githubusercontent.com/nnishant776/fleet-manager/" + pinnedFM + "/bootstrap -o /tmp/bootstrap",
 		"echo '" + bootstrapSum() + "  /tmp/bootstrap' | sha256sum -c",
-		"REV=" + pinnedFM + " FLAKE='git+ssh://git@github.com/example-org/inventory.git?rev=" + pinnedINV + "' sh /tmp/bootstrap nas",
+		"REV=" + pinnedFM + " FLAKE='git+ssh://git@github.com/example-org/inventory.git?ref=main&rev=" + pinnedINV + "' sh /tmp/bootstrap nas",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the line lacks %q:\n%s", want, out)
@@ -240,5 +240,62 @@ func TestPrepStopsWithoutYourCopy(t *testing.T) {
 	}
 	if len(ranMatching(fake, "verify-commit")) > 0 {
 		t.Error("checked a commit without your copy")
+	}
+}
+
+const (
+	branchRev  = "3333333333333333333333333333333333333333"
+	branchTree = "4444444444444444444444444444444444444444"
+)
+
+// withHostBranch answers like an inventory with lib.mkFleet's hostBranches,
+// where nas tracks host/nas, published at branchRev with tree; or not
+// published at all when published is false.
+func withHostBranch(respond func(engine.Spec) (engine.Result, error), tree string, published bool) func(engine.Spec) (engine.Result, error) {
+	return func(s engine.Spec) (engine.Result, error) {
+		args := strings.Join(s.Args, " ")
+		switch {
+		case s.Name == "nix" && strings.Contains(args, "#fleetLayout"):
+			return engine.Result{Stdout: `{"hostBranches":true,"hosts":"config/hosts","users":"config/users","shared":[]}`}, nil
+		case s.Name == "nix" && strings.Contains(args, "conf.fleet.repo.ref"):
+			return engine.Result{Stdout: "host/nas"}, nil
+		case s.Name == "nix" && strings.Contains(args, "conf.users.accounts"):
+			return engine.Result{Stdout: `["alice"]`}, nil
+		case s.Name == "git" && strings.Contains(args, "fetch -q origin +refs/heads/host/nas") && !published:
+			return engine.Result{Code: 128}, errors.New("exited with code 128")
+		case s.Name == "git" && strings.Contains(args, "rev-parse refs/remotes/origin/host/nas^{commit}"):
+			return engine.Result{Stdout: branchRev + "\n"}, nil
+		case s.Name == "git" && strings.Contains(args, "write-tree"):
+			return engine.Result{Stdout: branchTree + "\n"}, nil
+		case s.Name == "git" && strings.Contains(args, "rev-parse "+branchRev+"^{tree}"):
+			return engine.Result{Stdout: tree + "\n"}, nil
+		}
+		return respond(s)
+	}
+}
+
+// A host on its own branch installs that branch's commit, once it is signed
+// and cut from the checked main.
+func TestPrepInstallsAHostFromItsOwnBranch(t *testing.T) {
+	err, fake, out := runPrep(t, prepCheckout(t, pinnedFM), withHostBranch(prepRepo("git@github.com:example-org/inventory.git", ""), branchTree, true))
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if !strings.Contains(out, "FLAKE='git+ssh://git@github.com/example-org/inventory.git?ref=host/nas&rev="+branchRev+"'") {
+		t.Errorf("the line does not install the branch's commit:\n%s", out)
+	}
+	if len(ranMatching(fake, "verify-commit "+branchRev)) != 1 {
+		t.Error("did not check the branch commit's signature")
+	}
+}
+
+func TestPrepRefusesABranchNotPublishedFromMain(t *testing.T) {
+	err, _, out := runPrep(t, prepCheckout(t, pinnedFM), withHostBranch(prepRepo("git@github.com:example-org/inventory.git", ""), "5555555555555555555555555555555555555555", true))
+	if err == nil || !strings.Contains(out, "host/nas was not published from "+pinnedINV+": run fleet inventory publish nas") {
+		t.Fatalf("installed a branch that differs from main: %v\n%s", err, out)
+	}
+	err, _, out = runPrep(t, prepCheckout(t, pinnedFM), withHostBranch(prepRepo("git@github.com:example-org/inventory.git", ""), branchTree, false))
+	if err == nil || !strings.Contains(out, "is it published? fleet inventory publish nas makes it") {
+		t.Fatalf("went ahead without the branch: %v\n%s", err, out)
 	}
 }
