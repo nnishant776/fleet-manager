@@ -341,14 +341,13 @@ func switchHost(x *engine.Ctx) error {
 }
 
 // signedUpstreamMain fetches the newest commit of fleet-manager's main and
-// returns it once it is signed by a key in fleet/allowed_signers of the
-// configuration checkout here: a host's own sync takes no other, so neither
-// does its first switch.
+// returns it once it is signed by a key in your copy of fleet-manager's keys
+// (fleet trust signers): a host's own sync takes no other, so neither does
+// its first switch.
 func signedUpstreamMain(x *engine.Ctx) (string, error) {
-	signers := filepath.Join(x.Value("flake"), "fleet", "allowed_signers")
-	if !fileExists(signers) && !x.Options.DryRun {
-		return "", fmt.Errorf("%s does not exist: the newest commit of main is checked against the signers file of a"+
-			" configuration checkout here, so give --flake a checkout, or name the commit with --switch-to", signers)
+	signers, err := trustedSignersFor(x, fleet.UpstreamURL, "<a fleet-manager checkout, such as /etc/nixos>")
+	if err != nil {
+		return "", err
 	}
 	tmp, err := os.MkdirTemp("", "fleet-upstream-*")
 	if err != nil {
@@ -362,8 +361,8 @@ func signedUpstreamMain(x *engine.Ctx) (string, error) {
 		engine.Cmd("git", "-C", "{{.upstream_git}}", "rev-parse", "FETCH_HEAD").Capture("upstream_rev"),
 		engine.Cmd("git", "-C", "{{.upstream_git}}", "-c", "gpg.ssh.allowedSignersFile={{.signers}}", "verify-commit", "{{.upstream_rev}}").
 			Explain(func(engine.Result) string {
-				return "main's newest commit, {{.upstream_rev}}, is not signed by a key in {{.signers}}: not switching {{.host}} to it"
-			}).OK("{{.upstream_rev}} is signed by a trusted key"),
+				return "main's newest commit, {{.upstream_rev}}, is not signed by a key you trust for fleet-manager ({{.signers}}): not switching {{.host}} to it"
+			}).OK("{{.upstream_rev}} is signed by a key you trust"),
 	}
 	for _, c := range steps {
 		if _, err := c.ReadOnly().Quiet().Run(x); err != nil {

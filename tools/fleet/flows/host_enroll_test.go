@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/nnishant776/fleet-manager/tools/fleet/internal/engine"
+	"github.com/nnishant776/fleet-manager/tools/fleet/internal/fleet"
 	"github.com/nnishant776/fleet-manager/tools/fleet/internal/ui"
 )
 
@@ -146,6 +147,7 @@ func noTooling(respond func(engine.Spec) (engine.Result, error)) func(engine.Spe
 // file.
 func runSwitch(t *testing.T, respond func(engine.Spec) (engine.Result, error)) (error, *engine.Fake, string) {
 	t.Helper()
+	trustCopies(t, fleet.UpstreamURL)
 	flake := t.TempDir()
 	_ = os.MkdirAll(filepath.Join(flake, "fleet"), 0o755)
 	_ = os.WriteFile(filepath.Join(flake, "fleet", "allowed_signers"), []byte("me namespaces=\"git\" ssh-ed25519 AAAA\n"), 0o644)
@@ -195,7 +197,7 @@ func TestEnrollDoesNotSwitchToAnUnsignedCommit(t *testing.T) {
 	if err == nil {
 		t.Fatalf("switched to a commit no trusted key signed\n%s", out)
 	}
-	if !strings.Contains(out, "is not signed by a key in") {
+	if !strings.Contains(out, "is not signed by a key you trust") {
 		t.Errorf("output:\n%s", out)
 	}
 	if got := ranMatching(fake, "nixos-rebuild"); len(got) > 0 {

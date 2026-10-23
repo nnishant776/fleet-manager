@@ -119,3 +119,19 @@ func TestTrustSignersRefusesAChangeNoTrustedKeySigned(t *testing.T) {
 		t.Errorf("the copy changed: %q", copyOf(t))
 	}
 }
+
+// trustCopies gives the test a state folder of its own, with a copy of the
+// keys for each repository address.
+func trustCopies(t *testing.T, addresses ...string) {
+	t.Helper()
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	for _, a := range addresses {
+		p, err := fleet.SignersCopy(a)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := fleet.WriteSignersCopy(p, []byte(signersLine("me@test", keyMine))); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

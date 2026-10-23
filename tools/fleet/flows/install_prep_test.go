@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/nnishant776/fleet-manager/tools/fleet/internal/engine"
+	"github.com/nnishant776/fleet-manager/tools/fleet/internal/fleet"
 )
 
 const prepBootstrap = "#!/bin/sh\n# pinned-installs: 1 (marker)\necho pinned\n"
@@ -18,6 +19,7 @@ const prepBootstrap = "#!/bin/sh\n# pinned-installs: 1 (marker)\necho pinned\n"
 // fleet-manager at fm, or none when fm is empty, as fleet-manager's own.
 func prepCheckout(t *testing.T, fm string) string {
 	t.Helper()
+	trustCopies(t, "git@github.com:example-org/inventory.git", fleet.UpstreamURL)
 	dir := t.TempDir()
 	_ = os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
 	_ = os.MkdirAll(filepath.Join(dir, "fleet"), 0o755)
@@ -119,9 +121,9 @@ func TestPrepPrintsTheLineForAPublicHost(t *testing.T) {
 
 func TestPrepRefusesWhatIsNotCheckedOrPushed(t *testing.T) {
 	for fail, want := range map[string]string{
-		"config":        "is not signed by a key in",
+		"config":        "is not signed by a key you trust",
 		"push":          "push it, since the installer fetches it",
-		"fleet-manager": "which flake.lock pins, is not signed by a key in",
+		"fleet-manager": "which flake.lock pins, is not signed by a key you trust",
 		"old":           "predates pinned installs",
 	} {
 		err, _, out := runPrep(t, prepCheckout(t, pinnedFM), prepRepo("git@github.com:example-org/inventory.git", fail))
@@ -136,7 +138,10 @@ func TestPrepRefusesWhatIsNotCheckedOrPushed(t *testing.T) {
 
 // A checkout of another repository than the one the host installs from.
 func TestPrepRefusesAnotherRepository(t *testing.T) {
-	err, _, out := runPrep(t, prepCheckout(t, pinnedFM), func(s engine.Spec) (engine.Result, error) {
+	checkout := prepCheckout(t, pinnedFM)
+	// Even with keys trusted for the fork, it is not where the host installs from.
+	trustCopies(t, "git@github.com:someone/fork.git", fleet.UpstreamURL)
+	err, _, out := runPrep(t, checkout, func(s engine.Spec) (engine.Result, error) {
 		if s.Name == "git" && strings.Contains(strings.Join(s.Args, " "), "remote get-url origin") {
 			return engine.Result{Stdout: "git@github.com:someone/fork.git\n"}, nil
 		}
@@ -196,9 +201,44 @@ func TestPrepRefusesWhereTheInstallerCouldNotFetchIt(t *testing.T) {
 				return inner(s)
 			}
 		}
-		err, _, out := runPrep(t, prepCheckout(t, c.fm), respond)
+		checkout := prepCheckout(t, c.fm)
+		trustCopies(t, c.origin, fleet.UpstreamURL)
+		err, _, out := runPrep(t, checkout, respond)
 		if err == nil || !strings.Contains(out, c.want) {
 			t.Errorf("%s: went ahead, or without saying %q: %v\n%s", name, c.want, err, out)
 		}
+	}
+}
+
+// Commits are checked against your copy of the keys, never the checkout's own
+// fleet/allowed_signers, which a pushed commit could have changed.
+func TestPrepChecksAgainstYourCopyNotTheCheckouts(t *testing.T) {
+	checkout := prepCheckout(t, pinnedFM)
+	err, fake, out := runPrep(t, checkout, prepRepo("git@github.com:example-org/inventory.git", ""))
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	state := os.Getenv("XDG_STATE_HOME")
+	for _, s := range ranMatching(fake, "verify-commit") {
+		args := strings.Join(s.Args, " ")
+		if !strings.Contains(args, "gpg.ssh.allowedSignersFile="+state+"/fleet/repos/github.com/") {
+			t.Errorf("checked against something else than your copy: %s", s)
+		}
+		if strings.Contains(args, checkout) && strings.Contains(args, "allowedSignersFile="+checkout) {
+			t.Errorf("checked against the checkout's own file: %s", s)
+		}
+	}
+}
+
+func TestPrepStopsWithoutYourCopy(t *testing.T) {
+	checkout := prepCheckout(t, pinnedFM)
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	err, fake, out := runPrep(t, checkout, prepRepo("git@github.com:example-org/inventory.git", ""))
+	if err == nil || !strings.Contains(out, "you trust no keys for github.com/example-org/inventory yet") ||
+		!strings.Contains(out, "fleet trust signers --flake "+checkout) {
+		t.Fatalf("went ahead without your copy: %v\n%s", err, out)
+	}
+	if len(ranMatching(fake, "verify-commit")) > 0 {
+		t.Error("checked a commit without your copy")
 	}
 }

@@ -180,3 +180,21 @@ func signersChange(added, removed []fleet.SignerKey) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+// trustedSignersFor is your copy of the keys for the repository at address,
+// which its commits are checked against, or an error saying how to make one:
+// fleet trust signers in checkout.
+func trustedSignersFor(x *engine.Ctx, address, checkout string) (string, error) {
+	path, _, err := fleet.TrustedSigners(address)
+	switch {
+	case errors.Is(err, fleet.ErrNoSignersCopy) && x.Options.DryRun:
+		x.UI.Skip("dry run: you trust no keys for " + address + " yet")
+		return path, nil
+	case errors.Is(err, fleet.ErrNoSignersCopy):
+		id, _ := fleet.RepoID(address)
+		return "", fmt.Errorf("you trust no keys for %s yet, and its commits are checked against your own copy of them: run fleet trust signers --flake %s", id, checkout)
+	case err != nil:
+		return "", err
+	}
+	return path, nil
+}

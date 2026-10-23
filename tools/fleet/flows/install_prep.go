@@ -66,13 +66,20 @@ func checkConfigCommit(x *engine.Ctx) error {
 	if st, err := os.Stat(filepath.Join(flake, ".git")); err != nil || st == nil {
 		return fmt.Errorf("%s is not a git checkout: the commits are checked in a checkout of the configuration", flake)
 	}
-	x.Values["signers"] = filepath.Join(flake, "fleet", "allowed_signers")
-	if !fileExists(x.Value("signers")) {
-		return fmt.Errorf("%s does not exist: the commits are checked against it", x.Value("signers"))
-	}
 	g := func(args ...string) *engine.Command {
 		return engine.Cmd("git", append([]string{"-C", "{{.flake}}"}, args...)...).ReadOnly().Quiet()
 	}
+	// The repository first: its commits are checked against your copy of its
+	// keys, never against the checkout's own fleet/allowed_signers, which a
+	// pushed commit could have changed.
+	if _, err := g("remote", "get-url", "origin").Capture("origin").OK("the checkout fetches {{.origin}}").Run(x); err != nil {
+		return err
+	}
+	signers, err := trustedSignersFor(x, x.Value("origin"), flake)
+	if err != nil {
+		return err
+	}
+	x.Values["signers"] = signers
 	steps := []*engine.Command{
 		g("status", "--porcelain", "--untracked-files=no").Expect(func(r engine.Result) error {
 			if strings.TrimSpace(r.Stdout) != "" {
@@ -83,8 +90,8 @@ func checkConfigCommit(x *engine.Ctx) error {
 		g("rev-parse", "HEAD").Capture("inv").OK("its newest commit is {{.inv}}"),
 		g("-c", "gpg.ssh.allowedSignersFile={{.signers}}", "verify-commit", "HEAD").
 			Explain(func(engine.Result) string {
-				return "the newest commit, {{.inv}}, is not signed by a key in {{.signers}}"
-			}).OK("{{.inv}} is signed by a trusted key"),
+				return "the newest commit, {{.inv}}, is not signed by a key you trust ({{.signers}})"
+			}).OK("{{.inv}} is signed by a key you trust"),
 		g("branch", "-r", "--contains", "HEAD").Expect(func(r engine.Result) error {
 			if strings.TrimSpace(r.Stdout) == "" {
 				return errors.New("the newest commit is on no branch of the remote: push it, since the installer fetches it")
@@ -96,7 +103,6 @@ func checkConfigCommit(x *engine.Ctx) error {
 		engine.Cmd("nix", "eval", "--raw", "{{.flake}}#nixosConfigurations.{{.host}}.config.conf.fleet.repo.url",
 			"--apply", `u: if u == null then "" else u`).
 			ReadOnly().Quiet().Capture("config_url").OK("read where {{.host}} syncs from"),
-		g("remote", "get-url", "origin").Capture("origin").OK("the checkout fetches {{.origin}}"),
 	}
 	for _, c := range steps {
 		if _, err := c.Run(x); err != nil {
@@ -180,13 +186,19 @@ func checkInstallerCommit(x *engine.Ctx) error {
 		x.UI.OK("the same commit: this is fleet-manager's own checkout")
 		x.Values["fm_git"] = x.Value("flake")
 	} else {
+		// fleet-manager's commits against your copy of fleet-manager's keys.
+		fmSigners, err := trustedSignersFor(x, fleet.UpstreamURL, "<a fleet-manager checkout, such as /etc/nixos>")
+		if err != nil {
+			return err
+		}
+		x.Values["fm_signers"] = fmSigners
 		steps := []*engine.Command{
 			engine.Cmd("git", "init", "-q", "--bare", "{{.fm_git}}").OK("a scratch repository to fetch it into"),
 			engine.Cmd("git", "-C", "{{.fm_git}}", "fetch", "-q", "--depth=1", fleet.UpstreamURL, "{{.fm}}").OK("fetched {{.fm}} from " + fleet.UpstreamURL),
-			engine.Cmd("git", "-C", "{{.fm_git}}", "-c", "gpg.ssh.allowedSignersFile={{.signers}}", "verify-commit", "{{.fm}}").
+			engine.Cmd("git", "-C", "{{.fm_git}}", "-c", "gpg.ssh.allowedSignersFile={{.fm_signers}}", "verify-commit", "{{.fm}}").
 				Explain(func(engine.Result) string {
-					return "fleet-manager's {{.fm}}, which flake.lock pins, is not signed by a key in {{.signers}}"
-				}).OK("{{.fm}} is signed by a trusted key"),
+					return "fleet-manager's {{.fm}}, which flake.lock pins, is not signed by a key you trust for fleet-manager ({{.fm_signers}})"
+				}).OK("{{.fm}} is signed by a key you trust"),
 		}
 		for _, c := range steps {
 			if _, err := c.ReadOnly().Quiet().Run(x); err != nil {
