@@ -91,8 +91,11 @@ func checkConfigCommit(x *engine.Ctx) error {
 			}
 			return nil
 		}).OK("pushed"),
-		engine.Cmd("nix", "eval", "--raw", "{{.flake}}#nixosConfigurations.{{.host}}.config.conf.fleet.repo.url").
-			ReadOnly().Quiet().Capture("config_url").OK("{{.host}} installs from {{.config_url}}"),
+		// Empty for a host that syncs from no repository, as the example and
+		// template hosts.
+		engine.Cmd("nix", "eval", "--raw", "{{.flake}}#nixosConfigurations.{{.host}}.config.conf.fleet.repo.url",
+			"--apply", `u: if u == null then "" else u`).
+			ReadOnly().Quiet().Capture("config_url").OK("read where {{.host}} syncs from"),
 		g("remote", "get-url", "origin").Capture("origin").OK("the checkout fetches {{.origin}}"),
 	}
 	for _, c := range steps {
@@ -100,12 +103,24 @@ func checkConfigCommit(x *engine.Ctx) error {
 			return err
 		}
 	}
-	if x.Options.DryRun {
-		return nil
-	}
-	if !sameRepo(x.Value("origin"), x.Value("config_url")) {
-		return fmt.Errorf("this checkout fetches %s, but %s installs from %s: run this in a checkout of that",
-			x.Value("origin"), x.Value("host"), x.Value("config_url"))
+	return nil
+}
+
+// checkSource makes sure the installer can fetch the commit to install from
+// where the line says: fleet-manager itself for its own checkout, or else
+// the repository the host syncs from, which the checkout must be.
+func checkSource(x *engine.Ctx) error {
+	origin, url := x.Value("origin"), x.Value("config_url")
+	switch {
+	case x.Options.DryRun:
+	case x.Value("fm") == x.Value("inv"):
+		if !sameRepo(origin, fleet.UpstreamURL) {
+			return fmt.Errorf("this checkout fetches %s, not %s, from where the installer fetches fleet-manager's commits", origin, fleet.UpstreamURL)
+		}
+	case url == "":
+		return fmt.Errorf("%s names no repository to sync from (conf.fleet.repo.url), so the installer would not know where to fetch it from", x.Value("host"))
+	case !sameRepo(origin, url):
+		return fmt.Errorf("this checkout fetches %s, but %s installs from %s: run this in a checkout of that", origin, x.Value("host"), url)
 	}
 	return nil
 }
@@ -149,6 +164,12 @@ func checkInstallerCommit(x *engine.Ctx) error {
 		}
 	}
 	x.Values["fm"] = fm
+	if err := checkSource(x); err != nil {
+		return err
+	}
+	if url := x.Value("config_url"); url != "" {
+		x.UI.OK(x.Value("host") + " syncs from " + url)
+	}
 	tmp, err := os.MkdirTemp("", "fleet-prep-*")
 	if err != nil {
 		return err

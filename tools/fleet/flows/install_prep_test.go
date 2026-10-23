@@ -146,3 +146,59 @@ func TestPrepRefusesAnotherRepository(t *testing.T) {
 		t.Fatalf("went ahead in a checkout of another repository: %v\n%s", err, out)
 	}
 }
+
+// withPrep answers origin for the checkout's remote and url for where the
+// host syncs from, "" for none, as an example or template host.
+func withPrep(respond func(engine.Spec) (engine.Result, error), origin, url string) func(engine.Spec) (engine.Result, error) {
+	return func(s engine.Spec) (engine.Result, error) {
+		args := strings.Join(s.Args, " ")
+		switch {
+		case s.Name == "git" && strings.Contains(args, "remote get-url origin"):
+			return engine.Result{Stdout: origin + "\n"}, nil
+		case s.Name == "nix" && strings.Contains(args, "conf.fleet.repo.url"):
+			return engine.Result{Stdout: url}, nil
+		case s.Name == "git" && strings.Contains(args, "rev-parse HEAD") && origin == fleetManagerGit:
+			return engine.Result{Stdout: pinnedFM + "\n"}, nil
+		}
+		return respond(s)
+	}
+}
+
+const fleetManagerGit = "https://github.com/nnishant776/fleet-manager.git"
+
+// A template host of fleet-manager's own checkout syncs from nowhere; it is
+// installed from fleet-manager at the commit.
+func TestPrepPrintsTheLineForATemplateHost(t *testing.T) {
+	err, _, out := runPrep(t, prepCheckout(t, ""), withPrep(prepRepo("", ""), fleetManagerGit, ""))
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if !strings.Contains(out, "&& REV="+pinnedFM+" sh /tmp/bootstrap nas") {
+		t.Errorf("no line:\n%s", out)
+	}
+}
+
+func TestPrepRefusesWhereTheInstallerCouldNotFetchIt(t *testing.T) {
+	for name, c := range map[string]struct {
+		fm, origin, url, want string
+	}{
+		"a fork of fleet-manager":     {"", "https://github.com/someone/fleet-manager.git", "", "from where the installer fetches fleet-manager's commits"},
+		"a host naming no repository": {pinnedFM, "git@github.com:example-org/inventory.git", "", "names no repository to sync from"},
+	} {
+		respond := withPrep(prepRepo("", ""), c.origin, c.url)
+		if c.fm == "" {
+			// fleet-manager's own checkout: one commit.
+			inner := respond
+			respond = func(s engine.Spec) (engine.Result, error) {
+				if s.Name == "git" && strings.Contains(strings.Join(s.Args, " "), "rev-parse HEAD") {
+					return engine.Result{Stdout: pinnedFM + "\n"}, nil
+				}
+				return inner(s)
+			}
+		}
+		err, _, out := runPrep(t, prepCheckout(t, c.fm), respond)
+		if err == nil || !strings.Contains(out, c.want) {
+			t.Errorf("%s: went ahead, or without saying %q: %v\n%s", name, c.want, err, out)
+		}
+	}
+}
