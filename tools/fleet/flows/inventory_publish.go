@@ -178,7 +178,7 @@ func sliceTree(x *engine.Ctx, rev, host string, l layout, accounts []string) (st
 	index := []string{"GIT_INDEX_FILE=" + filepath.Join(dir, "index")}
 	x.Values["slice_listing"] = listing + "\n"
 	if _, err := engine.Cmd("git", "-C", "{{.flake}}", "update-index", "--index-info").Env(index...).
-		StdinFrom("slice_listing").StdinNote("the listing of " + host + "'s files").ReadOnly().Quiet().Run(x); err != nil {
+		StdinFrom("slice_listing").StdinNote("the listing of " + host + "'s files").ReadOnly().Quiet().OK("listed " + host + "'s files").Run(x); err != nil {
 		return "", err
 	}
 	tree, err := engine.Silently(x, index, "git", "-C", x.Value("flake"), "write-tree")
@@ -286,7 +286,7 @@ func checkSlice(x *engine.Ctx, host, kind, tree string) error {
 	defer os.RemoveAll(dir)
 	x.Values["slice_dir"] = dir
 	if _, err := engine.Cmd("sh", "-c", `git -C "$1" archive "$2" | tar -x -C "$3"`, "sh", "{{.flake}}", "{{.slice_tree}}", "{{.slice_dir}}").
-		ReadOnly().Quiet().Run(x); err != nil {
+		ReadOnly().Quiet().OK("exported " + host + "'s files to evaluate them").Run(x); err != nil {
 		return err
 	}
 	_, err = engine.Cmd("nix", "eval", "--raw", "path:{{.slice_dir}}#"+kind+"Configurations."+host+".config.system.build.toplevel.drvPath").
@@ -298,6 +298,10 @@ func checkSlice(x *engine.Ctx, host, kind, tree string) error {
 }
 
 func pushHostBranches(x *engine.Ctx) error {
+	if x.Options.DryRun {
+		x.UI.Skip("dry run: nothing committed or pushed")
+		return nil
+	}
 	refs := strings.Fields(x.Value("publish_refs"))
 	if len(refs) == 0 {
 		x.UI.OK("every branch is up to date")
