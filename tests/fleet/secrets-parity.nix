@@ -188,6 +188,18 @@ pkgs.runCommand "fleet-secrets-parity" {
   done
   refused "ran the repository's own hook" "core.hooksPath is .githooks"
   for repo in sh go; do git -C $repo config --unset core.hooksPath; done
+  # Nor while git checks signatures against a file inside a checkout, as
+  # fleet setup used to set it: a pushed commit could add the key it is
+  # signed with. An untracked copy of the keys stands for one.
+  for repo in sh go; do
+    cp allowed_signers $repo/allowed_signers.here
+    git -C $repo config gpg.ssh.allowedSignersFile "$PWD/$repo/allowed_signers.here"
+  done
+  refused "checked signatures against a file in a checkout" "which is inside a checkout"
+  for repo in sh go; do
+    git -C $repo config --unset gpg.ssh.allowedSignersFile
+    rm $repo/allowed_signers.here
+  done
 
   # Both refuse the same mistakes.
   if go_tool host-enroll alpha --from alpha2.enroll 2>&1 | tee go.err; then echo "enrolled alpha twice"; exit 1; fi

@@ -118,6 +118,17 @@ func Open() engine.Step {
 				}),
 			},
 			engine.Probe{
+				What: "git checks signatures against your own copy of the keys",
+				Cmd:  cmd("sh", "-c", signersOutsideCheckout),
+				Expect: func(out string) (string, error) {
+					if f, ok := strings.CutPrefix(strings.TrimSpace(out), "inside "); ok {
+						return "", fmt.Errorf("git checks signatures against %s, which is inside a checkout, so a pushed commit could add "+
+							"the key that signs it: run fleet setup, which points it at your own copy of the keys", f)
+					}
+					return "", nil
+				},
+			},
+			engine.Probe{
 				What: "git runs a copy of the hook you have read",
 				Cmd:  cmd("git", "config", "--local", "--default", "", "--get", "core.hooksPath"),
 				Expect: func(out string) (string, error) {
@@ -443,3 +454,12 @@ func Set(file, key, value, note string) *engine.Command {
 	return cmd("sops", "set", "--value-stdin", file, `["`+key+`"]`).StdinFrom(value).StdinNote(note).
 		Before(Restoring(file))
 }
+
+// signersOutsideCheckout prints "inside FILE" when git's
+// gpg.ssh.allowedSignersFile lies inside a git checkout, where a pushed commit
+// could add the key that signs it; fleet setup points it at your own copy
+// (fleet trust signers). The shell fleet-secrets runs the same check.
+const signersOutsideCheckout = `f="$(git config --get gpg.ssh.allowedSignersFile)" || exit 0
+case "$f" in \~/*) f="$HOME/${f#\~/}" ;; esac
+case "$f" in /*) ;; *) f="$(git rev-parse --show-toplevel)/$f" ;; esac
+if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; then echo "inside $f"; fi`

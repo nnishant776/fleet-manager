@@ -67,6 +67,7 @@ func TestAdmittingAHostPutsBackWhenTheCommitFails(t *testing.T) {
 }
 
 func TestSetupPutsBackAllowedSignersFromItsCopy(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	dir := t.TempDir()
 	config, repo := filepath.Join(dir, "config"), filepath.Join(dir, "secrets")
 	_ = os.MkdirAll(filepath.Join(config, "fleet"), 0o755)

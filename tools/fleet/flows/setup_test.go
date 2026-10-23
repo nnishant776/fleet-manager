@@ -10,12 +10,20 @@ import (
 	"testing"
 
 	"github.com/nnishant776/fleet-manager/tools/fleet/internal/engine"
+	"github.com/nnishant776/fleet-manager/tools/fleet/internal/fleet"
 	"github.com/nnishant776/fleet-manager/tools/fleet/internal/ui"
 )
 
 func newFakeCtx(respond func(engine.Spec) (engine.Result, error)) (*engine.Ctx, *engine.Fake, *bytes.Buffer) {
 	var out bytes.Buffer
-	fake := &engine.Fake{Respond: respond}
+	fake := &engine.Fake{Respond: func(s engine.Spec) (engine.Result, error) {
+		res, err := respond(s)
+		// A checkout has an origin unless a test says otherwise.
+		if err == nil && res.Stdout == "" && s.Name == "git" && strings.Contains(strings.Join(s.Args, " "), "remote get-url origin") {
+			res.Stdout = "git@github.com:example-org/inventory.git\n"
+		}
+		return res, err
+	}}
 	return &engine.Ctx{
 		Context: context.Background(), UI: ui.NewWith(&out, nil), Runner: fake,
 		Options: engine.Options{Yes: true}, Values: map[string]string{}, Stdin: strings.NewReader(""),
@@ -27,12 +35,13 @@ func newFakeCtx(respond func(engine.Spec) (engine.Result, error)) (*engine.Ctx, 
 func keygen(s engine.Spec) {
 	for i, a := range s.Args {
 		if a == "-f" && i+1 < len(s.Args) {
-			_ = os.WriteFile(s.Args[i+1]+".pub", []byte("ssh-ed25519 AAAAC3NzaFRESH fleet\n"), 0o644)
+			_ = os.WriteFile(s.Args[i+1]+".pub", []byte("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAaJ2zd1Tv4i10L7o8kJBLT2upzNnBOJc13FgTh09Azx fleet\n"), 0o644)
 		}
 	}
 }
 
 func TestSetupOnAFreshMachine(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	dir := t.TempDir()
 	config, repo := filepath.Join(dir, "config"), filepath.Join(dir, "secrets")
 	_ = os.MkdirAll(filepath.Join(config, "fleet"), 0o755)
@@ -66,8 +75,19 @@ func TestSetupOnAFreshMachine(t *testing.T) {
 		}
 	}
 	signers, _ := os.ReadFile(filepath.Join(config, "fleet", "allowed_signers"))
-	if string(signers) != "me@test namespaces=\"git\" ssh-ed25519 AAAAC3NzaFRESH\n" {
+	if string(signers) != "me@test namespaces=\"git\" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAaJ2zd1Tv4i10L7o8kJBLT2upzNnBOJc13FgTh09Azx\n" {
 		t.Errorf("allowed_signers is %q", signers)
+	}
+	// Your copy of the keys, outside the checkout, which git checks against.
+	copyPath, _ := fleet.SignersCopy("git@github.com:example-org/inventory.git")
+	if got, _ := os.ReadFile(copyPath); string(got) != string(signers) {
+		t.Errorf("your copy is %q, want the keys you approved, %q", got, signers)
+	}
+	if !strings.Contains(cmds, "config gpg.ssh.allowedSignersFile "+copyPath) {
+		t.Errorf("git does not check against your copy:\n%s", cmds)
+	}
+	if strings.Contains(cmds, "config gpg.ssh.allowedSignersFile "+filepath.Join(config, "fleet", "allowed_signers")) {
+		t.Error("git checks against the checkout's own file")
 	}
 	// The hook is shown, then copied into .git/hooks: git never runs the
 	// repository's own file.
@@ -90,14 +110,15 @@ func TestSetupOnAFreshMachine(t *testing.T) {
 }
 
 func TestSetupSkipsWhatIsDone(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	dir := t.TempDir()
 	config, repo := filepath.Join(dir, "config"), filepath.Join(dir, "secrets")
 	_ = os.MkdirAll(filepath.Join(config, "fleet"), 0o755)
 	_ = os.MkdirAll(repo, 0o755)
 	_ = os.WriteFile(filepath.Join(dir, "recovery.age"), []byte("encrypted"), 0o600)
 	_ = os.WriteFile(filepath.Join(dir, "signing"), []byte("private"), 0o600)
-	_ = os.WriteFile(filepath.Join(dir, "signing.pub"), []byte("ssh-ed25519 AAAAC3NzaDONE fleet\n"), 0o644)
-	_ = os.WriteFile(filepath.Join(config, "fleet", "allowed_signers"), []byte("me@test namespaces=\"git\" ssh-ed25519 AAAAC3NzaDONE\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "signing.pub"), []byte("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB4cTxXwY1G40AfKlCx6sZEOmkWK4TNdbOHgtpKe+Qc7 fleet\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(config, "fleet", "allowed_signers"), []byte("me@test namespaces=\"git\" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB4cTxXwY1G40AfKlCx6sZEOmkWK4TNdbOHgtpKe+Qc7\n"), 0o644)
 	for _, d := range []string{".githooks", ".git/hooks"} {
 		_ = os.MkdirAll(filepath.Join(repo, d), 0o755)
 		_ = os.WriteFile(filepath.Join(repo, d, "pre-commit"), []byte("#!/bin/sh\nexit 0\n"), 0o755)
@@ -177,7 +198,7 @@ func TestSupportKeyRotationInOrder(t *testing.T) {
 			t.Errorf("an ssh offered agent keys: %s", s)
 		}
 	}
-	if !strings.Contains(out.String(), `from=\"192.168.0.0/24\" ssh-ed25519 AAAAC3NzaFRESH fleet`) {
+	if !strings.Contains(out.String(), `from=\"192.168.0.0/24\" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAaJ2zd1Tv4i10L7o8kJBLT2upzNnBOJc13FgTh09Azx fleet`) {
 		t.Errorf("the line to add is not shown with its from= restriction:\n%s", out)
 	}
 	if !strings.Contains(out.String(), "In hosts/pi/default.nix, under conf.fleet.support.sshKeys") {
@@ -189,6 +210,7 @@ func TestSupportKeyRotationInOrder(t *testing.T) {
 }
 
 func TestSetupDryRunOnAFreshMachineChangesNothing(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	dir := t.TempDir()
 	config, repo := filepath.Join(dir, "config"), filepath.Join(dir, "secrets")
 	_ = os.MkdirAll(filepath.Join(config, "fleet"), 0o755)
@@ -208,7 +230,7 @@ func TestSetupDryRunOnAFreshMachineChangesNothing(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 	for _, s := range fake.Ran {
-		if !(s.Name == "yq" && s.Args[0] == ".maintainer") && !(s.Name == "git" && strings.Contains(s.String(), "--get")) {
+		if !(s.Name == "yq" && s.Args[0] == ".maintainer") && !(s.Name == "git" && (strings.Contains(s.String(), "--get") || strings.Contains(s.String(), "remote get-url"))) {
 			t.Errorf("a dry run ran %s", s)
 		}
 	}

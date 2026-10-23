@@ -33,6 +33,10 @@ A value that is neither given nor has a default is asked for on a terminal.
    $ cd REPO && test -f fleet.yaml
    $ cd REPO && git status --porcelain --untracked-files=no
    $ cd REPO && git verify-commit HEAD
+   $ cd REPO && sh -c 'f="$(git config --get gpg.ssh.allowedSignersFile)" || exit 0
+case "$f" in \~/*) f="$HOME/${f#\~/}" ;; esac
+case "$f" in /*) ;; *) f="$(git rev-parse --show-toplevel)/$f" ;; esac
+if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; then echo "inside $f"; fi'
    $ cd REPO && git config --local --default '' --get core.hooksPath
    ```
 

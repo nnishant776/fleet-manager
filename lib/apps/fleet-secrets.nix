@@ -81,14 +81,23 @@ pkgs.writeShellApplication {
     # Untracked files are not a reason to refuse: the commands create some.
     # The change builds on the newest commit and encrypts for the recipients
     # it names, so that commit must be one a trusted key signed, not whatever
-    # was pushed last. Nor may git run the repository's own hook, which anyone
-    # who can push could change.
+    # was pushed last; and the keys it is checked against must be your own copy,
+    # outside every checkout, or a pushed commit could add the key that signs
+    # it (fleet trust signers). Nor may git run the repository's own hook,
+    # which anyone who can push could change.
     require_clean() {
       if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
         die "the working tree has uncommitted changes; commit or discard them first"
       fi
       git verify-commit HEAD >/dev/null 2>&1 \
         || die "the newest commit is not signed by a key in gpg.ssh.allowedSignersFile (fleet setup sets it): look at it with git log --show-signature -1 before going on"
+      local signers
+      signers="$(git config --get gpg.ssh.allowedSignersFile || true)"
+      case "$signers" in \~/*) signers="$HOME/''${signers#\~/}" ;; esac
+      case "$signers" in ""|/*) ;; *) signers="$(git rev-parse --show-toplevel)/$signers" ;; esac
+      if [ -n "$signers" ] && git -C "$(dirname "$signers")" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        die "git checks signatures against $signers, which is inside a checkout, so a pushed commit could add the key that signs it: run fleet setup, which points it at your own copy of the keys"
+      fi
       [ "$(git config --local --default "" --get core.hooksPath)" != .githooks ] \
         || die "git runs the repository's own hook (core.hooksPath is .githooks): run fleet setup, which installs a copy you have read in its place"
     }

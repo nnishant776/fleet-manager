@@ -52,7 +52,9 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 6. **Trust your key in fleet/allowed_signers.** Hosts check every fetched commit against this file. Adding a key is itself a commit, which must be signed by a key already trusted, if there is one.
 
-7. **Name yourself as the maintainer in fleet.yaml.** Every secrets file is encrypted to the maintainer as well as to its host; fleet secrets refuses to enroll hosts until this is set.
+7. **Keep your copy of the configuration repository's keys.** fleet and git check commits against your own copy of the keys, kept outside every checkout, not against fleet/allowed_signers, which a pushed commit could change. The first copy is the one you approve now; fleet trust signers takes later changes.
+
+8. **Name yourself as the maintainer in fleet.yaml.** Every secrets file is encrypted to the maintainer as well as to its host; fleet secrets refuses to enroll hosts until this is set.
 
    ```
    $ cd REPO && r=RECIPIENT yq -i '.maintainer = strenv(r)' fleet.yaml
@@ -60,7 +62,7 @@ A value that is neither given nor has a default is asked for on a terminal.
    $ cd REPO && git push
    ```
 
-8. **Next.** With that, hosts can be enrolled.
+9. **Next.** With that, hosts can be enrolled.
 
    > Push the allowed_signers commit to fleet-manager's main if one was made, merging
    > locally: GitHub's merge buttons drop the signature. Then, for each host:

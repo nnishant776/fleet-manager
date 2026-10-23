@@ -105,6 +105,24 @@ var Setup = &engine.Flow{
 			Do:    engine.Func(trustKey),
 		},
 		{
+			Title: "Keep your copy of the configuration repository's keys",
+			Why: "fleet and git check commits against your own copy of the keys, kept outside every checkout, not against fleet/allowed_signers, which a pushed commit could change. " +
+				"The first copy is the one you approve now; fleet trust signers takes later changes.",
+			When: func(x *engine.Ctx) (bool, string) {
+				if !fileExists(filepath.Join(x.Value("config"), "fleet", "allowed_signers")) {
+					return false, "the checkout has no fleet/allowed_signers yet"
+				}
+				return true, ""
+			},
+			Do: engine.Func(func(x *engine.Ctx) error {
+				x.Values["flake"] = x.Value("config")
+				if err := readCheckoutSigners(x); err != nil {
+					return err
+				}
+				return keepSignersCopy(x)
+			}),
+		},
+		{
 			Title: "Name yourself as the maintainer in fleet.yaml",
 			Why:   "Every secrets file is encrypted to the maintainer as well as to its host; fleet secrets refuses to enroll hosts until this is set.",
 			When: func(x *engine.Ctx) (bool, string) {
@@ -161,12 +179,27 @@ func recoveryRecipient(x *engine.Ctx) error {
 }
 
 func configureSigning(x *engine.Ctx) error {
+	// Signatures are checked against your own copy of the configuration
+	// repository's keys, not the checkout's file, which a pushed commit could
+	// change; the secrets repository is checked with the same keys, as on
+	// hosts. A step below makes the copy.
+	origin, err := engine.Silently(x, nil, "git", "-C", x.Value("config"), "remote", "get-url", "origin")
+	if (err != nil || origin == "") && !x.Options.DryRun {
+		return fmt.Errorf("%s has no origin: your copy of its keys is kept per repository, named after its address", x.Value("config"))
+	}
+	copyPath := "<your copy of the configuration repository's keys>"
+	if origin != "" {
+		if copyPath, err = fleet.SignersCopy(origin); err != nil {
+			return err
+		}
+	}
+	x.Values["signers_copy"] = copyPath
 	settings := [][2]string{
 		{"gpg.format", "ssh"},
 		{"user.signingKey", x.Value("signing-key") + ".pub"},
 		{"commit.gpgSign", "true"},
 		{"tag.gpgSign", "true"},
-		{"gpg.ssh.allowedSignersFile", filepath.Join(x.Value("config"), "fleet", "allowed_signers")},
+		{"gpg.ssh.allowedSignersFile", copyPath},
 	}
 	for _, repo := range []string{x.Value("config"), x.Value("repo")} {
 		for _, kv := range settings {
@@ -307,6 +340,13 @@ func trustKey(x *engine.Ctx) error {
 	}
 	if err := f.Close(); err != nil {
 		return err
+	}
+	// Your own key is one you trust: it goes into your copy as well, so the
+	// commit it signs, which adds it, is not refused there.
+	if mine, err := os.ReadFile(x.Value("signers_copy")); err == nil {
+		if err := fleet.WriteSignersCopy(x.Value("signers_copy"), append(mine, line...)); err != nil {
+			return err
+		}
 	}
 	if _, err := engine.Cmd("git", "-C", "{{.config}}", "add", "fleet/allowed_signers").Before(func(x *engine.Ctx) error {
 		return secrets.Unstage(x, "{{.config}}", []string{"fleet/allowed_signers"})
