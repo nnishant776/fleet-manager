@@ -10,13 +10,14 @@ var Groups = engine.Groups{
 	"host":        "Work on one host: check it, its secrets, its enrollment",
 	"secrets":     "The secrets repository: hosts, users' passwords and keys (the fleet-secrets port)",
 	"support-key": "The key that opens the support account",
+	"trust":       "The keys you trust, kept outside every checkout",
 }
 
 // Menu is what `fleet` offers when run alone, the everyday work first: a
 // host, then this machine, then the secrets repository one change at a time.
 var Menu = []engine.Section{
 	{Name: "Hosts", Flows: []*engine.Flow{HostCheck, HostSecret, HostEnroll, SupportKeyRotate}},
-	{Name: "This machine", Flows: []*engine.Flow{Install, InstallPrep, Setup, Doctor}},
+	{Name: "This machine", Flows: []*engine.Flow{Install, InstallPrep, Setup, TrustSigners, Doctor}},
 	{Name: "Secrets", Flows: []*engine.Flow{
 		SecretsUserPassword, SecretsUserKey, SecretsHostEnroll, SecretsHostRekey, SecretsHostRetire,
 	}},
