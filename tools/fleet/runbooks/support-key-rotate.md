@@ -37,30 +37,32 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 ## Steps
 
-1. **Make the new key.** A hardware key keeps the private half on the device: every login needs a touch, and its PIN. A software key gets a passphrase.
+1. **Compare the checkout's keys with the ones you trust.** Commits are checked against your own copy of each repository's keys, not against the checkout's fleet/allowed_signers. A difference means the keys changed since you trusted them: expected if you changed them, worth a look if not.
 
-2. **Add the new key next to the old one.** Both are accepted for now, so the host can be reached whichever way the next steps go.
+2. **Make the new key.** A hardware key keeps the private half on the device: every login needs a touch, and its PIN. A software key gets a passphrase.
 
-3. **Sync HOST with the old key.** It picks up the configuration that accepts both keys.
+3. **Add the new key next to the old one.** Both are accepted for now, so the host can be reached whichever way the next steps go.
+
+4. **Sync HOST with the old key.** It picks up the configuration that accepts both keys.
 
    ```
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 -o IdentitiesOnly=yes -o IdentityAgent=none -i OLD-KEY support@ADDRESS 'sudo -n systemctl start config-auto-update'
    ```
 
-4. **Test the new key.** With the new key only and nothing else offered: it must log in, and sudo must work.
+5. **Test the new key.** With the new key only and nothing else offered: it must log in, and sudo must work.
 
    ```
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 -o IdentitiesOnly=yes -o IdentityAgent=none -i NEW-KEY support@ADDRESS 'sudo -n id -u'
    ```
 
-5. **Remove the old key.** Until it is gone, whoever holds it is still root on HOST.
+6. **Remove the old key.** Until it is gone, whoever holds it is still root on HOST.
 
-6. **Sync HOST with the new key.** It picks up the configuration without the old key.
+7. **Sync HOST with the new key.** It picks up the configuration without the old key.
 
    ```
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 -o IdentitiesOnly=yes -o IdentityAgent=none -i NEW-KEY support@ADDRESS 'sudo -n systemctl start config-auto-update'
    ```
 
-7. **Check the old key is refused.** The rotation is done only when the old key no longer opens support.
+8. **Check the old key is refused.** The rotation is done only when the old key no longer opens support.
 
 It needs `ssh`, `ssh-keygen` on the PATH; `fleet doctor` says where to get them.

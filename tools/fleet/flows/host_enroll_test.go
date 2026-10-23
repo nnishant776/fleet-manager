@@ -75,7 +75,7 @@ func runEnroll(t *testing.T, respond func(engine.Spec) (engine.Result, error)) (
 	}
 	repo := t.TempDir()
 	err := engine.RunWith(x, HostEnroll, map[string]string{
-		"host": "pi", "flake": "/etc/nixos", "key": "/keys/home", "repo": repo, "recovery": "",
+		"host": "pi", "flake": "/no/such/flake", "key": "/keys/home", "repo": repo, "recovery": "",
 		"register-with": "cat >> /forge/authorized_keys", "sync": "false",
 	})
 	return err, fake, out.String()
@@ -341,7 +341,7 @@ func TestEnrollSyncsAsSupportWithNothingForwarded(t *testing.T) {
 		LookPath: func(t string) (string, error) { return "/fake/bin/" + t, nil },
 	}
 	err := engine.RunWith(x, HostEnroll, map[string]string{
-		"host": "pi", "flake": "/etc/nixos", "key": "/keys/home", "repo": t.TempDir(), "recovery": "",
+		"host": "pi", "flake": "/no/such/flake", "key": "/keys/home", "repo": t.TempDir(), "recovery": "",
 		"register-with": "true", "sync": "true",
 	})
 	if err != nil {

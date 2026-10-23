@@ -151,7 +151,7 @@ func TestSupportKeyRotationInOrder(t *testing.T) {
 		return engine.Result{}, nil
 	})
 	err := engine.RunWith(x, SupportKeyRotate, map[string]string{
-		"host": "pi", "flake": "/etc/nixos", "old-key": oldKey, "new-key": newKey, "from": "192.168.0.0/24",
+		"host": "pi", "flake": "/no/such/flake", "old-key": oldKey, "new-key": newKey, "from": "192.168.0.0/24",
 	})
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)

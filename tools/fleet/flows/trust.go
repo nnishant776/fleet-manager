@@ -198,3 +198,49 @@ func trustedSignersFor(x *engine.Ctx, address, checkout string) (string, error) 
 	}
 	return path, nil
 }
+
+// signersCheck starts every command that reads a checkout (see flows.go): it
+// compares the checkout's fleet/allowed_signers with your copy of that
+// repository's keys, and warns when they differ, since commits are checked
+// against your copy, not the checkout's file.
+var signersCheck = engine.Step{
+	Title: "Compare the checkout's keys with the ones you trust",
+	Why: "Commits are checked against your own copy of each repository's keys, not against the checkout's fleet/allowed_signers. " +
+		"A difference means the keys changed since you trusted them: expected if you changed them, worth a look if not.",
+	When: func(x *engine.Ctx) (bool, string) {
+		if !fileExists(filepath.Join(x.Value("flake"), "fleet", "allowed_signers")) {
+			return false, x.Value("flake") + " is not a checkout with fleet/allowed_signers"
+		}
+		return true, ""
+	},
+	Do: engine.Func(compareSigners),
+}
+
+func compareSigners(x *engine.Ctx) error {
+	flake := x.Value("flake")
+	origin, _, now, err := checkoutSigners(x, flake)
+	if err != nil {
+		x.UI.Skip(err.Error())
+		return nil
+	}
+	id, _ := fleet.RepoID(origin)
+	_, trusted, err := fleet.TrustedSigners(origin)
+	switch {
+	case errors.Is(err, fleet.ErrNoSignersCopy):
+		x.UI.Note("You trust no keys for " + id + " yet, and its commits are checked against your own copy of them. " +
+			"Run fleet trust signers --flake " + flake + " to make one.")
+		return nil
+	case err != nil:
+		return err
+	}
+	added, removed := fleet.DiffSigners(trusted, now)
+	if len(added) == 0 && len(removed) == 0 {
+		x.UI.OK("the checkout lists the keys you trust for " + id)
+		return nil
+	}
+	x.UI.Note("The checkout's keys for " + id + " differ from the ones you trust:")
+	x.UI.Text(signersChange(added, removed))
+	x.UI.Note("If you expected this change, update the repository's trust: fleet trust signers --flake " + flake +
+		". Until then, its commits are checked against the keys you trust.")
+	return nil
+}

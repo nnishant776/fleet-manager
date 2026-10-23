@@ -34,13 +34,15 @@ A value that is neither given nor has a default is asked for on a terminal.
 Every step runs, whatever an earlier one found; the command fails at the end
 if any found a problem.
 
-1. **Reach HOST.** As USER, with no agent forwarded, and only to a host whose key this machine already knows.
+1. **Compare the checkout's keys with the ones you trust.** Commits are checked against your own copy of each repository's keys, not against the checkout's fleet/allowed_signers. A difference means the keys changed since you trusted them: expected if you changed them, worth a look if not.
+
+2. **Reach HOST.** As USER, with no agent forwarded, and only to a host whose key this machine already knows.
 
    ```
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'id -un; hostname'
    ```
 
-2. **Configuration and sync.** The running system should be the revision its checkout holds, and the last sync should have succeeded.
+3. **Configuration and sync.** The running system should be the revision its checkout holds, and the last sync should have succeeded.
 
    ```
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'r=$(cat /etc/org/revision); h=$(git -C /etc/nixos rev-parse HEAD 2>/dev/null || echo none); echo "$r $h"'
@@ -49,14 +51,14 @@ if any found a problem.
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'cat /var/lib/fleet-sync/status 2>/dev/null || true'
    ```
 
-3. **Secrets.** The snapshot names the secrets commit the host last accepted; /run/secrets holds what activation decrypted.
+4. **Secrets.** The snapshot names the secrets commit the host last accepted; /run/secrets holds what activation decrypted.
 
    ```
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'sudo -n test -d /var/lib/fleet || { echo none; exit 0; }; sudo -n readlink /var/lib/fleet/secrets || echo missing'
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'sudo -n find -H /run/secrets /run/secrets-for-users -mindepth 1 ! -type d -printf '\''%P\n'\'' 2>/dev/null | sort -u'
    ```
 
-4. **Health.** A failed unit is worth knowing about before changing anything else.
+5. **Health.** A failed unit is worth knowing about before changing anything else.
 
    ```
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'systemctl is-system-running || true; systemctl --failed --no-legend --plain | cut -d'\'' '\'' -f1'

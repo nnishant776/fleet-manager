@@ -121,7 +121,7 @@ func TestAnInterruptedRotationKeepsTheNewKeyAndSaysTheSyncRunsOn(t *testing.T) {
 		return engine.Result{}, nil
 	})
 	x.Context = ctx
-	err := engine.RunWith(x, SupportKeyRotate, map[string]string{"host": "pi", "flake": "/etc/nixos", "old-key": oldKey, "new-key": newKey})
+	err := engine.RunWith(x, SupportKeyRotate, map[string]string{"host": "pi", "flake": "/no/such/flake", "old-key": oldKey, "new-key": newKey})
 	if !errors.Is(err, engine.ErrInterrupted) {
 		t.Fatalf("got %v\n%s", err, out)
 	}
@@ -159,7 +159,7 @@ func TestAnInterruptedEnrollmentStillStopsTheAgent(t *testing.T) {
 		LookPath: func(t string) (string, error) { return "/fake/bin/" + t, nil },
 	}
 	err := engine.RunWith(x, HostEnroll, map[string]string{
-		"host": "pi", "flake": "/etc/nixos", "key": "/keys/home", "repo": t.TempDir(), "recovery": "",
+		"host": "pi", "flake": "/no/such/flake", "key": "/keys/home", "repo": t.TempDir(), "recovery": "",
 		"register-with": "cat >> /forge/authorized_keys", "sync": "false",
 	})
 	if !errors.Is(err, engine.ErrInterrupted) {

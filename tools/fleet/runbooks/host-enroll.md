@@ -40,49 +40,51 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 ## Steps
 
-1. **Start an agent that holds one key.** ADMIN's sudo checks its key through the forwarded agent. Only this agent is forwarded, never yours, which holds your signing key.
+1. **Compare the checkout's keys with the ones you trust.** Commits are checked against your own copy of each repository's keys, not against the checkout's fleet/allowed_signers. A difference means the keys changed since you trusted them: expected if you changed them, worth a look if not.
 
-2. **Look at HOST.** What is done already decides which of the next steps run.
+2. **Start an agent that holds one key.** ADMIN's sudo checks its key through the forwarded agent. Only this agent is forwarded, never yours, which holds your signing key.
 
-3. **Choose the commit to switch HOST to.** It does not run a configuration with secrets yet. Unless --switch-to names one, it gets the newest commit of main, once a key this checkout trusts has signed it: its own sync will take no other.
+3. **Look at HOST.** What is done already decides which of the next steps run.
 
-4. **Make /etc/nixos the configuration repository's checkout.** Once the host runs its fleet configuration, the sync owns /etc/nixos and makes it the configuration repository's. What is there now is kept first: plain files move to /etc/nixos.before-fleet, with their permissions; a git checkout keeps its history on the branch before-fleet, and its remote under that name.
+4. **Choose the commit to switch HOST to.** It does not run a configuration with secrets yet. Unless --switch-to names one, it gets the newest commit of main, once a key this checkout trusts has signed it: its own sync will take no other.
 
-5. **Switch HOST to its fleet configuration.** The switch runs as a service on the host, so it finishes even if this connection drops.
+5. **Make /etc/nixos the configuration repository's checkout.** Once the host runs its fleet configuration, the sync owns /etc/nixos and makes it the configuration repository's. What is there now is kept first: plain files move to /etc/nixos.before-fleet, with their permissions; a git checkout keeps its history on the branch before-fleet, and its remote under that name.
 
-6. **Point /etc/nixos at the configuration repository.** Its sync fetches origin, which should be the repository its configuration names.
+6. **Switch HOST to its fleet configuration.** The switch runs as a service on the host, so it finishes even if this connection drops.
+
+7. **Point /etc/nixos at the configuration repository.** Its sync fetches origin, which should be the repository its configuration names.
 
    ```
    $ SSH_AUTH_SOCK=AGENT ssh -A -o BatchMode=yes -o ConnectTimeout=10 ADMIN@ADDRESS 'sudo -n git -C /etc/nixos remote set-url origin CONFIG_URL'
    ```
 
-7. **Create HOST's identity.** Its age key decrypts its secrets, its deploy key fetches them, and its configuration key fetches a private configuration. All are made on the host and never leave it; init makes only what is missing.
+8. **Create HOST's identity.** Its age key decrypts its secrets, its deploy key fetches them, and its configuration key fetches a private configuration. All are made on the host and never leave it; init makes only what is missing.
 
    ```
    $ SSH_AUTH_SOCK=AGENT ssh -A -o BatchMode=yes -o ConnectTimeout=10 ADMIN@ADDRESS 'sudo -n fleet-secrets-sync init --state /var/lib/fleet --host HOST'
    ```
 
-8. **Copy its enrollment file here.** It holds the public halves only. Copied over SSH to a host whose key is known, so it cannot be swapped on the way; the checksums must match.
+9. **Copy its enrollment file here.** It holds the public halves only. Copied over SSH to a host whose key is known, so it cannot be swapped on the way; the checksums must match.
 
-9. **Enroll HOST in the secrets repository.** fleet secrets host-enroll records its recipient, renders the rules and creates its empty file, each step shown.
+10. **Enroll HOST in the secrets repository.** fleet secrets host-enroll records its recipient, renders the rules and creates its empty file, each step shown.
 
-10. **Push the secrets repository.** HOST fetches from GitHub; it accepts the commit only if it is signed by an allowed key.
+11. **Push the secrets repository.** HOST fetches from GitHub; it accepts the commit only if it is signed by an allowed key.
 
    ```
    $ cd REPO && git push
    ```
 
-11. **Register HOST's deploy key, read-only.** It is how HOST fetches the private secrets repository. Read-only: a host never writes to it.
+12. **Register HOST's deploy key, read-only.** It is how HOST fetches the private secrets repository. Read-only: a host never writes to it.
 
-12. **Register HOST's configuration key, read-only.** Its configuration comes over SSH, from a private repository, and this key is how HOST fetches it. Read-only, like the deploy key.
+13. **Register HOST's configuration key, read-only.** Its configuration comes over SSH, from a private repository, and this key is how HOST fetches it. Read-only, like the deploy key.
 
-13. **Sync HOST.** Its first sync with secrets: fetch and verify them, then its configuration.
+14. **Sync HOST.** Its first sync with secrets: fetch and verify them, then its configuration.
 
    ```
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'sudo -n systemctl start config-auto-update'
    ```
 
-14. **Check HOST.** fleet host check, as support with nothing forwarded: this also shows support works.
+15. **Check HOST.** fleet host check, as support with nothing forwarded: this also shows support works.
 
    ```
    $ fleet host check HOST --address ADDRESS --flake FLAKE

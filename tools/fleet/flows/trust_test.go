@@ -135,3 +135,52 @@ func trustCopies(t *testing.T, addresses ...string) {
 		}
 	}
 }
+
+// flat collapses whitespace: notes are wrapped to the terminal.
+func flat(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+func runSignersCheck(t *testing.T, dir string) string {
+	t.Helper()
+	x, _, out := newFakeCtx(trustRepo(dir, true))
+	f := &engine.Flow{Title: "t", Inputs: []engine.Input{fleet.FlakeInput}, Steps: []engine.Step{signersCheck}}
+	if err := engine.RunWith(x, f, map[string]string{"flake": dir}); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	return flat(out.String())
+}
+
+// Commands that read a checkout warn when its keys differ from yours, and
+// say how to update the repository's trust.
+func TestCommandsWarnWhenTheCheckoutsKeysDiffer(t *testing.T) {
+	dir := trustCheckout(t, signersLine("me@test", keyMine))
+	if out := runSignersCheck(t, dir); !strings.Contains(out, "You trust no keys for github.com/example-org/inventory yet") ||
+		!strings.Contains(out, "fleet trust signers --flake "+dir) {
+		t.Errorf("no note without a copy:\n%s", out)
+	}
+	if err, out := runTrust(t, dir, trustRepo(dir, true)); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if out := runSignersCheck(t, dir); !strings.Contains(out, "the checkout lists the keys you trust") {
+		t.Errorf("no ✓ for the same keys:\n%s", out)
+	}
+	_ = os.WriteFile(filepath.Join(dir, "fleet", "allowed_signers"), []byte(signersLine("me@test", keyMine)+signersLine("attacker", keyOther)), 0o644)
+	out := runSignersCheck(t, dir)
+	for _, want := range []string{"differ from the ones you trust", "+ attacker ssh-ed25519",
+		"update the repository's trust: fleet trust signers --flake " + dir} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the warning lacks %q:\n%s", want, out)
+		}
+	}
+}
+
+// Every command that takes --flake starts with that comparison.
+func TestEveryCommandWithAFlakeComparesKeysFirst(t *testing.T) {
+	for _, f := range All() {
+		if f == TrustSigners || !hasInput(f, "flake") {
+			continue
+		}
+		if f.Steps[0].Title != signersCheck.Title {
+			t.Errorf("fleet %s starts with %q", strings.Join(f.Path, " "), f.Steps[0].Title)
+		}
+	}
+}

@@ -49,7 +49,7 @@ func runHostCheck(t *testing.T, answers hostAnswers) (error, *engine.Fake, strin
 		Stdin:    strings.NewReader(""),
 		LookPath: func(t string) (string, error) { return "/fake/bin/" + t, nil },
 	}
-	err := engine.RunWith(x, HostCheck, map[string]string{"host": "neerajpinew", "flake": "/etc/nixos"})
+	err := engine.RunWith(x, HostCheck, map[string]string{"host": "neerajpinew", "flake": "/no/such/flake"})
 	return err, fake, out.String()
 }
 
@@ -89,7 +89,7 @@ func TestHostCheckReportsEveryProblem(t *testing.T) {
 	answers["fleet-sync/status"] = "kind=signature\ncommit=abc\nsince=2026-10-19T04:25:00+05:30\nmessage=The latest configuration change is not signed by a trusted key.\n"
 	answers["is-system-running"] = "degraded\nhostapd-x.service\n"
 	err, fake, out := runHostCheck(t, answers)
-	if err == nil || !strings.Contains(err.Error(), "2 of 4 steps") {
+	if err == nil || !strings.Contains(err.Error(), "2 of 5 steps") {
 		t.Fatalf("got %v\n%s", err, out)
 	}
 	for _, want := range []string{
@@ -131,8 +131,8 @@ func TestHostCheckStopsWhenTheHostCannotBeReached(t *testing.T) {
 		Values: map[string]string{}, Stdin: strings.NewReader(""),
 		LookPath: func(t string) (string, error) { return "/fake/bin/" + t, nil },
 	}
-	err := engine.RunWith(x, HostCheck, map[string]string{"host": "example", "flake": "/etc/nixos"})
-	if err == nil || !strings.Contains(err.Error(), "stopped at step 1") {
+	err := engine.RunWith(x, HostCheck, map[string]string{"host": "example", "flake": "/no/such/flake"})
+	if err == nil || !strings.Contains(err.Error(), "stopped at step 2") {
 		t.Fatalf("got %v\n%s", err, &out)
 	}
 	for _, want := range []string{

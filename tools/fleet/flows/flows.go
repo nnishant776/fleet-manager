@@ -23,6 +23,26 @@ var Menu = []engine.Section{
 	}},
 }
 
+// Every command that reads a checkout starts by comparing its keys with the
+// ones you trust (signersCheck, trust.go); fleet trust signers is that
+// comparison itself.
+func init() {
+	for _, f := range All() {
+		if f != TrustSigners && hasInput(f, "flake") {
+			f.Steps = append([]engine.Step{signersCheck}, f.Steps...)
+		}
+	}
+}
+
+func hasInput(f *engine.Flow, name string) bool {
+	for _, in := range f.Inputs {
+		if in.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 // All is every flow: the menu's, in its order, then those only typed.
 func All() []*engine.Flow {
 	var all []*engine.Flow

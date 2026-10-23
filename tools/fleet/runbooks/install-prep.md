@@ -31,10 +31,12 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 ## Steps
 
-1. **Check the configuration commit.** It is what gets installed: the checkout's newest commit, which must be signed by a key in its fleet/allowed_signers, and pushed, since the installer fetches it.
+1. **Compare the checkout's keys with the ones you trust.** Commits are checked against your own copy of each repository's keys, not against the checkout's fleet/allowed_signers. A difference means the keys changed since you trusted them: expected if you changed them, worth a look if not.
 
-2. **Check the fleet-manager commit the installer comes from.** bootstrap, fleet and os-install come from fleet-manager. It is the commit the configuration's flake.lock pins, fetched with git and checked against the same signers file.
+2. **Check the configuration commit.** It is what gets installed: the checkout's newest commit, which must be signed by a key in its fleet/allowed_signers, and pushed, since the installer fetches it.
 
-3. **Run this on the installer.** On the machine booted from the NixOS installer. Typing it is error-prone: set a password there with passwd, then ssh nixos@\<its address> from here and paste it.
+3. **Check the fleet-manager commit the installer comes from.** bootstrap, fleet and os-install come from fleet-manager. It is the commit the configuration's flake.lock pins, fetched with git and checked against the same signers file.
+
+4. **Run this on the installer.** On the machine booted from the NixOS installer. Typing it is error-prone: set a password there with passwd, then ssh nixos@\<its address> from here and paste it.
 
 It needs `git`, `nix` on the PATH; `fleet doctor` says where to get them.
