@@ -13,6 +13,7 @@ no arguments offers these as a menu.
 | [`fleet host secret`](host-secret.md) | Add or change a host secret: encrypt, commit, push, and show how the configuration uses it |
 | [`fleet host enroll`](host-enroll.md) | Enroll a running host: identity, enrollment, deploy key, first sync |
 | [`fleet support-key rotate`](support-key-rotate.md) | Replace the key that opens a host's support account, testing each step |
+| [`fleet inventory publish`](inventory-publish.md) | Cut each host's own files from main into its branch, host/\<name>, signed, and push them |
 | [`fleet install`](install.md) | Install a host from the configuration onto this machine's disks, from the installer |
 | [`fleet install prep`](install-prep.md) | Check the commits a host's install takes, and print the line to run on the installer |
 | [`fleet setup`](setup.md) | Set up this machine as the maintainer's: recovery identity, signing key, both checkouts |

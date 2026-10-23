@@ -88,6 +88,10 @@
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
         fleet = self.packages.x86_64-linux.fleet;
       };
+      inventory-publish = import ./tests/fleet/publish.nix {
+        pkgs = nixpkgs.legacyPackages.x86_64-linux;
+        fleet = self.packages.x86_64-linux.fleet;
+      };
       secrets-sync = import ./tests/secrets/vm-test.nix {
         inherit inputs self;
         pkgs = nixpkgs.legacyPackages.x86_64-linux;

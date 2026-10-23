@@ -47,10 +47,15 @@ func RepoID(address string) (string, error) {
 		host, path = m[1], m[2]
 	} else {
 		u, err := url.Parse(a)
-		if err != nil || u.Host == "" {
+		switch {
+		case err == nil && u.Scheme == "file" && u.Host == "":
+			// A repository on this machine: a mirror, or a test's forge.
+			host, path = "file", u.Path
+		case err != nil || u.Host == "":
 			return "", fmt.Errorf("%q is not a repository address", address)
+		default:
+			host, path = u.Hostname(), u.Path
 		}
-		host, path = u.Hostname(), u.Path
 	}
 	path = strings.TrimSuffix(strings.Trim(path, "/"), ".git")
 	parts := strings.Split(path, "/")

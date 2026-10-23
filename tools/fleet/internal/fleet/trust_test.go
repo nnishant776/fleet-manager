@@ -20,6 +20,9 @@ func TestRepoIDIsTheSameHoweverTheAddressIsWritten(t *testing.T) {
 			t.Errorf("RepoID(%q) = %q, %v", a, id, err)
 		}
 	}
+	if id, err := RepoID("file:///srv/forge/inventory.git"); err != nil || id != "file/srv/forge/inventory" {
+		t.Errorf("a file: repository: %q, %v", id, err)
+	}
 	for _, bad := range []string{"", "inventory", "https://github.com/../etc", "/tmp/repo"} {
 		if id, err := RepoID(bad); err == nil {
 			t.Errorf("RepoID(%q) = %q, want an error", bad, id)
