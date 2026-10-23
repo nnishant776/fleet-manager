@@ -82,9 +82,11 @@ in a checkout of the configuration:
 fleet install prep <hostname>
 ```
 
-It checks that the checkout's newest commit is signed by a key in its
-`fleet/allowed_signers` and pushed, and so is the fleet-manager commit the
-installer comes from. Then it prints a line to run on the new machine instead.
+It checks that the checkout's newest commit is signed by a key you trust and
+pushed, and so is the fleet-manager commit the installer comes from. The keys
+you trust are your own copy of each repository's `fleet/allowed_signers`, kept
+by `fleet trust signers` (see
+[Signing commits for a fleet](#signing-commits-for-a-fleet)). Then it prints a line to run on the new machine instead.
 That line fetches `bootstrap` by that commit, checks it against a SHA-256
 worked out on your machine, and runs it with `REV` and `FLAKE` pinned to those
 two commits. Everything after that is fetched with git, by hash. On the
@@ -379,8 +381,30 @@ git config gpg.format ssh
 git config user.signingKey ~/.ssh/<signing key>.pub   # the private key must be in your agent
 git config commit.gpgSign true
 git config tag.gpgSign true
-git config gpg.ssh.allowedSignersFile fleet/allowed_signers   # so git log --show-signature can check
+git config gpg.ssh.allowedSignersFile ~/.local/state/fleet/repos/github.com/<owner>/<repo>/allowed_signers
 ```
+
+**Your own copy of the keys.** Point git at a copy of the keys kept outside
+every checkout, not at the checkout's `fleet/allowed_signers`. A pushed commit
+could add a key to that file and be signed with it; after a `git pull`, the
+checkout's file would vouch for the very commit that changed it. Hosts are not
+fooled this way, because they check against the file of the system they
+already run. The `fleet` tool keeps one copy per repository, in
+`$XDG_STATE_HOME/fleet/repos/<host>/<owner>/<repo>/` (`~/.local/state` by
+default):
+
+- `fleet trust signers --flake <checkout>` shows the checkout's keys with their
+  fingerprints, marks yours, and keeps them once you approve. Later, it takes
+  a change only through a commit signed by a key already in your copy, and
+  shows the keys added and removed first.
+- `fleet setup` makes the copy and points git there, for the configuration
+  checkout and the secrets checkout alike.
+- Every command that reads a checkout starts by comparing its keys with your
+  copy, and warns when they differ. If you expected the change, update the
+  repository's trust with `fleet trust signers`.
+- `fleet install prep` and `fleet host enroll` check commits against your
+  copies. The secrets tools refuse to run while git checks against a file
+  inside a checkout.
 
 While the key is in your agent, any program running as you can sign with it.
 `ssh-add -c` makes the agent ask you before each signature, and `ssh-add -t`
