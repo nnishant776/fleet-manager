@@ -159,3 +159,18 @@ func TestInstallFromAPrivateConfiguration(t *testing.T) {
 		}
 	}
 }
+
+// Anywhere but the installer, fleet install stops before anything else, so
+// a mistyped command cannot start an install on your own machine.
+func TestInstallRunsOnlyOnTheInstaller(t *testing.T) {
+	onInstaller = func() bool { return false }
+	defer func() { onInstaller = func() bool { return true } }()
+	x, fake, out := newFakeCtx(installer(t, true))
+	err := engine.RunWith(x, Install, map[string]string{"flake": "github:x/y", "host": "nas", "disk": "data=/dev/vdb\nmain=/dev/vda"})
+	if err == nil || !strings.Contains(out.String(), "this machine is not booted from the NixOS installer") {
+		t.Fatalf("went ahead off the installer: %v\n%s", err, out)
+	}
+	if len(fake.Ran) > 0 {
+		t.Errorf("ran %s off the installer", fake.Ran[0])
+	}
+}

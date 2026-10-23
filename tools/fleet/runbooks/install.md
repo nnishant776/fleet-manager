@@ -39,20 +39,22 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 1. **Compare the checkout's keys with the ones you trust.** Commits are checked against your own copy of each repository's keys, not against the checkout's fleet/allowed_signers. A difference means the keys changed since you trusted them: expected if you changed them, worth a look if not.
 
-2. **Check what is installed.** An install should run, and install, only commits whose signatures were checked on your machine: fleet install prep there checks them and prints the line that pins them. Otherwise it takes what main has now, which anyone who can push could have changed.
+2. **Check this is the NixOS installer.** An install erases disks. Anywhere but a machine booted from the installer, a typo, or an older fleet that takes a subcommand for a host name, would start one on the machine you are on.
 
-3. **Check the network.** Everything comes over the network: the configuration and fleet-manager, and the packages from the binary cache. A cable usually works by itself; Wi-Fi needs joining.
+3. **Check what is installed.** An install should run, and install, only commits whose signatures were checked on your machine: fleet install prep there checks them and prints the line that pins them. Otherwise it takes what main has now, which anyone who can push could have changed.
 
-4. **Choose the host.** Each directory under hosts/ is one machine's configuration, and the name it will have.
+4. **Check the network.** Everything comes over the network: the configuration and fleet-manager, and the packages from the binary cache. A cable usually works by itself; Wi-Fi needs joining.
 
-5. **Look at HOST.** What os-install will do: the disks the layout names, whether they are encrypted, and whether the host needs enrolling. os-install reads the same again.
+5. **Choose the host.** Each directory under hosts/ is one machine's configuration, and the name it will have.
 
-6. **Choose the disks.** Each disk the layout names needs a device on this machine. Everything on those devices is erased. The disk the installer runs from is never offered.
+6. **Look at HOST.** What os-install will do: the disks the layout names, whether they are encrypted, and whether the host needs enrolling. os-install reads the same again.
 
-7. **Install HOST.** os-install does the rest, and asks for what it needs: the host name typed out before it erases anything, and the disk passphrase twice when the disks are encrypted. It partitions, formats and mounts the disks at /mnt, installs onto them, and creates the host's identity when it fetches secrets.
+7. **Choose the disks.** Each disk the layout names needs a device on this machine. Everything on those devices is erased. The disk the installer runs from is never offered.
 
-8. **Check the new disk.** What is on it before the reboot: the installed system and, for a host that fetches secrets, its identity.
+8. **Install HOST.** os-install does the rest, and asks for what it needs: the host name typed out before it erases anything, and the disk passphrase twice when the disks are encrypted. It partitions, formats and mounts the disks at /mnt, installs onto them, and creates the host's identity when it fetches secrets.
 
-9. **Reboot.** The machine is ready to start from its own disk.
+9. **Check the new disk.** What is on it before the reboot: the installed system and, for a host that fetches secrets, its identity.
+
+10. **Reboot.** The machine is ready to start from its own disk.
 
 It needs `nix` on the PATH; `fleet doctor` says where to get them.

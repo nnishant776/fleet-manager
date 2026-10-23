@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -46,6 +47,11 @@ var Install = &engine.Flow{
 	},
 	Needs: []string{"nix"},
 	Steps: []engine.Step{
+		{
+			Title: "Check this is the NixOS installer",
+			Why:   "An install erases disks. Anywhere but a machine booted from the installer, a typo, or an older fleet that takes a subcommand for a host name, would start one on the machine you are on.",
+			Do:    engine.Func(checkInstaller),
+		},
 		{
 			Title: "Check what is installed",
 			Why: "An install should run, and install, only commits whose signatures were checked on your machine: fleet install prep there checks them and prints the line that pins them. " +
@@ -418,4 +424,28 @@ func unlessPrivate(reason string) func(*engine.Ctx) (bool, string) {
 		}
 		return true, ""
 	}
+}
+
+// onInstaller says whether this machine runs the NixOS installer: NixOS, with
+// the installer's image mounted at /iso, as bootstrap checks it. Tests
+// replace it.
+var onInstaller = func() bool {
+	if _, err := os.Stat("/etc/NIXOS"); err != nil {
+		return false
+	}
+	mounts, err := os.ReadFile("/proc/mounts")
+	return err == nil && strings.Contains(string(mounts), " /iso ")
+}
+
+func checkInstaller(x *engine.Ctx) error {
+	switch {
+	case onInstaller():
+		x.UI.OK("booted from the NixOS installer")
+	case x.Options.DryRun:
+		x.UI.Skip("dry run: this is not the installer, so a real run would stop here")
+	default:
+		return errors.New("this machine is not booted from the NixOS installer, and an install erases disks: " +
+			"run fleet install there; on your own machine, fleet install prep prints what to run")
+	}
+	return nil
 }

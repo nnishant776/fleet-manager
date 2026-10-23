@@ -13,6 +13,8 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	os.Setenv("XDG_STATE_HOME", dir)
+	// Tests stand in for the installer; one checks the refusal.
+	onInstaller = func() bool { return true }
 	code := m.Run()
 	os.RemoveAll(dir)
 	os.Exit(code)
