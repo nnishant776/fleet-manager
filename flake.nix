@@ -78,7 +78,14 @@
     # `fleet-static` is the bare static binary for machines without Nix.
     packages = lib.genAttrs systems (system:
       let fleet = nixpkgs.legacyPackages.${system}.callPackage ./tools/fleet/package.nix { };
-      in { inherit fleet; fleet-static = fleet.static; default = fleet; });
+      in {
+        inherit fleet;
+        fleet-static = fleet.static;
+        default = fleet;
+        # For fleet host enroll to make a host's identity before the host runs a
+        # fleet configuration, from a commit checked on the maintainer's machine.
+        fleet-secrets-sync = (import ./lib/secrets-sync.nix { pkgs = nixpkgs.legacyPackages.${system}; }).sync;
+      });
 
     checks.x86_64-linux = {
       # Builds fleet, which runs its unit tests.
@@ -164,6 +171,10 @@
         nixosConfigurations);
   in {
     inherit nixosConfigurations darwinConfigurations homeConfigurations apps packages checks;
-    lib = { inherit mkFleet; };
+    lib = {
+      inherit mkFleet;
+      # GitHub's pinned SSH host keys (lib/forge-host-keys.nix), as text.
+      forgeHostKeys = { inherit (import ./lib/forge-host-keys.nix) text algorithms; };
+    };
   };
 }
