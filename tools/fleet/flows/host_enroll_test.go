@@ -138,6 +138,8 @@ func noTooling(respond func(engine.Spec) (engine.Result, error)) func(engine.Spe
 			res.Stdout = "git@github.com:example-org/secrets.git"
 		case s.Name == "git" && strings.Contains(args, "rev-parse FETCH_HEAD"):
 			res.Stdout = "abc123\n"
+		case s.Name == "nix" && strings.Contains(args, "c.fileSystems"):
+			res.Stdout = `{"fs":{"/":"/dev/disk/by-label/nixos","/boot":"/dev/disk/by-label/boot"},"efi":true,"disko":false}`
 		}
 		return res, err
 	}
@@ -252,7 +254,7 @@ func TestEnrollMakesAnExistingCheckoutTheConfigurations(t *testing.T) {
 		t.Fatalf("the checkout was not prepared with the script: %+v\n%s", prepared, strings.Join(fake.Commands(), "\n"))
 	}
 	cmds := strings.Join(fake.Commands(), "\n")
-	if strings.Index(cmds, "sh -s --") > strings.Index(cmds, "nixos-rebuild switch") {
+	if strings.Index(cmds, "sudo -n sh -s --") > strings.Index(cmds, "nixos-rebuild switch") {
 		t.Fatalf("prepared /etc/nixos after the switch:\n%s", cmds)
 	}
 	if strings.Contains(cmds, "remote set-url origin") {
@@ -265,7 +267,7 @@ func TestEnrollStopsOnAnEtcNixosWithChangesOfItsOwn(t *testing.T) {
 	if err == nil || !strings.Contains(out, "uncommitted changes or untracked files") {
 		t.Fatalf("went on with changes in /etc/nixos: %v\n%s", err, out)
 	}
-	for _, unwanted := range []string{"sh -s --", "nixos-rebuild"} {
+	for _, unwanted := range []string{"sudo -n sh -s --", "nixos-rebuild"} {
 		if got := ranMatching(fake, unwanted); len(got) > 0 {
 			t.Errorf("ran %s", got[0])
 		}
@@ -387,5 +389,134 @@ func TestEnrollAddsAndRegistersTheConfigurationKey(t *testing.T) {
 	if len(registered) != 2 || !strings.Contains(registered[0].Stdin, "fleet-deploy@pi") ||
 		!strings.Contains(registered[1].Stdin, "AAAACONFIG") {
 		t.Errorf("registered %d keys, want the deploy key then the configuration key\n%s", len(registered), out)
+	}
+}
+
+// A machine whose filesystems are not the ones its configuration names is
+// not switched: it would not boot.
+func TestEnrollDoesNotSwitchAMachineItsConfigurationDoesNotFit(t *testing.T) {
+	err, fake, out := runSwitch(t, noTooling(func(s engine.Spec) (engine.Result, error) {
+		if s.Name == "ssh" && strings.Contains(s.Stdin, "findmnt") {
+			return engine.Result{Stdout: "differs / /dev/disk/by-label/nixos /dev/sda2\nnoefi\n"}, nil
+		}
+		return enrollHost(false, false, false)(s)
+	}))
+	if err == nil {
+		t.Fatalf("switched a machine its configuration does not fit\n%s", out)
+	}
+	for _, want := range []string{"mounts /dev/disk/by-label/nixos at /, and pi has /dev/sda2 there", "boots with UEFI, and pi does not"} {
+		if !strings.Contains(flat(out), want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
+		}
+	}
+	if got := ranMatching(fake, "nixos-rebuild"); len(got) > 0 {
+		t.Fatalf("switched anyway: %s", got[0])
+	}
+}
+
+// A host without fleet's tools makes its identity before the switch, with
+// fleet-secrets-sync from the fleet-manager commit checked for it.
+func TestEnrollMakesTheIdentityBeforeTheSwitch(t *testing.T) {
+	err, fake, out := runSwitch(t, noTooling(enrollHost(false, false, false)))
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	// The commands as the host's shell gets them, in the order they ran.
+	init, switched := -1, -1
+	for i, s := range fake.Ran {
+		script := ""
+		if len(s.Args) > 0 {
+			script = s.Args[len(s.Args)-1]
+		}
+		if strings.Contains(script, "run 'git+https://github.com/nnishant776/fleet-manager?rev=abc123#fleet-secrets-sync' -- init --state /var/lib/fleet --host pi") {
+			init = i
+		}
+		if strings.Contains(script, "nixos-rebuild switch") {
+			switched = i
+		}
+	}
+	if init < 0 || switched < 0 || init > switched {
+		t.Fatalf("the identity was not made before the switch:\n%s", strings.Join(fake.Commands(), "\n"))
+	}
+}
+
+// privateEnroll answers like pi, running NixOS without fleet's tools, whose
+// configuration is private (git@github.com:example-org/inventory.git), and
+// like the checkout of that inventory in dir.
+func privateEnroll(dir string) func(engine.Spec) (engine.Result, error) {
+	doc := enrollDoc + "config_deploy_pubkey: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIConfigKey fleet-config@pi\n"
+	sum := sha256.Sum256([]byte(doc))
+	host := noTooling(enrollHost(false, false, false))
+	repo := prepRepo("git@github.com:example-org/inventory.git", "")
+	return func(s engine.Spec) (engine.Result, error) {
+		args := strings.Join(s.Args, " ")
+		last := ""
+		if len(s.Args) > 0 {
+			last = s.Args[len(s.Args)-1]
+		}
+		switch {
+		case s.Name == "git" && (strings.Contains(args, "-C "+dir) || strings.Contains(args, ":bootstrap") || strings.Contains(args, "verify-commit")):
+			return repo(s)
+		case s.Name == "nix" && strings.Contains(args, "conf.fleet.repo.url"):
+			return engine.Result{Stdout: "git@github.com:example-org/inventory.git"}, nil
+		case s.Name == "nix" && strings.Contains(args, "lib.forgeHostKeys.text"):
+			return engine.Result{Stdout: "github.com ssh-ed25519 AAAAC3NzaPinned\n"}, nil
+		case s.Name == "nix" && strings.Contains(args, "lib.forgeHostKeys.algorithms"):
+			return engine.Result{Stdout: "ssh-ed25519"}, nil
+		case s.Name == "ssh" && strings.Contains(last, "pi.enroll"):
+			return engine.Result{Stdout: doc + hex.EncodeToString(sum[:]) + "  /var/lib/fleet/pi.enroll\n"}, nil
+		}
+		return host(s)
+	}
+}
+
+// A running machine joins a private fleet without a reinstall: its identity
+// first, from the checked fleet-manager commit; both keys registered; then
+// the switch to the checked commit of its private configuration, fetched
+// with its own key and GitHub's pinned host keys.
+func TestEnrollAPrivateHostWithoutReinstalling(t *testing.T) {
+	dir := prepCheckout(t, pinnedFM)
+	var out bytes.Buffer
+	fake := &engine.Fake{Respond: privateEnroll(dir)}
+	x := &engine.Ctx{
+		Context: context.Background(), UI: ui.NewWith(&out, nil), Runner: fake,
+		Options: engine.Options{Yes: true}, Values: map[string]string{}, Stdin: strings.NewReader(""),
+		LookPath: func(t string) (string, error) { return "/fake/bin/" + t, nil },
+	}
+	err := engine.RunWith(x, HostEnroll, map[string]string{
+		"host": "pi", "flake": dir, "key": "/keys/home", "repo": t.TempDir(), "recovery": "",
+		"register-with": "cat >> /forge/authorized_keys", "sync": "false",
+	})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out.String())
+	}
+	at := map[string]int{}
+	for i, s := range fake.Ran {
+		script := s.String()
+		if len(s.Args) > 0 {
+			script = s.Args[len(s.Args)-1]
+		}
+		for name, frag := range map[string]string{
+			"init":     "run 'git+https://github.com/nnishant776/fleet-manager?rev=" + pinnedFM + "#fleet-secrets-sync' -- init",
+			"config":   "cat >> /forge/authorized_keys",
+			"pinned":   "cat > /var/lib/fleet/known_hosts.pinned",
+			"switch":   "nixos-rebuild switch --flake 'git+ssh://git@github.com/example-org/inventory.git?ref=main&rev=" + pinnedINV + "#pi'",
+			"with key": "'--setenv=GIT_SSH_COMMAND=ssh -i /var/lib/fleet/config_deploy_ed25519 -o IdentitiesOnly=yes -o GlobalKnownHostsFile=/var/lib/fleet/known_hosts.pinned",
+		} {
+			if strings.Contains(script, frag) {
+				at[name] = i
+			}
+		}
+	}
+	for _, name := range []string{"init", "config", "pinned", "switch", "with key"} {
+		if _, ok := at[name]; !ok {
+			t.Fatalf("%s did not happen:\n%s", name, strings.Join(fake.Commands(), "\n"))
+		}
+	}
+	if !(at["init"] < at["config"] && at["config"] < at["pinned"] && at["pinned"] < at["switch"]) {
+		t.Errorf("out of order: %v\n%s", at, strings.Join(fake.Commands(), "\n"))
+	}
+	if !strings.Contains(fake.Ran[at["pinned"]].Stdin, "AAAAC3NzaPinned") {
+		t.Error("the pinned keys written are not fleet-manager's")
 	}
 }

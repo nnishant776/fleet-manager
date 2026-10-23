@@ -79,54 +79,22 @@ var HostEnroll = &engine.Flow{
 		},
 		{
 			Title: "Choose the commit to switch {{.host}} to",
-			Why: "It does not run a configuration with secrets yet. Unless --switch-to names one, it gets the newest commit of main, " +
-				"once a key this checkout trusts has signed it: its own sync will take no other.",
+			Why: "It does not run a configuration with secrets yet. Unless --switch-to names one, it gets a commit a key you trust has signed, as its own sync will take no other: " +
+				"for a private configuration the one fleet install prep would install, otherwise the newest commit of main.",
 			When: unless("has_tooling", "it already runs a configuration with secrets"),
 			Do:   engine.Func(chooseSwitch),
 		},
 		{
-			Title: "Make /etc/nixos the configuration repository's checkout",
-			Why: "Once the host runs its fleet configuration, the sync owns /etc/nixos and makes it the configuration repository's. What is there now is kept first: " +
-				"plain files move to /etc/nixos.before-fleet, with their permissions; a git checkout keeps its history on the branch before-fleet, and its remote under that name.",
-			When: needsEtcNixos,
-			Do:   engine.Func(prepareEtcNixos),
-		},
-		{
-			Title: "Switch {{.host}} to its fleet configuration",
-			Why:   "The switch runs as a service on the host, so it finishes even if this connection drops.",
-			When:  unless("has_tooling", "it already runs a configuration with secrets"),
-			Do:    engine.Func(switchHost),
-		},
-		{
-			Title: "Point /etc/nixos at the configuration repository",
-			Why:   "Its sync fetches origin, which should be the repository its configuration names.",
-			When: func(x *engine.Ctx) (bool, string) {
-				switch {
-				case x.Value("has_checkout") != "true":
-					return false, "there is no checkout yet; the first-boot clone makes one"
-				case x.Value("config_url") == "":
-					return false, "could not read conf.fleet.repo.url from " + x.Value("flake")
-				case x.Value("origin") == x.Value("config_url"):
-					return false, "it fetches " + x.Value("origin") + " already"
-				}
-				return true, ""
-			},
-			Do: fleet.OnAdmin("sudo -n git -C /etc/nixos remote set-url origin {{.config_url}}"),
-		},
-		{
 			Title: "Create {{.host}}'s identity",
-			Why:   "Its age key decrypts its secrets, its deploy key fetches them, and its configuration key fetches a private configuration. All are made on the host and never leave it; init makes only what is missing.",
+			Why: "Its age key decrypts its secrets, its deploy key fetches them, and its configuration key fetches a private configuration. All are made on the host and never leave it; init makes only what is missing. " +
+				"A host without fleet's tools yet runs init from the fleet-manager commit checked above, before its switch, which for a private configuration needs the key.",
 			When: func(x *engine.Ctx) (bool, string) {
 				if x.Value("has_identity") == "true" && x.Value("has_config_key") == "true" {
 					return false, "it has one"
 				}
 				return true, ""
 			},
-			Do: fleet.OnAdmin("sudo -n fleet-secrets-sync init --state /var/lib/fleet --host {{.host}}").OK("created under /var/lib/fleet").
-				After(func(x *engine.Ctx) error {
-					x.Kept("identity", "{{.host}}'s new identity in /var/lib/fleet: the next run uses it, and removing it would lock the host out of the secrets it gets enrolled for")
-					return nil
-				}),
+			Do: engine.Func(createIdentity),
 		},
 		{
 			Title: "Copy its enrollment file here",
@@ -160,6 +128,42 @@ var HostEnroll = &engine.Flow{
 				return true, ""
 			},
 			Do: engine.Func(registerConfigKey),
+		},
+		{
+			Title: "Check its configuration fits {{.host}} as it is",
+			Why: "Without a reinstall, the configuration must describe the disks the machine has and boot the way it boots: " +
+				"a root or boot filesystem it does not have, or a UEFI boot loader on a machine without UEFI, would leave it unbootable after the switch.",
+			When: unless("has_tooling", "it already runs a configuration with secrets"),
+			Do:   engine.Func(checkFits),
+		},
+		{
+			Title: "Make /etc/nixos the configuration repository's checkout",
+			Why: "Once the host runs its fleet configuration, the sync owns /etc/nixos and makes it the configuration repository's. What is there now is kept first: " +
+				"plain files move to /etc/nixos.before-fleet, with their permissions; a git checkout keeps its history on the branch before-fleet, and its remote under that name.",
+			When: needsEtcNixos,
+			Do:   engine.Func(prepareEtcNixos),
+		},
+		{
+			Title: "Switch {{.host}} to its fleet configuration",
+			Why:   "The switch runs as a service on the host, so it finishes even if this connection drops. A private configuration is fetched with the host's configuration key.",
+			When:  unless("has_tooling", "it already runs a configuration with secrets"),
+			Do:    engine.Func(switchHost),
+		},
+		{
+			Title: "Point /etc/nixos at the configuration repository",
+			Why:   "Its sync fetches origin, which should be the repository its configuration names.",
+			When: func(x *engine.Ctx) (bool, string) {
+				switch {
+				case x.Value("has_checkout") != "true":
+					return false, "there is no checkout yet; the first-boot clone makes one"
+				case x.Value("config_url") == "":
+					return false, "could not read conf.fleet.repo.url from " + x.Value("flake")
+				case x.Value("origin") == x.Value("config_url"):
+					return false, "it fetches " + x.Value("origin") + " already"
+				}
+				return true, ""
+			},
+			Do: fleet.OnAdmin("sudo -n git -C /etc/nixos remote set-url origin {{.config_url}}"),
 		},
 		{
 			Title: "Sync {{.host}}",
@@ -251,7 +255,29 @@ id support >/dev/null 2>&1 && echo has_support=true || echo has_support=false`).
 // switch_rev the commit when it is main's, checked here.
 func chooseSwitch(x *engine.Ctx) error {
 	ref := x.Value("switch-to")
-	if ref == "" {
+	evalFlake := "{{.switch_ref}}"
+	switch {
+	case ref != "":
+	case sshURL(x.Value("config_url")):
+		// A private configuration: the commit fleet install prep would
+		// install, on the branch the host tracks, and the fleet-manager commit
+		// its flake.lock pins, both checked against your copies of the keys.
+		// prep's checks read the checkout's own origin; the host's is kept.
+		hostOrigin := x.Value("origin")
+		err := checkConfigCommit(x)
+		if err == nil {
+			err = checkInstallerCommit(x)
+		}
+		x.Values["origin"] = hostOrigin
+		if err != nil {
+			return err
+		}
+		ref = flakeAt(x.Value("config_url"), x.Value("config_ref"), x.Value("inv"))
+		x.Values["switch_rev"], x.Values["installer_rev"] = x.Value("inv"), x.Value("fm")
+		// Read from the checkout here, the same files at that commit, rather
+		// than fetched over SSH.
+		evalFlake = "{{.flake}}"
+	default:
 		rev, err := signedUpstreamMain(x)
 		if err != nil {
 			return err
@@ -259,12 +285,13 @@ func chooseSwitch(x *engine.Ctx) error {
 		// Fetched with git, so what the host builds is that commit's tree: a
 		// github: tarball is not checked against the commit it is named for.
 		ref = "git+" + fleet.UpstreamURL + "?rev=" + rev
-		x.Values["switch_rev"] = rev
+		x.Values["switch_rev"], x.Values["installer_rev"] = rev, rev
 	}
 	x.Values["switch_ref"] = ref
+	x.Values["eval_flake"] = evalFlake
 	// For the host's shell: a git+https reference has a ? in it.
 	x.Values["switch_target"] = engine.Quote(ref + "#" + x.Value("host"))
-	res, err := engine.Cmd("nix", "eval", "--raw", "{{.switch_ref}}#nixosConfigurations.{{.host}}.config.conf.secrets.repo.url").
+	res, err := engine.Cmd("nix", "eval", "--raw", evalFlake+"#nixosConfigurations.{{.host}}.config.conf.secrets.repo.url").
 		ReadOnly().Quiet().OK("its configuration there sets conf.secrets.repo.url").Run(x)
 	if err != nil {
 		return err
@@ -273,6 +300,71 @@ func chooseSwitch(x *engine.Ctx) error {
 		return fmt.Errorf("%s does not set conf.secrets.repo.url for %s: add it, with conf.fleet.repo.url, the signers file and support's key, and push", ref, x.Value("host"))
 	}
 	return nil
+}
+
+// privateFetch is how a host that does not run a fleet configuration yet
+// fetches its private one, before the switch: with its own configuration
+// key, GitHub's host keys pinned as fleet-manager carries them
+// (lib.forgeHostKeys, written by writePinnedKeys), as the sync will.
+const privateFetch = "ssh -i /var/lib/fleet/config_deploy_ed25519 -o IdentitiesOnly=yes " +
+	"-o GlobalKnownHostsFile=/var/lib/fleet/known_hosts.pinned -o HostKeyAlgorithms=%s " +
+	"-o UserKnownHostsFile=/var/lib/fleet/known_hosts -o StrictHostKeyChecking=accept-new"
+
+// installerAttr is fleet-manager at the commit checked for the installer,
+// for nix run on the host.
+func installerAttr(x *engine.Ctx, attr string) string {
+	return "git+" + fleet.UpstreamURL + "?rev=" + x.Value("installer_rev") + "#" + attr
+}
+
+// writePinnedKeys writes GitHub's pinned host keys, from the checked
+// fleet-manager commit, where privateFetch reads them, and sets the
+// GIT_SSH_COMMAND value for the host's shell as ssh_private.
+func writePinnedKeys(x *engine.Ctx) error {
+	if x.Value("ssh_private") != "" {
+		return nil
+	}
+	keys, err := engine.Cmd("nix", "eval", "--raw", installerAttr(x, "lib.forgeHostKeys.text")).
+		ReadOnly().Quiet().OK("read GitHub's pinned host keys from fleet-manager at {{.installer_rev}}").Run(x)
+	if err != nil {
+		return err
+	}
+	algs, err := engine.Cmd("nix", "eval", "--raw", installerAttr(x, "lib.forgeHostKeys.algorithms")).ReadOnly().Quiet().Run(x)
+	if err != nil {
+		return err
+	}
+	x.Values["pinned_keys"] = keys.Stdout
+	if _, err := fleet.OnAdmin(`sudo -n install -d -m 0700 /var/lib/fleet && sudo -n sh -c 'cat > /var/lib/fleet/known_hosts.pinned'`).
+		StdinFrom("pinned_keys").StdinNote("GitHub's pinned host keys").OK("wrote them to /var/lib/fleet/known_hosts.pinned").Run(x); err != nil {
+		return err
+	}
+	x.Values["ssh_private"] = fmt.Sprintf(privateFetch, strings.TrimSpace(algs.Stdout))
+	return nil
+}
+
+// createIdentity runs fleet-secrets-sync init: the host's own, or, on a host
+// without fleet's tools yet, the one of the fleet-manager commit checked for
+// the switch, with nix run.
+func createIdentity(x *engine.Ctx) error {
+	cmd := "sudo -n fleet-secrets-sync init --state /var/lib/fleet --host {{.host}}"
+	if x.Value("has_tooling") != "true" {
+		if x.Value("installer_rev") == "" {
+			// --switch-to named the configuration; the tools come from main's
+			// newest commit, once a key you trust has signed it.
+			rev, err := signedUpstreamMain(x)
+			if err != nil {
+				return err
+			}
+			x.Values["installer_rev"] = rev
+		}
+		x.Values["init_flake"] = engine.Quote(installerAttr(x, "fleet-secrets-sync"))
+		cmd = "sudo -n nix --extra-experimental-features 'nix-command flakes' run {{.init_flake}} -- init --state /var/lib/fleet --host {{.host}}"
+	}
+	_, err := fleet.OnAdmin(cmd).OK("created under /var/lib/fleet").
+		After(func(x *engine.Ctx) error {
+			x.Kept("identity", "{{.host}}'s new identity in /var/lib/fleet: the next run uses it, and removing it would lock the host out of the secrets it gets enrolled for")
+			return nil
+		}).Run(x)
+	return err
 }
 
 func needsEtcNixos(x *engine.Ctx) (bool, string) {
@@ -317,7 +409,16 @@ func prepareEtcNixos(x *engine.Ctx) error {
 	}
 	x.Values["prepare_script"] = prepareEtcNixosScript
 	x.Values["prepare_args"] = strings.Join([]string{engine.Quote(x.Value("config_url")), engine.Quote(ref), engine.Quote(x.Value("switch_rev"))}, " ")
-	_, err = fleet.OnAdmin("sudo -n sh -s -- {{.prepare_args}}").StdinFrom("prepare_script").StdinNote("prepare-etc-nixos.sh").
+	cmd := "sudo -n sh -s -- {{.prepare_args}}"
+	if sshURL(x.Value("config_url")) {
+		// A private configuration: fetched with the host's own key.
+		if err := writePinnedKeys(x); err != nil {
+			return err
+		}
+		x.Values["ssh_env"] = engine.Quote("GIT_SSH_COMMAND=" + x.Value("ssh_private"))
+		cmd = "sudo -n env {{.ssh_env}} sh -s -- {{.prepare_args}}"
+	}
+	_, err = fleet.OnAdmin(cmd).StdinFrom("prepare_script").StdinNote("prepare-etc-nixos.sh").
 		After(func(x *engine.Ctx) error {
 			x.Values["origin"], x.Values["has_checkout"] = x.Value("config_url"), "true"
 			x.Kept("etc-nixos", "/etc/nixos's own history on {{.host}}, on its branch before-fleet, and its old remote, as before-fleet")
@@ -327,13 +428,21 @@ func prepareEtcNixos(x *engine.Ctx) error {
 }
 
 func switchHost(x *engine.Ctx) error {
+	x.Values["switch_env"] = ""
+	if sshURL(x.Value("config_url")) && strings.HasPrefix(x.Value("switch_ref"), "git+ssh://") {
+		// A private configuration: nix fetches it with the host's own key.
+		if err := writePinnedKeys(x); err != nil {
+			return err
+		}
+		x.Values["switch_env"] = engine.Quote("--setenv=GIT_SSH_COMMAND=" + x.Value("ssh_private"))
+	}
 	// systemd-run gives the service a minimal PATH; nixos-rebuild needs the
 	// system's (it runs `test`).
 	// It runs as a unit on the host, so that a dropped connection or a stop
 	// here cannot cut it in half.
 	_, err := fleet.StillRunning(fleet.OnAdmin(`sudo -n systemctl reset-failed fleet-enroll-switch 2>/dev/null; `+
 		`sudo -n systemd-run --wait --collect --unit=fleet-enroll-switch `+
-		`--setenv=PATH=/run/wrappers/bin:/run/current-system/sw/bin `+
+		`--setenv=PATH=/run/wrappers/bin:/run/current-system/sw/bin {{.switch_env}} `+
 		`nixos-rebuild switch --flake {{.switch_target}}; s=$?; `+
 		`sudo -n journalctl -u fleet-enroll-switch -o cat -n 15 --no-pager; exit $s`).OK("switched"),
 		"the switch", "fleet-enroll-switch", "{{.admin}}").Run(x)
@@ -565,4 +674,71 @@ func deployKeys(x *engine.Ctx, slug string) ([]deployKey, error) {
 	}
 	var keys []deployKey
 	return keys, json.Unmarshal([]byte(res.Stdout), &keys)
+}
+
+// fitsScript runs on the host with: whether the configuration boots with
+// UEFI, then pairs of a mount point and the device the configuration names
+// for it. It prints a line for each that does not hold.
+const fitsScript = `set -u
+efi=$1; shift
+if [ "$efi" = true ] && [ ! -d /sys/firmware/efi ]; then echo "noefi"; fi
+while [ $# -ge 2 ]; do
+  m=$1 want=$2; shift 2
+  have=$(findmnt -no SOURCE "$m" 2>/dev/null | sed 's/\[.*//') || have=""
+  if [ -z "$have" ]; then echo "missing $m $want"; continue; fi
+  [ "$(readlink -f "$want")" = "$(readlink -f "$have")" ] || echo "differs $m $want $have"
+done`
+
+// checkFits compares what the configuration mounts at / and /boot, and
+// whether it boots with UEFI, with the host as it is.
+func checkFits(x *engine.Ctx) error {
+	res, err := engine.Cmd("nix", "eval", "--json", x.Value("eval_flake")+"#nixosConfigurations.{{.host}}.config", "--apply",
+		`c: { fs = builtins.mapAttrs (_: f: f.device) (builtins.intersectAttrs { "/" = null; "/boot" = null; } c.fileSystems); `+
+			`efi = c.boot.loader.systemd-boot.enable || (c.boot.loader.grub.enable && c.boot.loader.grub.efiSupport); `+
+			`disko = c.conf.hardware.disk.enable; }`).
+		ReadOnly().Quiet().OK("read its filesystems and boot loader").Run(x)
+	if err != nil || x.Options.DryRun && res.Stdout == "" {
+		return err
+	}
+	var want struct {
+		FS    map[string]string `json:"fs"`
+		EFI   bool              `json:"efi"`
+		Disko bool              `json:"disko"`
+	}
+	if err := json.Unmarshal([]byte(res.Stdout), &want); err != nil {
+		return fmt.Errorf("%s's filesystems: %w", x.Value("host"), err)
+	}
+	args := []string{fmt.Sprint(want.EFI)}
+	for _, m := range []string{"/", "/boot"} {
+		if dev := want.FS[m]; strings.HasPrefix(dev, "/dev/") {
+			args = append(args, engine.Quote(m), engine.Quote(dev))
+		}
+	}
+	x.Values["fits_args"], x.Values["fits_script"] = strings.Join(args, " "), fitsScript
+	out, err := fleet.OnAdmin("sh -s -- {{.fits_args}}").StdinFrom("fits_script").StdinNote("the check").ReadOnly().Quiet().Run(x)
+	if err != nil {
+		return err
+	}
+	var problems []string
+	for _, line := range strings.Split(strings.TrimSpace(out.Stdout), "\n") {
+		f := strings.Fields(line)
+		switch {
+		case len(f) == 1 && f[0] == "noefi":
+			problems = append(problems, "the configuration boots with UEFI, and "+x.Value("host")+" does not")
+		case len(f) == 3 && f[0] == "missing":
+			problems = append(problems, "the configuration mounts "+f[2]+" at "+f[1]+", and nothing is mounted there on "+x.Value("host"))
+		case len(f) == 4 && f[0] == "differs":
+			problems = append(problems, "the configuration mounts "+f[2]+" at "+f[1]+", and "+x.Value("host")+" has "+f[3]+" there")
+		}
+	}
+	if len(problems) > 0 {
+		msg := strings.Join(problems, "; ")
+		if want.Disko {
+			msg += ". Its configuration has the disk layout os-install makes (conf.hardware.disk.enable): " +
+				"a machine installed otherwise needs conf.hardware.disk.enable = false and its own hardware-configuration.nix"
+		}
+		return errors.New(msg + "; not switching it")
+	}
+	x.UI.OK("its filesystems and boot loader match " + x.Value("host"))
+	return nil
 }
