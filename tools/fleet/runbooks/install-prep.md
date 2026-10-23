@@ -37,6 +37,6 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 3. **Check the fleet-manager commit the installer comes from.** bootstrap, fleet and os-install come from fleet-manager. It is the commit the configuration's flake.lock pins, fetched with git and checked against the same signers file.
 
-4. **Run this on the installer.** On the machine booted from the NixOS installer. Typing it is error-prone: set a password there with passwd, then ssh nixos@\<its address> from here and paste it.
+4. **Run this on the installer.** On the machine booted from the NixOS installer. Typing it is error-prone: set a password there with passwd, then ssh nixos@\<its address> from here and paste it. Before you answer ssh's question about the host key, compare the fingerprint it shows with the one the installer's own screen shows (ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub there): something else on the network could pose as it, and would get the disk passphrase you type.
 
 It needs `git`, `nix` on the PATH; `fleet doctor` says where to get them.

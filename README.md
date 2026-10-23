@@ -91,7 +91,10 @@ That line fetches `bootstrap` by that commit, checks it against a SHA-256
 worked out on your machine, and runs it with `REV` and `FLAKE` pinned to those
 two commits. Everything after that is fetched with git, by hash. On the
 installer ISO, set a password with `passwd` and paste the line over SSH rather
-than typing it.
+than typing it. When ssh asks about the installer's host key, compare the
+fingerprint with the one the installer's own screen shows (`ssh-keygen -lf
+/etc/ssh/ssh_host_ed25519_key.pub` there). Something else on the network could
+pose as the installer, and would get the disk passphrase you type.
 
 A private host is installed only this way: without the pins, `bootstrap`
 stops, unless `UNPINNED=1` is in front of `sh`. A public host is installed

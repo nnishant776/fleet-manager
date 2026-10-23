@@ -55,8 +55,10 @@ var InstallPrep = &engine.Flow{
 		},
 		{
 			Title: "Run this on the installer",
-			Why:   "On the machine booted from the NixOS installer. Typing it is error-prone: set a password there with passwd, then ssh nixos@<its address> from here and paste it.",
-			Do:    engine.Func(printInstallLine),
+			Why: "On the machine booted from the NixOS installer. Typing it is error-prone: set a password there with passwd, then ssh nixos@<its address> from here and paste it. " +
+				"Before you answer ssh's question about the host key, compare the fingerprint it shows with the one the installer's own screen shows " +
+				"(ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub there): something else on the network could pose as it, and would get the disk passphrase you type.",
+			Do: engine.Func(printInstallLine),
 		},
 	},
 }
