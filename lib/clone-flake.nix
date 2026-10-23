@@ -33,7 +33,9 @@ pkgs.writeShellApplication {
       exit 2
     fi
 
-    args=(-q)
+    # One branch only: with lib.mkFleet's hostBranches, the others hold
+    # other hosts' definitions.
+    args=(-q --single-branch)
     if [ -n "$ref" ]; then args+=(--branch "$ref"); fi
     git clone "''${args[@]}" -- "$url" "$2" || exit 1
     if [ -n "$rev" ]; then

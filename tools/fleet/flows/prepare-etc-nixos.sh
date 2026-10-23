@@ -27,7 +27,8 @@ fi
 if g rev-parse -q --verify HEAD >/dev/null; then
   g branch -f before-fleet HEAD
 fi
-g remote add origin "$url"
+# Only the branch it tracks: the others may hold other hosts' definitions.
+g remote add -t "$ref" origin "$url"
 g fetch -q origin "+refs/heads/$ref:refs/remotes/origin/$ref"
 
 record=""

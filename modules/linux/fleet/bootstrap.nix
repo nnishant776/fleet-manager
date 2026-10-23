@@ -54,7 +54,9 @@ let
       # fine.
       tmp="$(mktemp -d "$(dirname "$repo")/.fleet-bootstrap.XXXXXX")"
       trap 'rm -rf "$tmp"' EXIT
-      git clone --branch ${lib.escapeShellArg cfg.repo.ref} ${lib.escapeShellArg cfg.repo.url} "$tmp/checkout"
+      # Only the branch it tracks: with lib.mkFleet's hostBranches, the others
+      # hold other hosts' definitions.
+      git clone --single-branch --branch ${lib.escapeShellArg cfg.repo.ref} ${lib.escapeShellArg cfg.repo.url} "$tmp/checkout"
       installed=""
       ${if revision != null then ''
         if git -C "$tmp/checkout" checkout --quiet ${revision}; then

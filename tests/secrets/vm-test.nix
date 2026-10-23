@@ -125,6 +125,15 @@ let
       git add -A
       signed_git commit -q -S -m "Configuration snapshot for the scratch host"
       git push -q origin main
+      # Another host's branch, as lib.mkFleet's hostBranches makes them: this
+      # host must never fetch it (subtest 18).
+      git switch -q --orphan host/other
+      git rm -q -rf --ignore-unmatch .
+      echo "another host's definition" > other-host.nix
+      git add other-host.nix
+      signed_git commit -q -S -m "Another host's branch"
+      git push -q origin host/other
+      git rev-parse HEAD > "$out/other-branch"
     )
   '';
 
@@ -501,5 +510,19 @@ pkgs.testers.runNixOSTest {
         status, out = fleet.execute(f"{clone}{'0' * 40}' /tmp/missing 2>&1")
         assert status == 3 and "is it pushed?" in out, f"exit {status}: {out}"
         fleet.fail("test -e /tmp/missing")
+
+    with subtest("18: the host fetches only the branch it tracks"):
+        # The forge also has another host's branch, as with lib.mkFleet's
+        # hostBranches. Neither the first-boot clone nor any sync since
+        # fetched it, and a git fetch by hand would not either.
+        other = fleet.succeed("cat ${fixtures}/other-branch").strip()
+        fleet.fail(f"git -C /etc/nixos cat-file -e {other}")
+        refs = fleet.succeed("git -C /etc/nixos for-each-ref --format='%(refname)'")
+        assert "other" not in refs, refs
+        fetch = fleet.succeed("git -C /etc/nixos config --get-all remote.origin.fetch").strip()
+        assert fetch == "+refs/heads/main:refs/remotes/origin/main", fetch
+        # Nor does the clone os-install makes.
+        fleet.succeed(f"GIT_SSH_COMMAND='{ssh}' fleet-clone-flake 'git+${configUrl}?ref=main' /tmp/one-branch")
+        fleet.fail(f"git -C /tmp/one-branch cat-file -e {other}")
   '';
 }

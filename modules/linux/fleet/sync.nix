@@ -104,6 +104,10 @@ let
       # from the new one, and resetLocalChanges moves the checkout over, even
       # to an unrelated history. What it fetches is verified as always.
       git -C "$repo" remote set-url origin ${lib.escapeShellArg cfg.repo.url}
+      # Only the branch it tracks, even for a git fetch run by hand: with
+      # lib.mkFleet's hostBranches, the other branches hold other hosts'
+      # definitions.
+      git -C "$repo" config remote.origin.fetch "+refs/heads/$ref:refs/remotes/origin/$ref"
       ${(import ./config-fetch.nix { inherit config lib; }).line}
 
       # The network may not be up yet on a machine that does not wait for it
