@@ -442,6 +442,7 @@ instead. That repository pins this one and builds its hosts with
     hosts = ./config/hosts;             # one folder per host, as hosts/ here
     users = ./config/users;             # optional, as users/ here
     extraSystems = [ "x86_64-linux" ];  # the apps where you and CI run them
+    hostBranches = true;                # each host fetches only its own files (below)
   };
 }
 ```
@@ -484,12 +485,41 @@ conf.fleet.repo.url = "git@github.com:example-org/inventory.git";
 The key has to be a read-only deploy key of the private repository.
 `fleet host enroll <host> --flake <checkout>` registers it with `gh`.
 
+**Each host gets only its own files.** Add `hostBranches = true;` to the
+`lib.mkFleet` call above, and each host tracks a branch of its own,
+`host/<name>`, instead of `main`. The branch holds:
+
+- `flake.nix`, `flake.lock` and `fleet/`;
+- the host's folder and the folders of its users;
+- the paths listed in `shared`, such as modules the hosts share.
+
+Nothing of the other hosts is on it. Hosts, the installer and enroll fetch
+that one branch, so the other hosts' definitions never reach a host's
+checkout or its Nix store. `main` stays the full inventory: you edit there,
+and CI checks it. After pushing a change to `main`, run this on your machine:
+
+```bash
+fleet inventory publish --flake <checkout>
+```
+
+It checks that main's newest commit is signed by a key you trust and pushed.
+It cuts each host's branch from that commit without touching the checkout, and
+checks that each host builds from its branch alone. Then it adds a signed
+commit to every branch whose files changed, and pushes them once you approve.
+A host that needs a file outside its folder fails that check; list the file in
+`shared`. Each branch has a history of its own, so a host's protection against
+older commits works as before. One limit remains: root on a host can still use
+its configuration key to fetch the other branches, since GitHub's deploy keys
+cannot be limited to a branch.
+
 - **Installing a host from it:** run `fleet install prep <host> --flake
   <checkout of it>` on your machine, and the line it prints on the installer
   (see [First run](#first-run)). It sets
-  `FLAKE=git+ssh://git@github.com/example-org/inventory?rev=<commit>`, and
-  `os-install` installs exactly that commit. `os-install --flake
-  git+ssh://…?rev=<commit> -H <host>` does the same by hand. The host can't read the
+  `FLAKE=git+ssh://git@github.com/example-org/inventory?ref=host/<host>&rev=<commit>`,
+  and `os-install` installs exactly that commit of the host's branch. With
+  host branches, prep also checks that the branch was published from main's
+  newest commit. `os-install --flake git+ssh://…?ref=…&rev=<commit> -H <host>`
+  does the same by hand. The host can't read the
   repository yet, so the identity comes first. The install shows the
   enrollment file and waits while you enroll the host and register both of its
   keys. Then it clones the private flake with the configuration key and
@@ -497,15 +527,17 @@ The key has to be a read-only deploy key of the private repository.
   [Installing a machine](#installing-a-machine) shows what moves where.
 - **Moving a running host to it:**
   1. Copy the host's folder there, with `repo.url` set to the private
-     repository's SSH address, and push.
+     repository's SSH address, and push. With host branches, publish its
+     branch too: `fleet inventory publish <host> --flake <checkout of it>`.
   2. Run `fleet host enroll <host> --flake <checkout of it>`, which adds the
      configuration key on the host and registers it.
   3. Switch the host, once, to its configuration there, fetched with its
      configuration key. Nothing in this repository names the private one; the
-     host learns it from the configuration it switches to:
+     host learns it from the configuration it switches to. With host
+     branches, switch to its branch (without them, leave `?ref=…` out):
      ```bash
      sudo env GIT_SSH_COMMAND="ssh -i /var/lib/fleet/config_deploy_ed25519 -o IdentitiesOnly=yes" \
-       nixos-rebuild switch --flake git+ssh://git@github.com/example-org/inventory#<host>
+       nixos-rebuild switch --flake 'git+ssh://git@github.com/example-org/inventory?ref=host/<host>#<host>'
      ```
   4. Right after the switch, start the host's record over, and sync:
      ```bash
