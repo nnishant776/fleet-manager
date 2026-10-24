@@ -296,6 +296,10 @@ pkgs.testers.runNixOSTest {
         assert out == "alice 400", f"ssh_key is '{out}', expected 'alice 400'"
 
     with subtest("4: alice logs in on the console with her deployed password"):
+        # Kernel messages printed after getty's prompt can scroll it off the
+        # screen on a slow boot; an empty line makes getty print it again.
+        fleet.wait_for_unit("getty@tty1.service")
+        fleet.send_key("ret")
         fleet.wait_until_tty_matches("1", "login: ")
         fleet.send_chars("alice\n")
         fleet.wait_until_tty_matches("1", "Password")
