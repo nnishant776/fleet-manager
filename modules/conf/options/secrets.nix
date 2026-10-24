@@ -29,8 +29,8 @@
       description = ''
         Where the host's identity, enrollment file and secrets snapshot live:
         its age key, `age.key`, and its two deploy keys,
-        `secrets_deploy_ed25519` for the secrets repository and
-        `config_deploy_ed25519` for a private configuration. Expected to be its
+        `secrets_deploy_key` for the secrets repository and
+        `config_deploy_key` for a private configuration. Expected to be its
         own volume. Unused when `repo.url` is `null`.
       '';
     };

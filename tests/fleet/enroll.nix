@@ -104,7 +104,7 @@ pkgs.testers.runNixOSTest {
       # Root reaches the forge with the host's deploy key, once registered.
       programs.ssh.extraConfig = ''
         Host forge
-          IdentityFile /var/lib/fleet/secrets_deploy_ed25519
+          IdentityFile /var/lib/fleet/secrets_deploy_key
           IdentitiesOnly yes
           StrictHostKeyChecking accept-new
       '';
@@ -156,13 +156,13 @@ pkgs.testers.runNixOSTest {
         for want in ["has no identity yet", "created under /var/lib/fleet", "checksum",
                      "committed: host-enroll: newhost", "stopped the one-key agent"]:
             assert want in out, f"output lacks {want!r}:\n{out}"
-        newhost.succeed("test -f /var/lib/fleet/age.key -a -f /var/lib/fleet/secrets_deploy_ed25519")
+        newhost.succeed("test -f /var/lib/fleet/age.key -a -f /var/lib/fleet/secrets_deploy_key")
         forge.succeed("su git -c 'git -C /var/lib/forge/secrets.git log --format=%s main' | grep -x 'host-enroll: newhost'")
         forge.succeed(
             "su git -c 'git -C /var/lib/forge/secrets.git -c gpg.ssh.allowedSignersFile=${fixtures}/allowed_signers"
             " verify-commit main'"
         )
-        key = newhost.succeed("cut -d' ' -f1,2 /var/lib/fleet/secrets_deploy_ed25519.pub").strip()
+        key = newhost.succeed("cut -d' ' -f1,2 /var/lib/fleet/secrets_deploy_key.pub").strip()
         forge.succeed(f"grep -qF '{key}' /home/git/.ssh/authorized_keys")
 
     with subtest("the host then fetches, verifies and decrypts its secrets"):

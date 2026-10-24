@@ -449,9 +449,9 @@ pkgs.testers.runNixOSTest {
             "fleet-secrets-sync init --state /tmp/old --host ${hostName}"
             " --from-identity ${fixtures}/identity-without-config.yaml"
         )
-        secrets_pub = fleet.succeed("cat /tmp/old/secrets_deploy_ed25519.pub").strip()
-        pub = fleet.succeed("cat /tmp/old/config_deploy_ed25519.pub").strip()
-        fleet.succeed("test \"$(stat -c %a /tmp/old/config_deploy_ed25519)\" = 600")
+        secrets_pub = fleet.succeed("cat /tmp/old/secrets_deploy_key.pub").strip()
+        pub = fleet.succeed("cat /tmp/old/config_deploy_key.pub").strip()
+        fleet.succeed("test \"$(stat -c %a /tmp/old/config_deploy_key)\" = 600")
         enroll = fleet.succeed("cat /tmp/old/${hostName}.enroll")
         assert f"secrets_deploy_pubkey: {secrets_pub}" in enroll, enroll
         assert f"config_deploy_pubkey: {pub}" in enroll, enroll
@@ -460,28 +460,45 @@ pkgs.testers.runNixOSTest {
         assert fleet.succeed("sha256sum /tmp/old/* | sort") == before, "a second init changed the identity"
         # The host's own enrollment file lists the key the config account takes.
         real = fleet.succeed("cat /var/lib/fleet/${hostName}.enroll")
-        assert "config_deploy_pubkey: " + fleet.succeed("cat /var/lib/fleet/config_deploy_ed25519.pub").strip() in real, real
+        assert "config_deploy_pubkey: " + fleet.succeed("cat /var/lib/fleet/config_deploy_key.pub").strip() in real, real
 
     with subtest("15: a host from before the keys were renamed keeps its deploy key"):
         # Its state as it was: deploy_ed25519, and an enrollment file that says deploy_pubkey.
         fleet.succeed(
             "install -d -m 700 /tmp/legacy",
             "cp -a /tmp/old/age.key /tmp/legacy/",
-            "cp -a /tmp/old/secrets_deploy_ed25519 /tmp/legacy/deploy_ed25519",
-            "cp -a /tmp/old/secrets_deploy_ed25519.pub /tmp/legacy/deploy_ed25519.pub",
+            "cp -a /tmp/old/secrets_deploy_key /tmp/legacy/deploy_ed25519",
+            "cp -a /tmp/old/secrets_deploy_key.pub /tmp/legacy/deploy_ed25519.pub",
         )
         fleet.succeed("fleet-secrets-sync init --state /tmp/legacy --host ${hostName}")
-        fleet.succeed("test -f /tmp/legacy/secrets_deploy_ed25519 -a ! -e /tmp/legacy/deploy_ed25519")
-        assert fleet.succeed("cat /tmp/legacy/secrets_deploy_ed25519.pub").strip() == secrets_pub
+        fleet.succeed("test -f /tmp/legacy/secrets_deploy_key -a ! -e /tmp/legacy/deploy_ed25519")
+        assert fleet.succeed("cat /tmp/legacy/secrets_deploy_key.pub").strip() == secrets_pub
         enroll = fleet.succeed("cat /tmp/legacy/${hostName}.enroll")
         assert f"secrets_deploy_pubkey: {secrets_pub}" in enroll and "\ndeploy_pubkey" not in enroll, enroll
         # The sync, too, renames a key it finds under the old name.
         fleet.succeed(
-            "mv /var/lib/fleet/secrets_deploy_ed25519 /var/lib/fleet/deploy_ed25519",
-            "mv /var/lib/fleet/secrets_deploy_ed25519.pub /var/lib/fleet/deploy_ed25519.pub",
+            "mv /var/lib/fleet/secrets_deploy_key /var/lib/fleet/deploy_ed25519",
+            "mv /var/lib/fleet/secrets_deploy_key.pub /var/lib/fleet/deploy_ed25519.pub",
         )
         fleet.succeed(sync_cmd)
-        fleet.succeed("test -f /var/lib/fleet/secrets_deploy_ed25519 -a ! -e /var/lib/fleet/deploy_ed25519")
+        fleet.succeed("test -f /var/lib/fleet/secrets_deploy_key -a ! -e /var/lib/fleet/deploy_ed25519")
+
+    with subtest("15b: a host whose keys were named after their type keeps them"):
+        fleet.succeed(
+            "install -d -m 700 /tmp/legacy2",
+            "cp -a /tmp/old/age.key /tmp/legacy2/",
+            "cp -a /tmp/old/secrets_deploy_key /tmp/legacy2/secrets_deploy_ed25519",
+            "cp -a /tmp/old/secrets_deploy_key.pub /tmp/legacy2/secrets_deploy_ed25519.pub",
+            "cp -a /tmp/old/config_deploy_key /tmp/legacy2/config_deploy_ed25519",
+            "cp -a /tmp/old/config_deploy_key.pub /tmp/legacy2/config_deploy_ed25519.pub",
+        )
+        fleet.succeed("fleet-secrets-sync init --state /tmp/legacy2 --host ${hostName}")
+        for name in ["secrets_deploy_key", "config_deploy_key"]:
+            fleet.succeed(f"test \"$(stat -c %a /tmp/legacy2/{name})\" = 600")
+        fleet.succeed("test ! -e /tmp/legacy2/secrets_deploy_ed25519 -a ! -e /tmp/legacy2/secrets_deploy_ed25519.pub")
+        fleet.succeed("test ! -e /tmp/legacy2/config_deploy_ed25519 -a ! -e /tmp/legacy2/config_deploy_ed25519.pub")
+        assert fleet.succeed("cat /tmp/legacy2/secrets_deploy_key.pub").strip() == secrets_pub
+        assert fleet.succeed("cat /tmp/legacy2/config_deploy_key.pub").strip() == pub
 
     with subtest("16: a forge answering for github.com without GitHub's host key is refused"):
         # github.com resolves to the forge here, as for a machine in the
@@ -501,7 +518,7 @@ pkgs.testers.runNixOSTest {
         # machine, with a newer one pushed since.
         older = forge.succeed("su config -c 'git -C /var/lib/forge/config.git rev-parse main~1'").strip()
         ssh = (
-            "ssh -i /var/lib/fleet/config_deploy_ed25519 -o IdentitiesOnly=yes"
+            "ssh -i /var/lib/fleet/config_deploy_key -o IdentitiesOnly=yes"
             " -o UserKnownHostsFile=/var/lib/fleet/known_hosts -o StrictHostKeyChecking=accept-new"
         )
         clone = f"GIT_SSH_COMMAND='{ssh}' fleet-clone-flake 'git+${configUrl}?ref=main&rev="

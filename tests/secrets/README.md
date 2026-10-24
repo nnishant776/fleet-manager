@@ -13,7 +13,7 @@ is missing. `down` stops the sshd and keeps the files.
 `up` creates in DIR:
 
 - `recovery.key` (maintainer age key), `host.key` (the scratch host's age
-  identity), `secrets_deploy_ed25519` (its secrets deploy key), `signing_ed25519` with
+  identity), `secrets_deploy_key` (its secrets deploy key), `signing_ed25519` with
   `allowed_signers` (principal `maintainer@test`), `support_ed25519`.
 - `sshd/`: host key, `sshd_config` and `authorized_keys` (the deploy key). An
   sshd runs as the current user on port 2222 and accepts only that user.
@@ -30,7 +30,7 @@ It also writes `hosts/scratch-secrets/harness.nix` and `allowed_signers`
 
 A QEMU guest with user networking reaches the host's sshd at `10.0.2.2:2222`;
 the URLs in `harness.nix` use that address. The scratch host's deploy key is
-`DIR/secrets_deploy_ed25519` and its age identity `DIR/host.key`.
+`DIR/secrets_deploy_key` and its age identity `DIR/host.key`.
 
 ## End-to-end VM test
 

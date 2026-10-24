@@ -18,6 +18,6 @@ let
 in {
   inherit ssh;
   line = lib.optionalString ssh ''
-    export GIT_SSH_COMMAND=${lib.escapeShellArg "ssh -i ${state}/config_deploy_ed25519 -o IdentitiesOnly=yes ${pins.options} -o UserKnownHostsFile=${state}/known_hosts -o StrictHostKeyChecking=accept-new"}
+    export GIT_SSH_COMMAND=${lib.escapeShellArg "ssh -i ${state}/config_deploy_key -o IdentitiesOnly=yes ${pins.options} -o UserKnownHostsFile=${state}/known_hosts -o StrictHostKeyChecking=accept-new"}
   '';
 }

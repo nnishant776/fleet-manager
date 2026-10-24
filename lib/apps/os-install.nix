@@ -187,7 +187,7 @@ pkgs.writeShellApplication {
       url="''${flake#git+}"
       url="''${url%%\?*}"
       clone="$ramState/flake"
-      export GIT_SSH_COMMAND="ssh -i $ramState/config_deploy_ed25519 -o IdentitiesOnly=yes ${pins.options} -o UserKnownHostsFile=$ramState/known_hosts -o StrictHostKeyChecking=accept-new"
+      export GIT_SSH_COMMAND="ssh -i $ramState/config_deploy_key -o IdentitiesOnly=yes ${pins.options} -o UserKnownHostsFile=$ramState/known_hosts -o StrictHostKeyChecking=accept-new"
       attempt=0
       until fleet-clone-flake "$flake" "$clone"; do
         rm -rf "$clone"

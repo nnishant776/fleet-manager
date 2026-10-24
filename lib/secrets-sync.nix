@@ -78,15 +78,23 @@ in
         fi
       }
 
-      # The secrets deploy key was deploy_ed25519 before each key's name said
-      # what it fetches; whichever runs first, init or a sync, renames it once.
+      # The keys were once named after their type, and the secrets one earlier
+      # still just deploy_ed25519; whichever runs first, init or a sync, renames
+      # them once. Of two old secrets keys, the newer name is the one in use.
       rename_old_keys() {
-        if [ -e "$state/deploy_ed25519" ] && [ ! -e "$state/secrets_deploy_ed25519" ]; then
-          mv "$state/deploy_ed25519" "$state/secrets_deploy_ed25519"
-          if [ -e "$state/deploy_ed25519.pub" ]; then
-            mv "$state/deploy_ed25519.pub" "$state/secrets_deploy_ed25519.pub"
+        local pair old new
+        for pair in secrets_deploy_ed25519:secrets_deploy_key \
+                    deploy_ed25519:secrets_deploy_key \
+                    config_deploy_ed25519:config_deploy_key; do
+          old="''${pair%%:*}"
+          new="''${pair##*:}"
+          if [ -e "$state/$old" ] && [ ! -e "$state/$new" ]; then
+            mv "$state/$old" "$state/$new"
+            if [ -e "$state/$old.pub" ]; then
+              mv "$state/$old.pub" "$state/$new.pub"
+            fi
           fi
-        fi
+        done
       }
 
       case "$command" in
@@ -103,58 +111,58 @@ in
               || fail 14 "$from_identity: unsupported version"
             [ "$(yq '.host' "$from_identity")" = "$host" ] \
               || fail 14 "$from_identity is the identity of $(yq '.host' "$from_identity"), not $host"
-            if [ -e age.key ] || [ -e secrets_deploy_ed25519 ]; then
+            if [ -e age.key ] || [ -e secrets_deploy_key ]; then
               [ "$force" -eq 1 ] || fail 14 "$state already has an identity; --force replaces it"
             fi
             # Documents exported before the keys were renamed say deploy_key and
             # config_key.
             yq '.age_key' "$from_identity" > age.key || fail 14 "cannot write age.key"
-            yq '.secrets_deploy_key // .deploy_key' "$from_identity" > secrets_deploy_ed25519 \
-              || fail 14 "cannot write secrets_deploy_ed25519"
-            chmod 600 age.key secrets_deploy_ed25519
-            ssh-keygen -y -f secrets_deploy_ed25519 > secrets_deploy_ed25519.pub \
+            yq '.secrets_deploy_key // .deploy_key' "$from_identity" > secrets_deploy_key \
+              || fail 14 "cannot write secrets_deploy_key"
+            chmod 600 age.key secrets_deploy_key
+            ssh-keygen -y -f secrets_deploy_key > secrets_deploy_key.pub \
               || fail 14 "secrets deploy key in $from_identity is not a valid private key"
-            chmod 644 secrets_deploy_ed25519.pub
+            chmod 644 secrets_deploy_key.pub
             # Documents exported before the configuration key existed have none; one
             # is made below.
             if yq -e '.config_deploy_key // .config_key' "$from_identity" >/dev/null 2>&1; then
-              yq '.config_deploy_key // .config_key' "$from_identity" > config_deploy_ed25519 \
-                || fail 14 "cannot write config_deploy_ed25519"
-              chmod 600 config_deploy_ed25519
-              ssh-keygen -y -f config_deploy_ed25519 > config_deploy_ed25519.pub \
+              yq '.config_deploy_key // .config_key' "$from_identity" > config_deploy_key \
+                || fail 14 "cannot write config_deploy_key"
+              chmod 600 config_deploy_key
+              ssh-keygen -y -f config_deploy_key > config_deploy_key.pub \
                 || fail 14 "configuration deploy key in $from_identity is not a valid private key"
-              chmod 644 config_deploy_ed25519.pub
+              chmod 644 config_deploy_key.pub
             fi
           else
             if [ "$force" -eq 1 ]; then
-              rm -f age.key secrets_deploy_ed25519 secrets_deploy_ed25519.pub config_deploy_ed25519 config_deploy_ed25519.pub
+              rm -f age.key secrets_deploy_key secrets_deploy_key.pub config_deploy_key config_deploy_key.pub
             fi
             if [ ! -e age.key ]; then
               age-keygen -o age.key >/dev/null 2>&1 || fail 14 "age-keygen failed"
               chmod 600 age.key
             fi
-            if [ ! -e secrets_deploy_ed25519 ]; then
-              rm -f secrets_deploy_ed25519.pub
-              ssh-keygen -q -t ed25519 -N "" -C "fleet-secrets@$host" -f secrets_deploy_ed25519 \
+            if [ ! -e secrets_deploy_key ]; then
+              rm -f secrets_deploy_key.pub
+              ssh-keygen -q -t ed25519 -N "" -C "fleet-secrets@$host" -f secrets_deploy_key \
                 || fail 14 "ssh-keygen failed"
-              chmod 600 secrets_deploy_ed25519
-              chmod 644 secrets_deploy_ed25519.pub
+              chmod 600 secrets_deploy_key
+              chmod 644 secrets_deploy_key.pub
             fi
           fi
 
           # The key that reads the configuration repository, for a fleet whose
           # configuration is private (an SSH conf.fleet.repo.url). Made like the
           # others, and added to an identity made before it existed.
-          if [ ! -e config_deploy_ed25519 ]; then
-            rm -f config_deploy_ed25519.pub
-            ssh-keygen -q -t ed25519 -N "" -C "fleet-config@$host" -f config_deploy_ed25519 \
+          if [ ! -e config_deploy_key ]; then
+            rm -f config_deploy_key.pub
+            ssh-keygen -q -t ed25519 -N "" -C "fleet-config@$host" -f config_deploy_key \
               || fail 14 "ssh-keygen failed"
-            chmod 600 config_deploy_ed25519
-            chmod 644 config_deploy_ed25519.pub
+            chmod 600 config_deploy_key
+            chmod 644 config_deploy_key.pub
           fi
 
           # Keys may have been restored without their public half.
-          for key in secrets_deploy_ed25519 config_deploy_ed25519; do
+          for key in secrets_deploy_key config_deploy_key; do
             if [ ! -e "$key.pub" ]; then
               ssh-keygen -y -f "$key" > "$key.pub" || fail 14 "cannot derive $key.pub"
               chmod 644 "$key.pub"
@@ -162,8 +170,8 @@ in
           done
 
           recipient="$(age-keygen -y age.key)" || fail 14 "cannot read the recipient of age.key"
-          secrets_pubkey="$(cat secrets_deploy_ed25519.pub)"
-          config_pubkey="$(cat config_deploy_ed25519.pub)"
+          secrets_pubkey="$(cat secrets_deploy_key.pub)"
+          config_pubkey="$(cat config_deploy_key.pub)"
 
           # Rewritten only when missing or out of step with the key files, so a
           # second run changes nothing; a file from before the keys were
@@ -191,13 +199,13 @@ in
           cd "$state"
           rename_old_keys
           [ -f age.key ] || fail 14 "no identity: $state/age.key is missing (run init)"
-          [ -f secrets_deploy_ed25519 ] || fail 14 "no identity: $state/secrets_deploy_ed25519 is missing (run init)"
+          [ -f secrets_deploy_key ] || fail 14 "no identity: $state/secrets_deploy_key is missing (run init)"
           umask 077
 
           tmp="$(mktemp -d)"
           trap 'rm -rf "$tmp"' EXIT
 
-          export GIT_SSH_COMMAND="ssh -i $state/secrets_deploy_ed25519 -o IdentitiesOnly=yes ${pins.options} -o UserKnownHostsFile=$state/known_hosts -o StrictHostKeyChecking=accept-new"
+          export GIT_SSH_COMMAND="ssh -i $state/secrets_deploy_key -o IdentitiesOnly=yes ${pins.options} -o UserKnownHostsFile=$state/known_hosts -o StrictHostKeyChecking=accept-new"
 
           # Partial and sparse where the forge allows it; some servers refuse
           # the filter outright, and a plain shallow clone then does the job.
@@ -365,15 +373,19 @@ in
           echo "host: $(yq '.host' "$enroll")"
           echo "age_key: |"
           sed 's/^/  /' "$state/age.key"
-          # A key init or the sync has not renamed yet goes by its old name.
-          secrets_key="$state/secrets_deploy_ed25519"
-          [ -f "$secrets_key" ] || secrets_key="$state/deploy_ed25519"
+          # A key init or the sync has not renamed yet goes by an old name.
+          for secrets_key in secrets_deploy_key secrets_deploy_ed25519 deploy_ed25519; do
+            [ -f "$state/$secrets_key" ] && break
+          done
           echo "secrets_deploy_key: |"
-          sed 's/^/  /' "$secrets_key"
-          if [ -f "$state/config_deploy_ed25519" ]; then
-            echo "config_deploy_key: |"
-            sed 's/^/  /' "$state/config_deploy_ed25519"
-          fi
+          sed 's/^/  /' "$state/$secrets_key"
+          for config_key in config_deploy_key config_deploy_ed25519; do
+            if [ -f "$state/$config_key" ]; then
+              echo "config_deploy_key: |"
+              sed 's/^/  /' "$state/$config_key"
+              break
+            fi
+          done
           ;;
       esac
     '';

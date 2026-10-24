@@ -212,7 +212,7 @@ echo "login=$(id -un)"
 sudo -n true 2>/dev/null && echo sudo=true || echo sudo=false
 command -v fleet-secrets-sync >/dev/null && echo has_tooling=true || echo has_tooling=false
 sudo -n test -f /var/lib/fleet/age.key && echo has_identity=true || echo has_identity=false
-sudo -n test -f /var/lib/fleet/config_deploy_ed25519 && echo has_config_key=true || echo has_config_key=false
+sudo -n test -f /var/lib/fleet/config_deploy_key && echo has_config_key=true || echo has_config_key=false
 test -d /etc/nixos/.git && echo has_checkout=true || echo has_checkout=false
 g() { sudo -n git -c safe.directory=/etc/nixos -C /etc/nixos "$@"; }
 echo "origin=$(g remote get-url origin 2>/dev/null)"
@@ -306,7 +306,7 @@ func chooseSwitch(x *engine.Ctx) error {
 // fetches its private one, before the switch: with its own configuration
 // key, GitHub's host keys pinned as fleet-manager carries them
 // (lib.forgeHostKeys, written by writePinnedKeys), as the sync will.
-const privateFetch = "ssh -i /var/lib/fleet/config_deploy_ed25519 -o IdentitiesOnly=yes " +
+const privateFetch = "ssh -i /var/lib/fleet/config_deploy_key -o IdentitiesOnly=yes " +
 	"-o GlobalKnownHostsFile=/var/lib/fleet/known_hosts.pinned -o HostKeyAlgorithms=%s " +
 	"-o UserKnownHostsFile=/var/lib/fleet/known_hosts -o StrictHostKeyChecking=accept-new"
 

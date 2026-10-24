@@ -501,7 +501,7 @@ func TestEnrollAPrivateHostWithoutReinstalling(t *testing.T) {
 			"config":   "cat >> /forge/authorized_keys",
 			"pinned":   "cat > /var/lib/fleet/known_hosts.pinned",
 			"switch":   "nixos-rebuild switch --flake 'git+ssh://git@github.com/example-org/inventory.git?ref=main&rev=" + pinnedINV + "#pi'",
-			"with key": "'--setenv=GIT_SSH_COMMAND=ssh -i /var/lib/fleet/config_deploy_ed25519 -o IdentitiesOnly=yes -o GlobalKnownHostsFile=/var/lib/fleet/known_hosts.pinned",
+			"with key": "'--setenv=GIT_SSH_COMMAND=ssh -i /var/lib/fleet/config_deploy_key -o IdentitiesOnly=yes -o GlobalKnownHostsFile=/var/lib/fleet/known_hosts.pinned",
 		} {
 			if strings.Contains(script, frag) {
 				at[name] = i
