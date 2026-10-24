@@ -504,6 +504,36 @@ pkgs.testers.runNixOSTest {
         assert fleet.succeed("cat /tmp/legacy2/secrets_deploy_key.pub").strip() == secrets_pub
         assert fleet.succeed("cat /tmp/legacy2/config_deploy_key.pub").strip() == pub
 
+    with subtest("15c: check finds nested keys and whole-file secrets"):
+        # check never decrypts, so the snapshot here is plain YAML; the flake has
+        # no inputs (the VM has no network) and declares only the secrets.
+        fleet.succeed(
+            "install -d -m 700 /tmp/check-state /tmp/check-state/secrets /tmp/check-state/secrets/hosts",
+            "install -d /tmp/check-flake",
+            "printf 'flat: ENC[x]\nhotspot:\n  wls0: ENC[y]\nsops:\n  mac: ENC[z]\n' > /tmp/check-state/secrets/hosts/h.yaml",
+            "cp ${pkgs.writeText "check-flake.nix" ''
+              {
+                outputs = _:
+                  let
+                    s = key: { sopsFile = "/x/secrets/hosts/h.yaml"; inherit key; };
+                    host = secrets: { config.sops.secrets = secrets; };
+                    good = { flat = s "flat"; "hotspot/wls0" = s "hotspot/wls0"; whole = s ""; };
+                  in {
+                    nixosConfigurations.good = host good;
+                    nixosConfigurations.bad = host (good // { nope = s "hotspot/nope"; });
+                  };
+              }
+            ''} /tmp/check-flake/flake.nix",
+        )
+        check_cmd = (
+            "NIX_CONFIG='extra-experimental-features = nix-command flakes'"
+            " fleet-secrets-sync check --state /tmp/check-state --config path:/tmp/check-flake --host "
+        )
+        fleet.succeed(check_cmd + "good")
+        status, out = fleet.execute(check_cmd + "bad 2>&1")
+        assert status == 12, f"check exited {status}: {out}"
+        assert "missing key hotspot/nope" in out, out
+
     with subtest("16: a forge answering for github.com without GitHub's host key is refused"):
         # github.com resolves to the forge here, as for a machine in the
         # middle: it serves the same repository, with its own host key.

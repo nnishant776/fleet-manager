@@ -311,6 +311,10 @@ in
             exit 1
           fi
 
+          # Keys are looked up as sops-nix does: a / nests (hotspot/wls0 is wls0
+          # under hotspot), and an empty key is the whole file.
+          # shellcheck disable=SC2016 # $s is yq's variable, not the shell's
+          lookup='((strenv(k) | split("/") | .[]) as $s ireduce (.; .[$s])) != null'
           problems=0
           while IFS=$'\t' read -r file key; do
             [ -n "$file" ] || continue
@@ -318,7 +322,7 @@ in
             if [ ! -f "$path" ]; then
               echo "missing: $path"
               problems=1
-            elif [ "$(k="$key" yq 'has(strenv(k))' "$path")" != true ]; then
+            elif [ -n "$key" ] && [ "$(k="$key" yq "$lookup" "$path")" != true ]; then
               echo "missing key $key in $path"
               problems=1
             fi
