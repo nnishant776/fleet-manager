@@ -27,7 +27,7 @@ var HostEnroll = &engine.Flow{
 	Long: "For a host that already runs, and whose configuration in this repository sets\n" +
 		"conf.secrets.repo.url. fleet logs in as its admin account through an agent that\n" +
 		"holds one key only, switches the host to that configuration if it does not run\n" +
-		"it yet, creates its identity, copies its enrollment file here and checks it,\n" +
+		"it yet or runs another repository's, creates its identity, copies its enrollment file here and checks it,\n" +
 		"enrolls it in the secrets repository and pushes, registers its deploy key\n" +
 		"read-only, then syncs the host and checks it. Steps that are done already are\n" +
 		"skipped, so it can be run again after a failure.",
@@ -79,7 +79,7 @@ var HostEnroll = &engine.Flow{
 		},
 		{
 			Title: "Choose the commit to switch {{.host}} to",
-			Why: "It does not run a configuration with secrets yet. Unless --switch-to names one, it gets a commit a key you trust has signed, as its own sync will take no other: " +
+			Why: "It does not run a configuration with secrets from this repository yet. Unless --switch-to names one, it gets a commit a key you trust has signed, as its own sync will take no other: " +
 				"for a private configuration the one fleet install prep would install, otherwise the newest commit of main.",
 			When: needsSwitch,
 			Do:   engine.Func(chooseSwitch),
@@ -367,10 +367,25 @@ func createIdentity(x *engine.Ctx) error {
 	return err
 }
 
+// moving says whether the host runs a fleet configuration from another
+// repository than the one this configuration names: it has a checkout, and
+// that checkout's origin is not conf.fleet.repo.url.
+func moving(x *engine.Ctx) bool {
+	origin, url := x.Value("origin"), x.Value("config_url")
+	return x.Value("has_tooling") == "true" && x.Value("has_checkout") == "true" && origin != "" && url != "" && origin != url
+}
+
 // needsSwitch is whether the host is to be switched to its configuration in
-// this repository.
+// this repository: it does not run a fleet configuration yet, or runs one from
+// another repository.
 func needsSwitch(x *engine.Ctx) (bool, string) {
-	return unless("has_tooling", "it already runs a configuration with secrets")(x)
+	switch {
+	case x.Value("has_tooling") != "true", moving(x):
+		return true, ""
+	case x.Value("origin") != "" && x.Value("origin") == x.Value("config_url"):
+		return false, "it already runs a configuration with secrets from " + x.Value("config_url")
+	}
+	return false, "it already runs a configuration with secrets"
 }
 
 // The read-only commands that list what /etc/nixos holds, for the person to
@@ -412,6 +427,9 @@ func warnAboutEtcNixos(x *engine.Ctx) error {
 		x.UI.Text(shown)
 	}
 	host := x.Value("host")
+	if moving(x) {
+		x.UI.Note(host + " moves from " + x.Value("origin") + " to " + x.Value("config_url") + ".")
+	}
 	x.UI.Note("Everything in /etc/nixos on " + host + " is deleted after the switch, and the fleet's checkout takes its place. " +
 		"Copy anything you still need first, such as hardware-configuration.nix, into the host's folder in the configuration repository; " +
 		"nixos-generate-config --show-hardware-config prints it again.")

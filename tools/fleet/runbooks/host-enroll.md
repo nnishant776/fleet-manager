@@ -7,7 +7,7 @@ Enroll a running host: identity, enrollment, deploy key, first sync.
 For a host that already runs, and whose configuration in this repository sets
 conf.secrets.repo.url. fleet logs in as its admin account through an agent that
 holds one key only, switches the host to that configuration if it does not run
-it yet, creates its identity, copies its enrollment file here and checks it,
+it yet or runs another repository's, creates its identity, copies its enrollment file here and checks it,
 enrolls it in the secrets repository and pushes, registers its deploy key
 read-only, then syncs the host and checks it. Steps that are done already are
 skipped, so it can be run again after a failure.
@@ -46,7 +46,7 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 3. **Look at HOST.** What is done already decides which of the next steps run.
 
-4. **Choose the commit to switch HOST to.** It does not run a configuration with secrets yet. Unless --switch-to names one, it gets a commit a key you trust has signed, as its own sync will take no other: for a private configuration the one fleet install prep would install, otherwise the newest commit of main.
+4. **Choose the commit to switch HOST to.** It does not run a configuration with secrets from this repository yet. Unless --switch-to names one, it gets a commit a key you trust has signed, as its own sync will take no other: for a private configuration the one fleet install prep would install, otherwise the newest commit of main.
 
 5. **Create HOST's identity.** Its age key decrypts its secrets, its deploy key fetches them, and its configuration key fetches a private configuration. All are made on the host and never leave it; init makes only what is missing. A host without fleet's tools yet runs init from the fleet-manager commit checked above, before its switch, which for a private configuration needs the key.
 

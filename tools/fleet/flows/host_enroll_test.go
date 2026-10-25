@@ -148,6 +148,11 @@ func noTooling(respond func(engine.Spec) (engine.Result, error)) func(engine.Spe
 // runSwitch enrolls pi, which needs a switch, from a checkout with a signers
 // file.
 func runSwitch(t *testing.T, respond func(engine.Spec) (engine.Result, error)) (error, *engine.Fake, string) {
+	return runSwitchSync(t, respond, "false")
+}
+
+// runSwitchSync is runSwitch, with the sync at the end if sync is true.
+func runSwitchSync(t *testing.T, respond func(engine.Spec) (engine.Result, error), sync string) (error, *engine.Fake, string) {
 	t.Helper()
 	trustCopies(t, fleet.UpstreamURL)
 	flake := t.TempDir()
@@ -162,7 +167,7 @@ func runSwitch(t *testing.T, respond func(engine.Spec) (engine.Result, error)) (
 	}
 	err := engine.RunWith(x, HostEnroll, map[string]string{
 		"host": "pi", "flake": flake, "key": "/keys/home", "repo": t.TempDir(), "recovery": "",
-		"register-with": "true", "sync": "false",
+		"register-with": "true", "sync": sync,
 	})
 	return err, fake, out.String()
 }
@@ -475,6 +480,8 @@ func TestEnrollAddsAndRegistersTheConfigurationKey(t *testing.T) {
 		case s.Name == "ssh" && strings.Contains(args, "has_tooling"):
 			r, err := base(s)
 			r.Stdout = strings.Replace(r.Stdout, "has_config_key=true", "has_config_key=false", 1)
+			// It fetches that repository already: this is not a move.
+			r.Stdout = strings.Replace(r.Stdout, "origin=https://github.com/nnishant776/fleet-manager.git", "origin=git@github.com:example-org/inventory.git", 1)
 			return r, err
 		case s.Name == "ssh" && strings.Contains(args, "pi.enroll"):
 			return engine.Result{Stdout: doc + hex.EncodeToString(sum[:]) + "  /var/lib/fleet/pi.enroll\n"}, nil
@@ -622,5 +629,69 @@ func TestEnrollAPrivateHostWithoutReinstalling(t *testing.T) {
 	}
 	if !strings.Contains(fake.Ran[at["pinned"]].Stdin, "AAAAC3NzaPinned") {
 		t.Error("the pinned keys written are not fleet-manager's")
+	}
+}
+
+// movingHost answers like pi, which runs a fleet configuration from
+// https://example.org/old.git, with a checkout there, while the configuration
+// here names another repository; upstream main is at abc123.
+func movingHost(respond func(engine.Spec) (engine.Result, error)) func(engine.Spec) (engine.Result, error) {
+	return withEtcNixos(func(s engine.Spec) (engine.Result, error) {
+		res, err := respond(s)
+		args := strings.Join(s.Args, " ")
+		switch {
+		case s.Name == "nix" && strings.Contains(args, "conf.secrets.repo.url"):
+			res.Stdout = "git@github.com:example-org/secrets.git"
+		case s.Name == "git" && strings.Contains(args, "rev-parse FETCH_HEAD"):
+			res.Stdout = "abc123\n"
+		case s.Name == "nix" && strings.Contains(args, "c.fileSystems"):
+			res.Stdout = `{"fs":{"/":"/dev/disk/by-label/nixos","/boot":"/dev/disk/by-label/boot"},"efi":true,"disko":false}`
+		}
+		return res, err
+	}, "git", false, "https://example.org/old.git")
+}
+
+// A host that runs a fleet configuration from another repository is moved to
+// this one: the commit is chosen, the configuration checked against the
+// machine, the person warned, the host switched, /etc/nixos remade from
+// scratch, and only then the sync.
+func TestEnrollMovesAHostFromAnotherRepository(t *testing.T) {
+	err, fake, out := runSwitchSync(t, listsEtcNixos(movingHost(enrollHost(true, true, false)), "origin: https://example.org/old.git\nbranch: main\nuncommitted or untracked entries: 0\n"), "true")
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	cmds := strings.Join(fake.Commands(), "\n")
+	order := []string{"verify-commit abc123", "sh -s -- true / /dev/disk", "symbolic-ref", "nixos-rebuild switch", "sudo -n sh -s -- https://github.com", "systemctl start config-auto-update"}
+	pos := 0
+	for _, want := range order {
+		i := strings.Index(cmds[pos:], want)
+		if i < 0 {
+			t.Fatalf("%q missing or out of order in:\n%s", want, cmds)
+		}
+		pos += i
+	}
+	if !strings.Contains(flat(out), "pi moves from https://example.org/old.git to https://github.com/nnishant776/fleet-manager.git") {
+		t.Errorf("did not say where it moves from and to:\n%s", out)
+	}
+	_, remake := remakeRuns(fake)
+	if !strings.Contains(remake.String(), "sudo -n sh -s -- https://github.com/nnishant776/fleet-manager.git true") {
+		t.Errorf("the old checkout is not replaced: %+v", remake)
+	}
+}
+
+// A host that runs this repository's configuration already is not switched or
+// remade, and the steps say which repository.
+func TestEnrollSkipsTheSwitchOfAHostOnThisRepository(t *testing.T) {
+	err, fake, out := runEnroll(t, withEtcNixos(enrollHost(true, true, false), "git", false, "https://github.com/nnishant776/fleet-manager.git"))
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if got := strings.Count(out, "skipped: it already runs a configuration with secrets from https://github.com/nnishant776/fleet-manager.git"); got != 4 {
+		t.Errorf("%d steps name the repository, want 4 (choose, fit, warn, switch):\n%s", got, out)
+	}
+	for _, unwanted := range []string{"nixos-rebuild", "verify-commit", "sh -s -- true / /dev/disk", "sudo -n sh -s -- https://github.com"} {
+		if got := ranMatching(fake, unwanted); len(got) > 0 {
+			t.Errorf("ran %s", got[0])
+		}
 	}
 }
