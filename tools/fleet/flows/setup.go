@@ -203,17 +203,24 @@ func configureSigning(x *engine.Ctx) error {
 	}
 	for _, repo := range []string{x.Value("config"), x.Value("repo")} {
 		for _, kv := range settings {
-			current, _ := engine.Silently(x, nil, "git", "-C", repo, "config", "--local", "--get", kv[0])
-			if sameSetting(repo, current, kv[1]) {
-				continue
-			}
-			if _, err := engine.Cmd("git", "-C", repo, "config", kv[0], kv[1]).Run(x); err != nil {
+			if err := setGitConfig(x, repo, kv[0], kv[1]); err != nil {
 				return err
 			}
 		}
 		x.UI.OK(repo + " signs every commit")
 	}
 	return nil
+}
+
+// setGitConfig sets a checkout's own git setting unless it already has that
+// value.
+func setGitConfig(x *engine.Ctx, repo, key, value string) error {
+	current, _ := engine.Silently(x, nil, "git", "-C", repo, "config", "--local", "--get", key)
+	if sameSetting(repo, current, value) {
+		return nil
+	}
+	_, err := engine.Cmd("git", "-C", repo, "config", key, value).Run(x)
+	return err
 }
 
 // hookPaths are the repository's own hook and the installed copy, always in

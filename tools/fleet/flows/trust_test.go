@@ -184,3 +184,45 @@ func TestEveryCommandWithAFlakeComparesKeysFirst(t *testing.T) {
 		}
 	}
 }
+
+func TestTrustSignersPointsTheCheckoutsGitAtYourCopy(t *testing.T) {
+	dir := trustCheckout(t, signersLine("me@test", keyMine))
+	x, fake, out := newFakeCtx(trustRepo(dir, true))
+	if err := engine.RunWith(x, TrustSigners, map[string]string{"flake": dir}); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	copyPath, _ := fleet.SignersCopy("git@github.com:example-org/inventory.git")
+	want := "git -C " + dir + " config gpg.ssh.allowedSignersFile " + copyPath
+	if cmds := strings.Join(fake.Commands(), "\n"); !strings.Contains(cmds, want) {
+		t.Errorf("did not run %q:\n%s", want, cmds)
+	}
+	for _, c := range fake.Commands() {
+		for _, other := range []string{"gpg.format ", "user.signingkey ", "commit.gpgsign "} {
+			if strings.Contains(strings.ToLower(c), "config "+other) {
+				t.Errorf("configured signing: %s", c)
+			}
+		}
+	}
+}
+
+func TestTrustSignersLeavesGitAloneWhenItAlreadyChecksYourCopy(t *testing.T) {
+	signers := signersLine("me@test", keyMine)
+	dir := trustCheckout(t, signers)
+	copyPath, _ := fleet.SignersCopy("git@github.com:example-org/inventory.git")
+	_ = fleet.WriteSignersCopy(copyPath, []byte(signers))
+	respond := trustRepo(dir, true)
+	x, fake, out := newFakeCtx(func(s engine.Spec) (engine.Result, error) {
+		if s.Name == "git" && strings.Contains(strings.Join(s.Args, " "), "config --local --get gpg.ssh.allowedSignersFile") {
+			return engine.Result{Stdout: copyPath + "\n"}, nil
+		}
+		return respond(s)
+	})
+	if err := engine.RunWith(x, TrustSigners, map[string]string{"flake": dir}); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	for _, c := range fake.Commands() {
+		if strings.Contains(c, " config gpg.") {
+			t.Errorf("changed git's settings though it checks your copy: %s", c)
+		}
+	}
+}

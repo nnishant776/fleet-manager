@@ -42,6 +42,11 @@ var TrustSigners = &engine.Flow{
 			Why:   "The first copy is the one you approve now. A later change is taken only through a commit signed by a key already in your copy.",
 			Do:    engine.Func(keepSignersCopy),
 		},
+		{
+			Title: "Point the checkout's git at your copy",
+			Why:   "git then checks signatures against your copy too, not against the checkout's own file, which a pushed commit could change.",
+			Do:    engine.Func(pointGitAtSignersCopy),
+		},
 	},
 }
 
@@ -155,6 +160,17 @@ func keepSignersCopy(x *engine.Ctx) error {
 		return err
 	}
 	return writeSignersCopy(x, "Update your copy to these keys?")
+}
+
+// pointGitAtSignersCopy makes the checkout's git check signatures against
+// your copy of its keys. Only that setting: signing is setup's.
+func pointGitAtSignersCopy(x *engine.Ctx) error {
+	copyPath := x.Value("signers_copy")
+	if _, err := os.Stat(copyPath); err != nil && !x.Options.DryRun {
+		x.UI.Skip("you kept no copy, so git keeps checking against the checkout's own file")
+		return nil
+	}
+	return setGitConfig(x, x.Value("flake"), "gpg.ssh.allowedSignersFile", copyPath)
 }
 
 func writeSignersCopy(x *engine.Ctx, question string) error {

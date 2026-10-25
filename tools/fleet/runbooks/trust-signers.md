@@ -34,4 +34,6 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 2. **Keep your copy of them.** The first copy is the one you approve now. A later change is taken only through a commit signed by a key already in your copy.
 
+3. **Point the checkout's git at your copy.** git then checks signatures against your copy too, not against the checkout's own file, which a pushed commit could change.
+
 It needs `git` on the PATH; `fleet doctor` says where to get them.
