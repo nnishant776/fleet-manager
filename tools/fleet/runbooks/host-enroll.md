@@ -66,15 +66,11 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 11. **Check its configuration fits HOST as it is.** Without a reinstall, the configuration must describe the disks the machine has and boot the way it boots: a root or boot filesystem it does not have, or a UEFI boot loader on a machine without UEFI, would leave it unbootable after the switch.
 
-12. **Make /etc/nixos the configuration repository's checkout.** Once the host runs its fleet configuration, the sync owns /etc/nixos and makes it the configuration repository's. What is there now is kept first: plain files move to /etc/nixos.before-fleet, with their permissions; a git checkout keeps its history on the branch before-fleet, and its remote under that name.
+12. **Warn that /etc/nixos on HOST will be replaced.** /etc/nixos belongs to the fleet's configuration: nothing it holds now is kept. This step changes nothing; it shows what is there and asks, before the switch, so that you can copy what you need first.
 
-13. **Switch HOST to its fleet configuration.** The switch runs as a service on the host, so it finishes even if this connection drops. A private configuration is fetched with the host's configuration key.
+13. **Switch HOST to its fleet configuration.** The switch runs as a service on the host, so it finishes even if this connection drops. A private configuration is fetched with the host's configuration key. /etc/nixos is replaced after it.
 
-14. **Point /etc/nixos at the configuration repository.** Its sync fetches origin, which should be the repository its configuration names.
-
-   ```
-   $ SSH_AUTH_SOCK=AGENT ssh -A -o BatchMode=yes -o ConnectTimeout=10 ADMIN@ADDRESS 'sudo -n git -C /etc/nixos remote set-url origin CONFIG_URL'
-   ```
+14. **Make /etc/nixos the configuration repository's checkout.** The sync owns /etc/nixos and fetches the repository the configuration names. What was there is deleted, and the first-boot clone, fleet-bootstrap, makes the checkout at the commit the host runs and records it as the first the machine accepted.
 
 15. **Sync HOST.** Its first sync with secrets: fetch and verify them, then its configuration.
 

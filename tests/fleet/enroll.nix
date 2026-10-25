@@ -8,16 +8,17 @@
 #   commit, pushes, and registers the deploy key;
 # - the host can then fetch, verify and decrypt its secrets with that key;
 # - a second run finds everything done and changes nothing;
-# - the script enroll runs before a host's first switch makes a checkout of
-#   something else the configuration's, keeping its history and remote, and
-#   refuses one with untracked files.
+# - the script enroll runs after a host's first switch makes /etc/nixos the
+#   configuration's checkout, whether it held a checkout of something else or
+#   plain files, with a stub in place of the first-boot clone, and fails
+#   clearly when the clone fails.
 # Run it with `nix build .#checks.x86_64-linux.fleet-enroll`.
 { pkgs, inputs, self }:
 let
   lib = pkgs.lib;
   mkHost = import ../../lib/mkHost.nix { inherit inputs; };
   hostNode = mkHost.modulesFor { hostName = "newhost"; hostDir = ./enroll-host; };
-  prepareScript = ../../tools/fleet/flows/prepare-etc-nixos.sh;
+  remakeScript = ../../tools/fleet/flows/remake-etc-nixos.sh;
 
   fixtures = pkgs.runCommand "fleet-enroll-fixtures" {
     nativeBuildInputs = with pkgs; [ age openssh git ];
@@ -181,33 +182,68 @@ pkgs.testers.runNixOSTest {
         after = forge.succeed("su git -c 'git -C /var/lib/forge/secrets.git rev-parse main'")
         assert before == after, "a second run changed the secrets repository"
 
-    with subtest("a checkout of something else becomes the configuration's, keeping what it had"):
-        # What enroll runs on a host before its first switch, here on scratch
-        # directories in place of /etc/nixos and /var/lib/fleet-sync.
+    with subtest("/etc/nixos is replaced by the configuration's checkout, whatever it held"):
+        # What enroll runs on a host after its first switch, on scratch
+        # directories in place of /etc/nixos and /var/lib/fleet-sync. This test
+        # keeps the host's own fleet-bootstrap off and has no configuration
+        # repository on the forge, and a system built here records no revision
+        # to accept, so the unit cannot make a real clone: a stub systemctl
+        # does what the unit does when it is started and finds no checkout
+        # (its condition), which is the one thing the script relies on.
         newhost.succeed(
             "git init -q --bare -b main /srv/config.git",
             "git clone -q /srv/config.git /tmp/c",
             "git -C /tmp/c -c user.name=x -c user.email=x@test commit -q --allow-empty -m one",
             "git -C /tmp/c push -q origin HEAD:main",
-            "git init -q -b main /tmp/etc-nixos",
-            "git -C /tmp/etc-nixos -c user.name=x -c user.email=x@test commit -q --allow-empty -m mine",
-            "git -C /tmp/etc-nixos remote add origin https://example.org/mine.git",
+            "mkdir -p /tmp/stub",
+            "printf '%s\\n' '#!/bin/sh'"
+            " '[ -d \"$DIR/.git\" ] && exit 0'"
+            " 'rm -rf \"$DIR\"'"
+            " 'git clone -q --branch main \"$URL\" \"$DIR\"'"
+            " 'mkdir -p \"$STATE\"'"
+            " 'git -C \"$DIR\" rev-parse HEAD > \"$STATE/accepted\"'"
+            " 'echo \"$URL\" > \"$STATE/accepted.url\"' > /tmp/stub/systemctl",
+            "chmod +x /tmp/stub/systemctl",
         )
         one = newhost.succeed("git -C /srv/config.git rev-parse main").strip()
-        mine = newhost.succeed("git -C /tmp/etc-nixos rev-parse HEAD").strip()
-        newhost.succeed(f"sh ${prepareScript} file:///srv/config.git main {one} /tmp/etc-nixos /tmp/fleet-sync")
+        url = "file:///srv/config.git"
+        env = f"PATH=/tmp/stub:$PATH URL={url} DIR=/tmp/etc-nixos STATE=/tmp/fleet-sync"
         git = "git -C /tmp/etc-nixos"
-        assert newhost.succeed(f"{git} rev-parse HEAD").strip() == one
-        assert newhost.succeed(f"{git} rev-parse before-fleet").strip() == mine
-        assert newhost.succeed(f"{git} remote get-url before-fleet").strip() == "https://example.org/mine.git"
-        assert newhost.succeed(f"{git} remote get-url origin").strip() == "file:///srv/config.git"
-        assert newhost.succeed(f"{git} remote get-url --push origin").strip() == "no_push"
-        assert newhost.succeed("cat /tmp/fleet-sync/accepted").strip() == one
-        assert newhost.succeed("cat /tmp/fleet-sync/accepted.url").strip() == "file:///srv/config.git"
-        # One with untracked files is refused, and left as it is.
-        newhost.succeed("git init -q -b main /tmp/dirty", "touch /tmp/dirty/hardware-configuration.nix")
-        newhost.fail(f"sh ${prepareScript} file:///srv/config.git main {one} /tmp/dirty /tmp/fleet-sync-dirty")
-        newhost.fail("git -C /tmp/dirty remote get-url origin")
-        newhost.fail("test -e /tmp/fleet-sync-dirty")
+
+        def check_replaced():
+            assert newhost.succeed(f"{git} rev-parse HEAD").strip() == one
+            assert newhost.succeed(f"{git} remote").strip() == "origin"
+            assert newhost.succeed(f"{git} remote get-url origin").strip() == url
+            assert newhost.succeed(f"{git} branch --format=\"%(refname:short)\"").strip() == "main"
+            newhost.fail("test -e /tmp/etc-nixos/mine.nix")
+            assert newhost.succeed("cat /tmp/fleet-sync/accepted").strip() == one
+            assert newhost.succeed("cat /tmp/fleet-sync/accepted.url").strip() == url
+
+        # A checkout of something else, with a branch of its own, files that
+        # were never committed, and an older record of what the sync accepted.
+        newhost.succeed(
+            "git init -q -b mine /tmp/etc-nixos",
+            "git -C /tmp/etc-nixos -c user.name=x -c user.email=x@test commit -q --allow-empty -m mine",
+            "git -C /tmp/etc-nixos remote add origin https://example.org/mine.git",
+            "touch /tmp/etc-nixos/mine.nix",
+            "mkdir -p /tmp/fleet-sync && echo old > /tmp/fleet-sync/accepted && echo https://example.org/mine.git > /tmp/fleet-sync/accepted.url",
+        )
+        out = newhost.succeed(f"{env} sh ${remakeScript} {url} true /tmp/etc-nixos /tmp/fleet-sync")
+        assert out.strip() == one, out
+        check_replaced()
+
+        # Plain files: the unit finds no checkout and replaces them.
+        newhost.succeed("rm -rf /tmp/etc-nixos /tmp/fleet-sync", "mkdir /tmp/etc-nixos", "touch /tmp/etc-nixos/mine.nix")
+        out = newhost.succeed(f"{env} sh ${remakeScript} {url} false /tmp/etc-nixos /tmp/fleet-sync")
+        assert out.strip() == one, out
+        check_replaced()
+
+        # A clone that fails leaves the script failing, and says the unit goes on trying.
+        newhost.succeed("rm -rf /tmp/etc-nixos /tmp/fleet-sync", "mkdir /tmp/etc-nixos", "touch /tmp/etc-nixos/mine.nix")
+        status, out = newhost.execute(
+            "PATH=/tmp/stub:$PATH URL=file:///srv/missing.git DIR=/tmp/etc-nixos STATE=/tmp/fleet-sync"
+            " sh ${remakeScript} file:///srv/missing.git false /tmp/etc-nixos /tmp/fleet-sync 2>&1"
+        )
+        assert status != 0 and "keeps trying every 60 seconds" in out, out
   '';
 }

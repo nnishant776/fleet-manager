@@ -81,7 +81,7 @@ var HostEnroll = &engine.Flow{
 			Title: "Choose the commit to switch {{.host}} to",
 			Why: "It does not run a configuration with secrets yet. Unless --switch-to names one, it gets a commit a key you trust has signed, as its own sync will take no other: " +
 				"for a private configuration the one fleet install prep would install, otherwise the newest commit of main.",
-			When: unless("has_tooling", "it already runs a configuration with secrets"),
+			When: needsSwitch,
 			Do:   engine.Func(chooseSwitch),
 		},
 		{
@@ -133,37 +133,37 @@ var HostEnroll = &engine.Flow{
 			Title: "Check its configuration fits {{.host}} as it is",
 			Why: "Without a reinstall, the configuration must describe the disks the machine has and boot the way it boots: " +
 				"a root or boot filesystem it does not have, or a UEFI boot loader on a machine without UEFI, would leave it unbootable after the switch.",
-			When: unless("has_tooling", "it already runs a configuration with secrets"),
+			When: needsSwitch,
 			Do:   engine.Func(checkFits),
 		},
 		{
-			Title: "Make /etc/nixos the configuration repository's checkout",
-			Why: "Once the host runs its fleet configuration, the sync owns /etc/nixos and makes it the configuration repository's. What is there now is kept first: " +
-				"plain files move to /etc/nixos.before-fleet, with their permissions; a git checkout keeps its history on the branch before-fleet, and its remote under that name.",
-			When: needsEtcNixos,
-			Do:   engine.Func(prepareEtcNixos),
+			Title: "Warn that /etc/nixos on {{.host}} will be replaced",
+			Why: "/etc/nixos belongs to the fleet's configuration: nothing it holds now is kept. This step changes nothing; it shows what is there and asks, before the switch, " +
+				"so that you can copy what you need first.",
+			When: warnsAboutEtcNixos,
+			Do:   engine.Func(warnAboutEtcNixos),
 		},
 		{
 			Title: "Switch {{.host}} to its fleet configuration",
-			Why:   "The switch runs as a service on the host, so it finishes even if this connection drops. A private configuration is fetched with the host's configuration key.",
-			When:  unless("has_tooling", "it already runs a configuration with secrets"),
-			Do:    engine.Func(switchHost),
+			Why: "The switch runs as a service on the host, so it finishes even if this connection drops. A private configuration is fetched with the host's configuration key. " +
+				"/etc/nixos is replaced after it.",
+			When: needsSwitch,
+			Do:   engine.Func(switchHost),
 		},
 		{
-			Title: "Point /etc/nixos at the configuration repository",
-			Why:   "Its sync fetches origin, which should be the repository its configuration names.",
+			Title: "Make /etc/nixos the configuration repository's checkout",
+			Why: "The sync owns /etc/nixos and fetches the repository the configuration names. What was there is deleted, and the first-boot clone, fleet-bootstrap, " +
+				"makes the checkout at the commit the host runs and records it as the first the machine accepted.",
 			When: func(x *engine.Ctx) (bool, string) {
-				switch {
-				case x.Value("has_checkout") != "true":
-					return false, "there is no checkout yet; the first-boot clone makes one"
-				case x.Value("config_url") == "":
-					return false, "could not read conf.fleet.repo.url from " + x.Value("flake")
-				case x.Value("origin") == x.Value("config_url"):
-					return false, "it fetches " + x.Value("origin") + " already"
+				if x.Value("switched") == "true" {
+					return true, ""
 				}
-				return true, ""
+				if ok, _ := needsSwitch(x); ok && x.Options.DryRun {
+					return true, ""
+				}
+				return false, "this run did not switch the host; its sync owns /etc/nixos"
 			},
-			Do: fleet.OnAdmin("sudo -n git -C /etc/nixos remote set-url origin {{.config_url}}"),
+			Do: engine.Func(remakeEtcNixos),
 		},
 		{
 			Title: "Sync {{.host}}",
@@ -367,64 +367,95 @@ func createIdentity(x *engine.Ctx) error {
 	return err
 }
 
-func needsEtcNixos(x *engine.Ctx) (bool, string) {
-	switch {
-	case x.Value("has_tooling") == "true":
-		return false, "it already runs a configuration with secrets"
-	case x.Value("etc_nixos") == "files":
-		return true, ""
-	case x.Value("etc_nixos") != "git":
+// needsSwitch is whether the host is to be switched to its configuration in
+// this repository.
+func needsSwitch(x *engine.Ctx) (bool, string) {
+	return unless("has_tooling", "it already runs a configuration with secrets")(x)
+}
+
+// The read-only commands that list what /etc/nixos holds, for the person to
+// see: a checkout, or plain files.
+const (
+	checkoutListing = `g() { sudo -n git -c safe.directory=/etc/nixos -C /etc/nixos "$@"; }
+echo "origin: $(g remote get-url origin 2>/dev/null)"
+b=$(g symbolic-ref -q --short HEAD 2>/dev/null) && echo "branch: $b" || echo "detached at $(g rev-parse --short HEAD 2>/dev/null)"
+echo "uncommitted or untracked entries: $(g status --porcelain 2>/dev/null | wc -l)"`
+	filesListing = `sudo -n ls -A /etc/nixos | head -20
+n=$(sudo -n ls -A /etc/nixos | wc -l); if [ "$n" -gt 20 ]; then echo "and $((n - 20)) more"; fi`
+)
+
+// warnsAboutEtcNixos: the switch is to come, and /etc/nixos holds something.
+func warnsAboutEtcNixos(x *engine.Ctx) (bool, string) {
+	if ok, why := needsSwitch(x); !ok {
+		return false, why
+	}
+	if k := x.Value("etc_nixos"); k != "git" && k != "files" {
 		return false, "/etc/nixos is empty; the first-boot clone makes the checkout"
-	case x.Value("origin") == x.Value("config_url"):
-		return false, "it is a checkout of " + x.Value("origin") + " already"
 	}
 	return true, ""
 }
 
-//go:embed prepare-etc-nixos.sh
-var prepareEtcNixosScript string
-
-// prepareEtcNixos keeps what /etc/nixos holds before the switch: plain files
-// are moved aside, and a git checkout becomes the configuration repository's
-// with its own history kept (prepare-etc-nixos.sh).
-func prepareEtcNixos(x *engine.Ctx) error {
-	if x.Value("etc_nixos") == "files" {
-		_, err := fleet.OnAdmin(`sudo -n sh -c 'test ! -e /etc/nixos.before-fleet || { echo "/etc/nixos.before-fleet exists already: move it away first" >&2; exit 1; }; mv /etc/nixos /etc/nixos.before-fleet'`).
-			OK("moved to /etc/nixos.before-fleet; the first-boot clone makes the checkout").
-			After(func(x *engine.Ctx) error {
-				x.Kept("etc-nixos", "the files that were in /etc/nixos, now in /etc/nixos.before-fleet on {{.host}}")
-				return nil
-			}).Run(x)
+// warnAboutEtcNixos shows what /etc/nixos holds and asks before the switch,
+// which is followed by deleting it. It changes nothing. What the host prints
+// is shown and never kept in a value: it is the host's own text, and the
+// commands after this one are built from values (see enrollFacts).
+func warnAboutEtcNixos(x *engine.Ctx) error {
+	listing := filesListing
+	if x.Value("etc_nixos") == "git" {
+		listing = checkoutListing
+	}
+	res, err := fleet.OnAdmin(listing).ReadOnly().Quiet().Run(x)
+	if err != nil {
 		return err
 	}
+	if shown := strings.TrimRight(res.Stdout, "\n"); shown != "" {
+		x.UI.Text(shown)
+	}
+	host := x.Value("host")
+	x.UI.Note("Everything in /etc/nixos on " + host + " is deleted after the switch, and the fleet's checkout takes its place. " +
+		"Copy anything you still need first, such as hardware-configuration.nix, into the host's folder in the configuration repository; " +
+		"nixos-generate-config --show-hardware-config prints it again.")
+	ok, err := x.Approve("Delete what /etc/nixos holds after the switch?")
+	if errors.Is(err, engine.ErrStopped) {
+		x.UI.Note("Nothing was changed on " + host + ": /etc/nixos is left as it is.")
+	}
+	if err != nil || !ok {
+		return err
+	}
+	return nil
+}
+
+//go:embed remake-etc-nixos.sh
+var remakeEtcNixosScript string
+
+// remakeEtcNixos replaces /etc/nixos with the configuration repository's
+// checkout, made by the first-boot clone (remake-etc-nixos.sh), and checks
+// that it is at the commit the host was switched to.
+func remakeEtcNixos(x *engine.Ctx) error {
 	if x.Value("config_url") == "" {
 		return errors.New("could not read conf.fleet.repo.url from " + x.Value("flake"))
 	}
-	if x.Value("dirty") == "true" {
-		return fmt.Errorf("/etc/nixos on %s has uncommitted changes or untracked files: commit, move or remove them, then run this again", x.Value("host"))
+	x.Values["remake_script"] = remakeEtcNixosScript
+	x.Values["remake_args"] = engine.Quote(x.Value("config_url")) + " " + map[bool]string{true: "true", false: "false"}[x.Value("etc_nixos") == "git"]
+	res, err := fleet.OnAdmin("sudo -n sh -s -- {{.remake_args}}").StdinFrom("remake_script").StdinNote("remake-etc-nixos.sh").
+		OK("/etc/nixos is the checkout of {{.config_url}}").Run(x)
+	if err != nil {
+		return err
 	}
-	ref, err := engine.Silently(x, nil, "nix", "eval", "--raw", x.Value("flake")+"#nixosConfigurations."+x.Value("host")+".config.conf.fleet.repo.ref")
-	if err != nil || ref == "" {
-		return errors.New("could not read conf.fleet.repo.ref from " + x.Value("flake"))
+	lines := strings.Fields(res.Stdout)
+	if x.Options.DryRun || len(lines) == 0 {
+		return nil
 	}
-	x.Values["prepare_script"] = prepareEtcNixosScript
-	x.Values["prepare_args"] = strings.Join([]string{engine.Quote(x.Value("config_url")), engine.Quote(ref), engine.Quote(x.Value("switch_rev"))}, " ")
-	cmd := "sudo -n sh -s -- {{.prepare_args}}"
-	if sshURL(x.Value("config_url")) {
-		// A private configuration: fetched with the host's own key.
-		if err := writePinnedKeys(x); err != nil {
-			return err
-		}
-		x.Values["ssh_env"] = engine.Quote("GIT_SSH_COMMAND=" + x.Value("ssh_private"))
-		cmd = "sudo -n env {{.ssh_env}} sh -s -- {{.prepare_args}}"
+	head := lines[len(lines)-1]
+	x.Values["origin"], x.Values["has_checkout"] = x.Value("config_url"), "true"
+	switch rev := x.Value("switch_rev"); {
+	case rev == "":
+	case head == rev:
+		x.UI.OK("it is at " + head + ", the commit the host was switched to")
+	default:
+		x.UI.Note("It is at " + head + ", not at " + rev + ", the commit the host was switched to: the first-boot clone leaves the tip of the branch when that commit is not on it. The sync converges.")
 	}
-	_, err = fleet.OnAdmin(cmd).StdinFrom("prepare_script").StdinNote("prepare-etc-nixos.sh").
-		After(func(x *engine.Ctx) error {
-			x.Values["origin"], x.Values["has_checkout"] = x.Value("config_url"), "true"
-			x.Kept("etc-nixos", "/etc/nixos's own history on {{.host}}, on its branch before-fleet, and its old remote, as before-fleet")
-			return nil
-		}).Run(x)
-	return err
+	return nil
 }
 
 func switchHost(x *engine.Ctx) error {
@@ -446,6 +477,9 @@ func switchHost(x *engine.Ctx) error {
 		`nixos-rebuild switch --flake {{.switch_target}}; s=$?; `+
 		`sudo -n journalctl -u fleet-enroll-switch -o cat -n 15 --no-pager; exit $s`).OK("switched"),
 		"the switch", "fleet-enroll-switch", "{{.admin}}").Run(x)
+	if err == nil {
+		x.Values["switched"] = "true"
+	}
 	return err
 }
 

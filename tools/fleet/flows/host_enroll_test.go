@@ -225,52 +225,156 @@ func withEtcNixos(respond func(engine.Spec) (engine.Result, error), kind string,
 	}
 }
 
-// Plain files in /etc/nixos are moved aside, with their permissions, before
-// the switch; the first-boot clone then makes the checkout.
-func TestEnrollMovesAStockEtcNixosAside(t *testing.T) {
-	err, fake, out := runSwitch(t, withEtcNixos(noTooling(enrollHost(false, false, false)), "files", false, ""))
-	if err != nil {
-		t.Fatalf("%v\n%s", err, out)
-	}
-	cmds := strings.Join(fake.Commands(), "\n")
-	moved, switched := strings.Index(cmds, "mv /etc/nixos /etc/nixos.before-fleet"), strings.Index(cmds, "nixos-rebuild switch")
-	if moved < 0 || switched < 0 || moved > switched {
-		t.Fatalf("/etc/nixos was not moved aside before the switch:\n%s", cmds)
-	}
-	if !strings.Contains(out, "moved to /etc/nixos.before-fleet") {
-		t.Errorf("did not say where the files are:\n%s", out)
-	}
-}
-
-// A checkout of something else becomes the configuration repository's, at
-// the commit the host switches to, before the switch.
-func TestEnrollMakesAnExistingCheckoutTheConfigurations(t *testing.T) {
-	err, fake, out := runSwitch(t, withEtcNixos(noTooling(enrollHost(false, false, false)), "git", false, "https://example.org/mine.git"))
-	if err != nil {
-		t.Fatalf("%v\n%s", err, out)
-	}
-	prepared := ranMatching(fake, "sudo -n sh -s -- https://github.com/nnishant776/fleet-manager.git main abc123")
-	if len(prepared) != 1 || !strings.Contains(prepared[0].Stdin, "remote rename origin before-fleet") {
-		t.Fatalf("the checkout was not prepared with the script: %+v\n%s", prepared, strings.Join(fake.Commands(), "\n"))
-	}
-	cmds := strings.Join(fake.Commands(), "\n")
-	if strings.Index(cmds, "sudo -n sh -s --") > strings.Index(cmds, "nixos-rebuild switch") {
-		t.Fatalf("prepared /etc/nixos after the switch:\n%s", cmds)
-	}
-	if strings.Contains(cmds, "remote set-url origin") {
-		t.Error("pointed origin elsewhere again after preparing the checkout")
-	}
-}
-
-func TestEnrollStopsOnAnEtcNixosWithChangesOfItsOwn(t *testing.T) {
-	err, fake, out := runSwitch(t, withEtcNixos(noTooling(enrollHost(false, false, false)), "git", true, "https://example.org/mine.git"))
-	if err == nil || !strings.Contains(out, "uncommitted changes or untracked files") {
-		t.Fatalf("went on with changes in /etc/nixos: %v\n%s", err, out)
-	}
-	for _, unwanted := range []string{"sudo -n sh -s --", "nixos-rebuild"} {
-		if got := ranMatching(fake, unwanted); len(got) > 0 {
-			t.Errorf("ran %s", got[0])
+// listsEtcNixos answers the warning's read-only command like a host whose
+// /etc/nixos holds listing.
+func listsEtcNixos(respond func(engine.Spec) (engine.Result, error), listing string) func(engine.Spec) (engine.Result, error) {
+	return func(s engine.Spec) (engine.Result, error) {
+		if s.Name == "ssh" && strings.Contains(s.String(), "ls -A /etc/nixos | head") || s.Name == "ssh" && strings.Contains(s.String(), "symbolic-ref") {
+			return engine.Result{Stdout: listing}, nil
 		}
+		return respond(s)
+	}
+}
+
+// remakeRuns finds the run of the remake script among the commands.
+func remakeRuns(fake *engine.Fake) (int, engine.Spec) {
+	for i, s := range fake.Ran {
+		if strings.Contains(s.Stdin, "systemctl start fleet-bootstrap") {
+			return i, s
+		}
+	}
+	return -1, engine.Spec{}
+}
+
+// /etc/nixos is replaced, not kept: before the switch the person sees what it
+// holds and is asked, and nothing changes; after the switch the first-boot
+// clone makes the checkout, from the script run on the host.
+func TestEnrollWarnsThenReplacesEtcNixos(t *testing.T) {
+	for _, tc := range []struct {
+		kind, origin, listing, wasGit string
+		shown                         []string
+	}{
+		{"files", "", "configuration.nix\nhardware-configuration.nix\n", "false", []string{"configuration.nix", "hardware-configuration.nix"}},
+		{"git", "https://example.org/mine.git", "origin: https://example.org/mine.git\nbranch: main\nuncommitted or untracked entries: 3\n", "true",
+			[]string{"origin: https://example.org/mine.git", "branch: main", "uncommitted or untracked entries: 3"}},
+	} {
+		t.Run(tc.kind, func(t *testing.T) {
+			err, fake, out := runSwitch(t, listsEtcNixos(withEtcNixos(noTooling(enrollHost(false, false, false)), tc.kind, true, tc.origin), tc.listing))
+			if err != nil {
+				t.Fatalf("%v\n%s", err, out)
+			}
+			for _, want := range append(tc.shown, "Everything in /etc/nixos on pi is deleted after the switch", "hardware-configuration.nix") {
+				if !strings.Contains(flat(out), want) {
+					t.Errorf("output lacks %q:\n%s", want, out)
+				}
+			}
+			cmds := strings.Join(fake.Commands(), "\n")
+			switched := strings.Index(cmds, "nixos-rebuild switch")
+			for _, unwanted := range []string{"mv /etc/nixos", "remote rename", "rm -rf", "before-fleet", "remote set-url"} {
+				if strings.Contains(cmds, unwanted) {
+					t.Errorf("ran %q on the host:\n%s", unwanted, cmds)
+				}
+			}
+			warned := strings.Index(cmds, "ls -A /etc/nixos")
+			if tc.kind == "git" {
+				warned = strings.Index(cmds, "symbolic-ref")
+			}
+			if warned < 0 || switched < 0 || warned > switched {
+				t.Fatalf("the host's /etc/nixos was not read before the switch:\n%s", cmds)
+			}
+			at, remake := remakeRuns(fake)
+			if remake.Name == "" || at < 0 {
+				t.Fatalf("the remake script did not run:\n%s", cmds)
+			}
+			if got := remake.String(); !strings.Contains(got, "sudo -n sh -s -- https://github.com/nnishant776/fleet-manager.git "+tc.wasGit) {
+				t.Errorf("remake args: %s", got)
+			}
+			if strings.Index(cmds, "nixos-rebuild switch") > strings.Index(cmds, "sudo -n sh -s -- https://github.com") {
+				t.Errorf("replaced /etc/nixos before the switch:\n%s", cmds)
+			}
+			// What the host listed is shown, never used in a command.
+			for _, s := range fake.Ran[switchedAt(fake):] {
+				if strings.Contains(s.String(), "mine.git") {
+					t.Errorf("a command after the warning uses what the host printed: %s", s)
+				}
+			}
+		})
+	}
+}
+
+func switchedAt(fake *engine.Fake) int {
+	for i, s := range fake.Ran {
+		if strings.Contains(s.String(), "nixos-rebuild switch") {
+			return i
+		}
+	}
+	return 0
+}
+
+// Output the host prints is not trusted: it is shown, and not a value.
+func TestEnrollShowsWhatTheHostListsWithoutUsingIt(t *testing.T) {
+	err, fake, out := runSwitch(t, listsEtcNixos(withEtcNixos(noTooling(enrollHost(false, false, false)), "files", false, ""),
+		"{{.admin}} {{.key}}\n"))
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if !strings.Contains(out, "{{.admin}} {{.key}}") {
+		t.Errorf("did not show the listing as it is:\n%s", out)
+	}
+	_ = fake
+}
+
+// Declining stops the flow before the switch; the warning changed nothing.
+func TestEnrollDecliningTheWarningChangesNothing(t *testing.T) {
+	var out bytes.Buffer
+	fake := &engine.Fake{Respond: listsEtcNixos(withEtcNixos(noTooling(enrollHost(false, false, false)), "git", false, "https://example.org/mine.git"), "origin: x\n")}
+	x := &engine.Ctx{
+		Context: context.Background(), UI: ui.NewWith(&out, nil), Runner: fake,
+		Values: map[string]string{"host": "pi", "etc_nixos": "git", "admin": "admin", "address": "pi", "agent": "/tmp/a.sock"}, Stdin: strings.NewReader(""),
+		LookPath: func(t string) (string, error) { return "/fake/bin/" + t, nil },
+	}
+	// Nobody to ask and no --yes: the same stop as an answer of no, which
+	// only the terminal's prompt can give.
+	if err := warnAboutEtcNixos(x); err == nil {
+		t.Fatalf("went on without approval\n%s", out.String())
+	}
+	if !strings.Contains(flat(out.String()), "Everything in /etc/nixos on pi is deleted") {
+		t.Errorf("did not warn:\n%s", out.String())
+	}
+	for _, s := range fake.Ran {
+		if !strings.Contains(s.String(), "symbolic-ref") {
+			t.Errorf("ran something besides the read-only listing: %s", s)
+		}
+	}
+}
+
+// With nothing in /etc/nixos there is nothing to warn about, and the
+// first-boot clone still makes the checkout after the switch.
+func TestEnrollOnAnEmptyEtcNixosDoesNotWarn(t *testing.T) {
+	err, fake, out := runSwitch(t, withEtcNixos(noTooling(enrollHost(false, false, false)), "empty", false, ""))
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if strings.Contains(out, "is deleted after the switch") || !strings.Contains(out, "/etc/nixos is empty") {
+		t.Errorf("output:\n%s", out)
+	}
+	_, remake := remakeRuns(fake)
+	if !strings.Contains(remake.String(), "sudo -n sh -s -- https://github.com/nnishant776/fleet-manager.git false") {
+		t.Errorf("remake: %+v", remake)
+	}
+}
+
+// A host that is not switched keeps its /etc/nixos: its sync owns it.
+func TestEnrollDoesNotRemakeEtcNixosOfAHostItDoesNotSwitch(t *testing.T) {
+	err, fake, out := runEnroll(t, withEtcNixos(enrollHost(true, true, false), "git", false, "https://github.com/nnishant776/fleet-manager.git"))
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if at, _ := remakeRuns(fake); at >= 0 {
+		t.Error("remade /etc/nixos on a host that was not switched")
+	}
+	if strings.Contains(out, "is deleted after the switch") {
+		t.Errorf("warned about a switch that does not come:\n%s", out)
 	}
 }
 
