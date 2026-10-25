@@ -226,6 +226,14 @@ clones its configuration into `conf.fleet.localPath` at the revision it was
 built from, and keeps retrying until it has a network. The sync starts from
 that checkout.
 
+**`/etc/nixos` belongs to the fleet.** Once a machine runs a fleet
+configuration, however it got there, the checkout in `conf.fleet.localPath` is
+the fleet's. The first-boot clone replaces whatever is there without a
+checkout. Every sync leaves the checkout detached at the commit it verified,
+holding only the branch it tracks, and, with `resetLocalChanges` on, no local
+branches. When the checkout is missing, the sync starts the first-boot clone
+again. Keep nothing of your own there.
+
 disko asks for the passphrase while formatting; `os-install` asks once and
 gives it to every LUKS container, and at boot one prompt unlocks them all. One
 thing stays manual after the first boot, because it cannot happen before the
@@ -534,14 +542,21 @@ cannot be limited to a branch.
      fleet-manager commit.
   3. Enrolls the host and registers both of its keys.
   4. Checks the configuration fits the machine as it is.
-  5. Prepares `/etc/nixos`.
+  5. Shows what `/etc/nixos` holds, warns that all of it is deleted after the
+     switch, and asks. If you say no, nothing changes.
   6. Switches, fetching the private configuration with the host's own key.
+  7. Replaces `/etc/nixos` with the fleet's checkout, made by the first-boot
+     clone at the commit the host now runs. This runs as a unit on the host,
+     so a dropped connection cannot leave the host without a checkout.
 
   The configuration has to describe the machine as it is, since nothing is
   reinstalled:
   - `conf.hardware.disk.enable = false` and the machine's own
-    `hardware-configuration.nix`, from the machine. enroll refuses when what
-    the configuration mounts at `/` or `/boot` is not what the machine has.
+    `hardware-configuration.nix`, from the machine. Copy it into the host's
+    folder before you enroll, since `/etc/nixos` is deleted after the switch;
+    `nixos-generate-config --show-hardware-config` prints it again. enroll
+    refuses when what the configuration mounts at `/` or `/boot` is not what
+    the machine has.
   - The boot loader the machine uses. enroll refuses a UEFI boot loader on a
     machine without UEFI.
   - Every account to keep, declared, with its password set in the secrets
@@ -552,28 +567,20 @@ cannot be limited to a branch.
   1. Copy the host's folder there, with `repo.url` set to the private
      repository's SSH address, and push. With host branches, publish its
      branch too: `fleet inventory publish <host> --flake <checkout of it>`.
-  2. Run `fleet host enroll <host> --flake <checkout of it>`, which adds the
-     configuration key on the host and registers it.
-  3. Switch the host, once, to its configuration there, fetched with its
-     configuration key. Nothing in this repository names the private one; the
-     host learns it from the configuration it switches to. With host
-     branches, switch to its branch (without them, leave `?ref=…` out):
-     ```bash
-     sudo env GIT_SSH_COMMAND="ssh -i /var/lib/fleet/config_deploy_key -o IdentitiesOnly=yes" \
-       nixos-rebuild switch --flake 'git+ssh://git@github.com/example-org/inventory?ref=host/<host>#<host>'
-     ```
-  4. Right after the switch, start the host's record over, and sync:
-     ```bash
-     sudo rm /var/lib/fleet-sync/accepted
-     sudo systemctl start config-auto-update
-     ```
-     The sync fetches from the private repository. Its history does not
-     include the commit the host last applied, so the sync would stop rather
-     than take whatever the new repository serves. With the record gone, it
-     takes the newest commit there. `/var/lib/fleet-sync/accepted` then names
-     that commit: it should be the one you just switched to.
-     `resetLocalChanges` (on by default) moves the checkout over.
-  5. Delete the host's folder here.
+  2. Run `fleet host enroll <host> --flake <checkout of it>`. It sees that
+     the host runs a configuration from another repository, and:
+     1. adds the configuration key on the host and registers it;
+     2. checks the configuration fits the machine;
+     3. warns that `/etc/nixos` is replaced, and asks;
+     4. switches the host to its configuration there, on its branch, fetched
+        with that key;
+     5. replaces `/etc/nixos` with a checkout of the new repository.
+
+     The first-boot clone records the commit it checks out as the first the
+     host accepted from there, so the sync goes on from it. Nothing in this
+     repository names the private one; the host learns it from the
+     configuration it switches to.
+  3. Delete the host's folder here.
 
 ### The `fleet` tool
 
@@ -1039,7 +1046,7 @@ default `""`); no module reads them yet.
 |---|---|---|---|
 | `fleet.repo.url` | nullOr str | `null` | Git remote the machine is deployed from. An `https://` address is fetched with no key; an SSH one, for a private remote, with the host's own configuration key, made with its identity and listed in its enrollment file as `config_deploy_pubkey`, so it needs `conf.secrets.repo.url`. See [A private fleet](#a-private-fleet) |
 | `fleet.repo.ref` | str | `"main"` | Branch or tag to track |
-| `fleet.localPath` | str | `"/etc/nixos"` | Where the configuration checkout lives. On NixOS every account's git trusts it (`safe.directory`) |
+| `fleet.localPath` | str | `"/etc/nixos"` | Where the configuration checkout lives. It belongs to the fleet: the first-boot clone replaces what is there without a checkout, and every sync leaves it detached at the verified commit. On NixOS every account's git trusts it (`safe.directory`) |
 | `fleet.signing.allowedSignersFile` | nullOr path | `null` | SSH allowed-signers file. The newest commit of every fetch must be signed by a key in it, for the configuration and for the secrets repository. Required when `repo.url` is set |
 | `fleet.support.enable` | nullOr bool | `null` | Create an account for the maintainer to reach the host with. `null` means on when `conf.secrets.repo.url` is set. NixOS only; macOS hosts get no support account yet. Sets `sharing.ssh.enable` |
 | `fleet.support.user` | str | `"support"` | Name of the support account |
@@ -1049,7 +1056,7 @@ default `""`); no module reads them yet.
 | `fleet.autoUpdate.dates` | str | `"04:00"` | systemd `OnCalendar` expression |
 | `fleet.autoUpdate.randomizedDelaySec` | int | `1800` | Jitter, so a fleet does not sync simultaneously |
 | `fleet.autoUpdate.allowReboot` | bool | `false` | Reboot when the kernel or initrd changed |
-| `fleet.autoUpdate.resetLocalChanges` | bool | `true` | Discard local edits in the checkout before building |
+| `fleet.autoUpdate.resetLocalChanges` | bool | `true` | Discard local edits and local branches in the checkout before building |
 | `fleet.logs.lokiUrl` | nullOr str | `null` | Push URL of the fleet's Loki (`http://loki.lan:3100/loki/api/v1/push`). When set, Grafana Alloy sends the journal there, audit records included, labelled `host`, `unit`, `level` and `transport` |
 | `fleet.autoUpdate.rollbackOnFailure` | bool | `true` | Return to the previous generation if activation fails |
 
@@ -1471,11 +1478,13 @@ fetches. A new install records the revision it was installed from; a host
 without a record takes the first commit it fetches. The record holds when a
 host's configuration moves to another repository too. A new address for the
 same history passes as it is. A move to another history, as to
-[a private fleet](#a-private-fleet), stops the sync until you remove the
-record on the host, right after the switch that moved it. It never starts
-over by itself: right after a move, anyone who can push to the new repository
-could serve an old commit of it. `accepted.url`, beside the record, says
-where the record's commit came from.
+[a private fleet](#a-private-fleet), stops the sync until the record is
+removed on the host, right after the switch that moved it. `fleet host enroll`
+does that when it moves a host: the first-boot clone then records the commit
+the host was switched to. The record never starts over by itself: right after
+a move, anyone who can push to the new repository could serve an old commit
+of it. `accepted.url`, beside the record, says where the record's commit came
+from.
 
 **Everyone at a fleet host sees it when updates stop.** When a sync run stops
 on something a person has to fix, such as an unsigned commit, a configuration
@@ -1513,8 +1522,9 @@ that is for attestation to notice, not for the unit to prevent.
 
 **Automatic updates discard local edits.** With `resetLocalChanges` on, which is
 the default, the checkout is hard reset to the tracked ref before building, so
-anything edited in place on the machine is lost. With it off, a machine that has
-diverged stops converging instead.
+anything edited in place on the machine is lost, local branches included. With
+it off, a machine that has diverged stops converging instead, and its local
+branches are left alone.
 
 **A rolled-back machine does not match its revision.** If activation fails and
 `rollbackOnFailure` is on, the machine returns to its previous generation while
