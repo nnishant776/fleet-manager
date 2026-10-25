@@ -21,7 +21,7 @@ fleet setup --config ~/Projects/nixos-config --repo ~/Projects/fleet-secrets
 | Flag | |
 |---|---|
 | `--config` | The fleet-manager checkout; defaults to this directory's flake, then /etc/nixos |
-| `--repo` | The fleet-secrets checkout to change; defaults to FLEET_SECRETS_REPO, then this directory |
+| `--repo` | Your clone of the secrets repository, left on main; defaults to FLEET_SECRETS_REPO, then this directory |
 | `--recovery` | Where the passphrase-encrypted age identity lives; ~/.fleet/recovery.age by default |
 | `--signing-key` | The SSH private key that signs commits; created if it does not exist |
 | `--label` | Free text that git does not compare with anything; your GitHub noreply address, for example |

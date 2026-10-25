@@ -4,8 +4,9 @@
 
 Point a known host at a new identity.
 
-For a host reinstalled with a new identity: records its new recipient, renders
-.sops.yaml, re-encrypts its files to it, commits, and shows the new deploy key.
+For a host reinstalled with a new identity: replaces its old recipient by the new one in every
+file of its branch, host/\<host>, replaces its enrollment record, commits, and shows the new deploy
+key. Push the branch after.
 
 ```
 fleet secrets host-rekey [HOST] [flags]
@@ -17,7 +18,7 @@ fleet secrets host-rekey laptop1 --from laptop1.enroll
 
 | Flag | |
 |---|---|
-| `--repo` | The fleet-secrets checkout to change; defaults to FLEET_SECRETS_REPO, then this directory |
+| `--repo` | Your clone of the secrets repository, left on main; defaults to FLEET_SECRETS_REPO, then this directory |
 | `--recovery` | Your passphrase-encrypted age identity (age -p). Empty: sops uses SOPS_AGE_KEY_FILE or SOPS_AGE_KEY |
 | `--host` | The host's name: lowercase letters, digits and '-' |
 | `--from` | The host's enrollment file, as written by fleet-secrets-sync init, or - for standard input |
@@ -28,12 +29,10 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 ## Steps
 
-1. **Open the secrets repository.** Each command commits exactly its own change, so the tree must have no uncommitted changes. It builds on the newest commit and encrypts for the recipients that commit names, so that commit must be one a trusted key signed, not whatever was pushed last.
+1. **Open the secrets repository.** The change builds on the host's branch and encrypts for the recipients that branch names, so git must check its signatures against keys a pushed commit cannot change. New files are encrypted to the host and to your recovery recipient, which fleet setup caches.
 
    ```
-   $ cd REPO && test -f fleet.yaml
-   $ cd REPO && git status --porcelain --untracked-files=no
-   $ cd REPO && git verify-commit HEAD
+   $ cd REPO && git rev-parse --git-dir
    $ cd REPO && sh -c 'f="$(git config --get gpg.ssh.allowedSignersFile)" || exit 0
 case "$f" in \~/*) f="$HOME/${f#\~/}" ;; esac
 case "$f" in /*) ;; *) f="$(git rev-parse --show-toplevel)/$f" ;; esac
@@ -41,33 +40,33 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
    $ cd REPO && git config --local --default '' --get core.hooksPath
    ```
 
-2. **Look up HOST in fleet.yaml.** fleet.yaml lists every enrolled host with its age recipient.
+2. **Read the enrollment file.** It holds the host's two public keys: the age recipient its secrets are encrypted to, and the deploy key it fetches them with.
 
-   ```
-   $ cd REPO && h=HOST yq '.hosts | has(strenv(h))' fleet.yaml
-   ```
+3. **Look up host/HOST.** A host's branch is host/\<name>; a host that has none is not enrolled.
 
-3. **Read the enrollment file.** It holds the host's two public keys: the age recipient its secrets are encrypted to, and the deploy key it fetches them with.
+4. **Check it is a new identity.** A host that holds this identity already has nothing to re-key.
 
-4. **Unlock your recovery identity.** Decrypted into this run's memory only, for the sops commands below. age asks for its passphrase.
+5. **Unlock your recovery identity.** Decrypted into this run's memory only, for the sops commands below. age asks for its passphrase.
 
    ```
    $ age -d RECOVERY
    ```
 
-5. **Record HOST in fleet.yaml.** The registry is the one thing the rules in .sops.yaml are rendered from.
+6. **Open a worktree of host/HOST.** The change is made in a temporary worktree of the host's branch, so that your checkout stays on main and the commit holds this change and nothing else. It goes away at the end, or when the run stops.
+
+7. **Re-encrypt HOST's files to its new identity.** Its own file and its users' files: the old recipient is replaced by the new one, the recovery recipient stays.
+
+8. **Write the enrollment record.** enroll holds the host's public identity as the host wrote it. Hosts do not read it; it is a record of what the branch was made for.
+
+9. **Commit.** Signed with your key, if this checkout signs; hosts accept only signed commits. Push the branch afterwards.
+
+10. **Remove the worktree.** It was only for this change; the commit is on host/HOST in your clone.
 
    ```
-   $ cd REPO && h=HOST r=RECIPIENT yq -i '.hosts[strenv(h)] = strenv(r)' fleet.yaml
+   $ cd REPO && git worktree remove --force WORK
    ```
 
-6. **Render .sops.yaml from fleet.yaml.** Two rules per host, its own file and its users' files, each encrypted to that host and you only.
-
-7. **Re-encrypt HOST's files to its new identity.** Its own file and its users' files.
-
-8. **Commit.** Signed with your key, if this checkout signs; hosts accept only signed commits. Push it afterwards.
-
-9. **Register HOST's deploy key.** The host fetches this repository with it; it must be read-only.
+11. **Register HOST's deploy key.** The host fetches this repository with it; it must be read-only.
 
    > Secrets deploy key of HOST:
    > DEPLOY_KEY

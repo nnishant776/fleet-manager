@@ -26,16 +26,13 @@ func after(cmds []string, fragment string) []string {
 }
 
 func TestAdmittingAHostPutsBackWhenTheCommitFails(t *testing.T) {
+	cacheRecovery(t)
 	repo := t.TempDir()
-	_ = os.WriteFile(filepath.Join(repo, "fleet.yaml"), []byte("maintainer: age1maint\nhosts: {}\n"), 0o644)
-	_ = os.WriteFile(filepath.Join(repo, ".sops.yaml"), []byte("creation_rules: []\n"), 0o644)
-	_ = os.MkdirAll(filepath.Join(repo, "hosts"), 0o755)
 	from := filepath.Join(t.TempDir(), "pi.enroll")
 	_ = os.WriteFile(from, []byte(enrollDoc), 0o644)
 	answers := map[string]string{
-		".hosts | has(strenv(h))": "false", ".version": "1", ".host": "pi",
+		".version": "1", ".host": "pi",
 		".age_recipient": "age1testrecipient", ".secrets_deploy_pubkey // .deploy_pubkey": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDdBK90 fleet-deploy@pi",
-		".maintainer": "age1maint",
 	}
 	x, fake, out := newFakeCtx(func(s engine.Spec) (engine.Result, error) {
 		switch {
@@ -43,22 +40,31 @@ func TestAdmittingAHostPutsBackWhenTheCommitFails(t *testing.T) {
 			return engine.Result{Stdout: answers[s.Args[0]] + "\n"}, nil
 		case s.Name == "sops":
 			return engine.Result{Stdout: "sops: encrypted\n"}, nil
+		case s.Name == "git" && strings.Contains(strings.Join(s.Args, " "), "rev-parse --verify"):
+			return engine.Result{Code: 1}, errFailed // pi has no branch yet
 		case s.Name == "git" && s.Args[0] == "commit":
 			return engine.Result{Code: 1, Stderr: "error: no signing key"}, errFailed
 		}
-		return engine.Result{}, nil // git cat-file and git diff: committed and unchanged
+		return engine.Result{}, nil
 	})
 	err := engine.RunWith(x, SecretsHostEnroll, map[string]string{"repo": repo, "recovery": "", "host": "pi", "from": from})
 	if err == nil || !strings.Contains(err.Error(), "Commit") {
 		t.Fatalf("got %v\n%s", err, out)
 	}
-	want := []string{
-		"git -C " + repo + " reset -q -- fleet.yaml .sops.yaml hosts/pi.yaml",
-		"rm -f -- " + filepath.Join(repo, "hosts/pi.yaml"),
-		"git -C " + repo + " restore --source=HEAD --staged --worktree -- .sops.yaml",
-		"git -C " + repo + " restore --source=HEAD --staged --worktree -- fleet.yaml",
+	// The worktree is made for the new branch, and taken away again; the branch
+	// does not exist before the commit, so there is none to delete.
+	cmds := fake.Commands()
+	var made string
+	for _, c := range cmds {
+		if rest, ok := strings.CutPrefix(c, "git worktree add -q --orphan -b host/pi "); ok {
+			made = rest
+		}
 	}
-	if got := after(fake.Commands(), "commit -q"); strings.Join(got, "\n") != strings.Join(want, "\n") {
+	if made == "" {
+		t.Fatalf("no worktree for host/pi was made:\n%s", strings.Join(cmds, "\n"))
+	}
+	want := []string{"git worktree remove --force " + made}
+	if got := after(cmds, "commit -q"); strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("put back with:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 	if !strings.Contains(out.String(), "[stop] Put back what this run changed") {

@@ -4,8 +4,9 @@
 
 Add or change a host secret: encrypt, commit, push, and show how the configuration uses it.
 
-Encrypts one value into hosts/\<host>.yaml of the secrets repository, to that
-host and you only, then commits and pushes it. The value is typed hidden,
+Encrypts one value into hosts/\<host>.yaml on the host's branch of the secrets
+repository, host/\<host>, to the recipients the file has already, then commits
+and pushes the branch. The value is typed hidden,
 read from standard input, or, with --from-host, read off the host where it
 is kept today, so it never appears on screen. Then it shows the lines that
 make the host's configuration use it, and with --sync syncs the host and
@@ -23,7 +24,7 @@ printf %s "$psk" | fleet host secret pi-gw wifi/home --value-stdin --yes
 
 | Flag | |
 |---|---|
-| `--repo` | The fleet-secrets checkout to change; defaults to FLEET_SECRETS_REPO, then this directory |
+| `--repo` | Your clone of the secrets repository, left on main; defaults to FLEET_SECRETS_REPO, then this directory |
 | `--recovery` | Your passphrase-encrypted age identity (age -p). Empty: sops uses SOPS_AGE_KEY_FILE or SOPS_AGE_KEY |
 | `--host` | The host's name: lowercase letters, digits and '-' |
 | `--name` | Its key in hosts/\<host>.yaml, and its file under /run/secrets: letters, digits, - and _, with / to group secrets, as hotspot/wls2ccf67579ff5 |
@@ -39,12 +40,10 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 ## Steps
 
-1. **Open the secrets repository.** Each command commits exactly its own change, so the tree must have no uncommitted changes. It builds on the newest commit and encrypts for the recipients that commit names, so that commit must be one a trusted key signed, not whatever was pushed last.
+1. **Open the secrets repository.** The change builds on the host's branch and encrypts for the recipients that branch names, so git must check its signatures against keys a pushed commit cannot change. New files are encrypted to the host and to your recovery recipient, which fleet setup caches.
 
    ```
-   $ cd REPO && test -f fleet.yaml
-   $ cd REPO && git status --porcelain --untracked-files=no
-   $ cd REPO && git verify-commit HEAD
+   $ cd REPO && git rev-parse --git-dir
    $ cd REPO && sh -c 'f="$(git config --get gpg.ssh.allowedSignersFile)" || exit 0
 case "$f" in \~/*) f="$HOME/${f#\~/}" ;; esac
 case "$f" in /*) ;; *) f="$(git rev-parse --show-toplevel)/$f" ;; esac
@@ -52,11 +51,7 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
    $ cd REPO && git config --local --default '' --get core.hooksPath
    ```
 
-2. **Look up HOST in fleet.yaml.** fleet.yaml lists every enrolled host with its age recipient.
-
-   ```
-   $ cd REPO && h=HOST yq '.hosts | has(strenv(h))' fleet.yaml
-   ```
+2. **Look up host/HOST.** A host's branch is host/\<name>; a host that has none is not enrolled.
 
 3. **Read the current value off HOST.** As USER, with nothing forwarded; the value is kept in memory and never shown.
 
@@ -70,29 +65,37 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
    $ age -d RECOVERY
    ```
 
-5. **Encrypt it into hosts/HOST.yaml.** Encrypted to HOST and your recovery key only. An existing value of the same name is replaced; a name that would replace a group of secrets, or go under a value, is refused.
+5. **Open a worktree of host/HOST.** The change is made in a temporary worktree of the host's branch, so that your checkout stays on main and the commit holds this change and nothing else. It goes away at the end, or when the run stops.
 
-6. **Commit.** Signed with your key, if this checkout signs; hosts accept only signed commits. Push it afterwards.
+6. **Encrypt it into hosts/HOST.yaml.** The file keeps its recipients, HOST and your recovery key. An existing value of the same name is replaced; a name that would replace a group of secrets, or go under a value, is refused.
 
-7. **Push.** HOST fetches it on its next sync, which checks the commit is signed by an allowed key.
+7. **Commit.** Signed with your key, if this checkout signs; hosts accept only signed commits. Push the branch afterwards.
+
+8. **Remove the worktree.** It was only for this change; the commit is on host/HOST in your clone.
 
    ```
-   $ cd REPO && git push
+   $ cd REPO && git worktree remove --force WORK
    ```
 
-8. **Use it in HOST's configuration.** A host only decrypts secrets its configuration declares. Unless it already does, add this to hosts/HOST/default.nix, commit and push:
+9. **Push host/HOST.** HOST fetches its branch on its next sync, which checks the commit is signed by an allowed key.
+
+   ```
+   $ cd REPO && git push origin host/HOST
+   ```
+
+10. **Use it in HOST's configuration.** A host only decrypts secrets its configuration declares. Unless it already does, add this to hosts/HOST/default.nix, commit and push:
 
    > sops.secrets."NAME" = { };   # decrypted to /run/secrets/NAME (root, 0400)
    > # and point the option that needs it at config.sops.secrets."NAME".path;
    > # restartUnits = [ "\<unit>.service" ] restarts a service when the value changes.
 
-9. **Sync HOST.** It fetches the new secrets commit and its configuration, and activation decrypts the secret.
+11. **Sync HOST.** It fetches the new secrets commit and its configuration, and activation decrypts the secret.
 
    ```
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'sudo -n systemctl start config-auto-update'
    ```
 
-10. **Check the secret arrived.** sops writes it to /run/secrets when the configuration declares it.
+12. **Check the secret arrived.** sops writes it to /run/secrets when the configuration declares it.
 
    ```
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'sudo -n stat -L -c '\''%U %a'\'' /run/secrets/NAME 2>/dev/null || echo missing'

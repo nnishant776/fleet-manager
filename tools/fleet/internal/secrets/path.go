@@ -24,11 +24,9 @@ func KeyPath(name string) string {
 	return b.String()
 }
 
-// SetAt is Set at a path from KeyPath, templated. Like Set, a run that
-// stops after it puts the file back.
+// SetAt is Set at a path from KeyPath, templated.
 func SetAt(file, path, value, note string) *engine.Command {
-	return cmd("sops", "set", "--value-stdin", file, path).StdinFrom(value).StdinNote(note).
-		Before(Restoring(file))
+	return cmd("sops", "set", "--value-stdin", file, path).StdinFrom(value).StdinNote(note)
 }
 
 // CheckPlace says why name cannot be stored in a file shaped like doc, or

@@ -16,8 +16,9 @@ var HostSecret = &engine.Flow{
 	Path:  []string{"host", "secret"},
 	Title: "Add or change a host secret",
 	Short: "Add or change a host secret: encrypt, commit, push, and show how the configuration uses it",
-	Long: "Encrypts one value into hosts/<host>.yaml of the secrets repository, to that\n" +
-		"host and you only, then commits and pushes it. The value is typed hidden,\n" +
+	Long: "Encrypts one value into hosts/<host>.yaml on the host's branch of the secrets\n" +
+		"repository, host/<host>, to the recipients the file has already, then commits\n" +
+		"and pushes the branch. The value is typed hidden,\n" +
 		"read from standard input, or, with --from-host, read off the host where it\n" +
 		"is kept today, so it never appears on screen. Then it shows the lines that\n" +
 		"make the host's configuration use it, and with --sync syncs the host and\n" +
@@ -73,8 +74,8 @@ var HostSecret = &engine.Flow{
 	},
 	Needs: []string{"git", "yq", "sops", "age"},
 	Steps: []engine.Step{
-		secrets.Open(),
-		secrets.Enrolled(true, "host '{{.host}}' is not enrolled; enroll it first (fleet host enroll, or fleet secrets host-enroll)"),
+		secrets.Open(true),
+		secrets.ExistingBranch("host '{{.host}}' is not enrolled; enroll it first (fleet host enroll, or fleet secrets host-enroll)", true),
 		{
 			Title: "Read the current value off {{.host}}",
 			Why:   "As {{.user}}, with nothing forwarded; the value is kept in memory and never shown.",
@@ -87,9 +88,10 @@ var HostSecret = &engine.Flow{
 			Do: fleet.OnHost("sudo -n cat {{.from-host}}").ReadOnly().CaptureSecret("value").OK("read {{.from-host}}"),
 		},
 		secrets.Unlock(),
+		secrets.OpenWork(),
 		{
 			Title: "Encrypt it into hosts/{{.host}}.yaml",
-			Why:   "Encrypted to {{.host}} and your recovery key only. An existing value of the same name is replaced; a name that would replace a group of secrets, or go under a value, is refused.",
+			Why:   "The file keeps its recipients, {{.host}} and your recovery key. An existing value of the same name is replaced; a name that would replace a group of secrets, or go under a value, is refused.",
 			Do: engine.Func(func(x *engine.Ctx) error {
 				if x.Value("value") == "" && !x.Options.DryRun {
 					return errors.New("the value is empty")
@@ -104,10 +106,11 @@ var HostSecret = &engine.Flow{
 			}),
 		},
 		secrets.Commit("{{.host}}: {{.name}}", "hosts/{{.host}}.yaml"),
+		secrets.CloseWork(),
 		{
-			Title: "Push",
-			Why:   "{{.host}} fetches it on its next sync, which checks the commit is signed by an allowed key.",
-			Do:    secrets.Push(),
+			Title: "Push host/{{.host}}",
+			Why:   "{{.host}} fetches its branch on its next sync, which checks the commit is signed by an allowed key.",
+			Do:    secrets.PushBranch(),
 		},
 		{
 			Title: "Use it in {{.host}}'s configuration",
@@ -152,7 +155,7 @@ func wantSync(x *engine.Ctx) (bool, string) {
 // secrets or go under one of its values. sops leaves the keys in clear, so
 // yq reads the file's shape as it is, decrypting nothing.
 func checkPlace(x *engine.Ctx) error {
-	res, err := engine.Cmd("yq", "-o=json", ".", "hosts/{{.host}}.yaml").In("{{.repo}}").RunQuiet(x)
+	res, err := engine.Cmd("yq", "-o=json", ".", "hosts/{{.host}}.yaml").In("{{.work}}").RunQuiet(x)
 	if err != nil {
 		return err
 	}

@@ -10,16 +10,36 @@ import (
 	"github.com/nnishant776/fleet-manager/tools/fleet/internal/engine"
 )
 
+// cacheRecovery gives the test the recovery recipient fleet setup caches, and a
+// temporary folder of its own, where the commands make their worktrees.
+func cacheRecovery(t *testing.T) {
+	t.Helper()
+	state := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", state)
+	t.Setenv("TMPDIR", t.TempDir())
+	_ = os.MkdirAll(filepath.Join(state, "fleet"), 0o755)
+	_ = os.WriteFile(filepath.Join(state, "fleet", "recovery.pub"), []byte("age1recoveryrecipient\n"), 0o644)
+}
+
+// hostFile answers yq for the recipients of a host's file on its branch.
+func hostFile(s engine.Spec) (engine.Result, bool) {
+	if s.Name == "yq" && strings.HasPrefix(strings.Join(s.Args, " "), ".sops.age") {
+		return engine.Result{Stdout: "age1hostrecipient\nage1recoveryrecipient\n"}, true
+	}
+	return engine.Result{}, false
+}
+
 // runHostSecret stores value under name for host nas, in a secrets file
 // shaped like doc (its JSON, as yq prints it).
 func runHostSecret(t *testing.T, name, doc string) (error, *engine.Fake, string) {
 	t.Helper()
+	cacheRecovery(t)
 	x, fake, out := newFakeCtx(func(s engine.Spec) (engine.Result, error) {
 		args := strings.Join(s.Args, " ")
-		switch {
-		case s.Name == "yq" && strings.HasPrefix(args, ".hosts | has"):
-			return engine.Result{Stdout: "true\n"}, nil
-		case s.Name == "yq" && strings.HasPrefix(args, "-o=json"):
+		if res, ok := hostFile(s); ok {
+			return res, nil
+		}
+		if s.Name == "yq" && strings.HasPrefix(args, "-o=json") {
 			return engine.Result{Stdout: doc}, nil
 		}
 		return engine.Result{}, nil
@@ -73,21 +93,16 @@ func TestHostSecretRefusesToReplaceAGroup(t *testing.T) {
 	}
 }
 
-// A run that stops after the nested write, here at a failed commit, puts the
-// host's file back.
-func TestHostSecretPutsTheFileBackWhenItStops(t *testing.T) {
-	repo := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(repo, "hosts"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(repo, "hosts", "nas.yaml"), []byte("sops: {}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+// A run that stops after the nested write, here at a failed commit, takes the
+// worktree it made away again, with the host's file in it.
+func TestHostSecretRemovesTheWorktreeWhenItStops(t *testing.T) {
+	cacheRecovery(t)
 	x, fake, out := newFakeCtx(func(s engine.Spec) (engine.Result, error) {
 		args := strings.Join(s.Args, " ")
+		if res, ok := hostFile(s); ok {
+			return res, nil
+		}
 		switch {
-		case s.Name == "yq" && strings.HasPrefix(args, ".hosts | has"):
-			return engine.Result{Stdout: "true\n"}, nil
 		case s.Name == "yq" && strings.HasPrefix(args, "-o=json"):
 			return engine.Result{Stdout: `{"sops": {}}`}, nil
 		case s.Name == "git" && strings.HasPrefix(args, "commit"):
@@ -97,15 +112,18 @@ func TestHostSecretPutsTheFileBackWhenItStops(t *testing.T) {
 	})
 	x.Stdin = strings.NewReader("the passphrase")
 	err := engine.RunWith(x, HostSecret, map[string]string{
-		"repo": repo, "recovery": "", "host": "nas", "name": "hotspot/wls0", "value-stdin": "true",
+		"repo": t.TempDir(), "recovery": "", "host": "nas", "name": "hotspot/wls0", "value-stdin": "true",
 	})
 	if err == nil {
 		t.Fatalf("the failed commit was not reported\n%s", out)
 	}
 	cmds := strings.Join(fake.Commands(), "\n")
 	set := strings.Index(cmds, `sops set --value-stdin hosts/nas.yaml '["hotspot"]["wls0"]'`)
-	restore := strings.Index(cmds, "restore --source=HEAD --staged --worktree -- hosts/nas.yaml")
-	if set < 0 || restore < set {
-		t.Errorf("the file was not put back after the nested write:\n%s\n%s", cmds, out)
+	remove := strings.Index(cmds, "worktree remove --force")
+	if set < 0 || remove < set {
+		t.Errorf("the worktree was not removed after the nested write:\n%s\n%s", cmds, out)
+	}
+	if strings.Contains(cmds, "git push") {
+		t.Errorf("pushed after the failed commit:\n%s", cmds)
 	}
 }

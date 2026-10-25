@@ -4,8 +4,9 @@
 
 Set the user's password on that host.
 
-Hashes the password (yescrypt) and stores the hash in users/\<user>/\<host>.yaml,
-encrypted to that host and you. Hosts apply it at every activation.
+Hashes the password (yescrypt) and stores the hash in users/\<user>/\<host>.yaml on the host's
+branch, host/\<host>, encrypted to that host and your recovery recipient. Hosts apply it at every
+activation. Push the branch after.
 
 ```
 fleet secrets user-password [USER] [HOST] [flags]
@@ -18,7 +19,7 @@ printf %s "$pw" | fleet secrets user-password alice laptop1 --password-stdin --y
 
 | Flag | |
 |---|---|
-| `--repo` | The fleet-secrets checkout to change; defaults to FLEET_SECRETS_REPO, then this directory |
+| `--repo` | Your clone of the secrets repository, left on main; defaults to FLEET_SECRETS_REPO, then this directory |
 | `--recovery` | Your passphrase-encrypted age identity (age -p). Empty: sops uses SOPS_AGE_KEY_FILE or SOPS_AGE_KEY |
 | `--user` | The user's name: lowercase letters, digits and '-' |
 | `--host` | The host's name: lowercase letters, digits and '-' |
@@ -30,12 +31,10 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 ## Steps
 
-1. **Open the secrets repository.** Each command commits exactly its own change, so the tree must have no uncommitted changes. It builds on the newest commit and encrypts for the recipients that commit names, so that commit must be one a trusted key signed, not whatever was pushed last.
+1. **Open the secrets repository.** The change builds on the host's branch and encrypts for the recipients that branch names, so git must check its signatures against keys a pushed commit cannot change. New files are encrypted to the host and to your recovery recipient, which fleet setup caches.
 
    ```
-   $ cd REPO && test -f fleet.yaml
-   $ cd REPO && git status --porcelain --untracked-files=no
-   $ cd REPO && git verify-commit HEAD
+   $ cd REPO && git rev-parse --git-dir
    $ cd REPO && sh -c 'f="$(git config --get gpg.ssh.allowedSignersFile)" || exit 0
 case "$f" in \~/*) f="$HOME/${f#\~/}" ;; esac
 case "$f" in /*) ;; *) f="$(git rev-parse --show-toplevel)/$f" ;; esac
@@ -43,11 +42,7 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
    $ cd REPO && git config --local --default '' --get core.hooksPath
    ```
 
-2. **Look up HOST in fleet.yaml.** fleet.yaml lists every enrolled host with its age recipient.
-
-   ```
-   $ cd REPO && h=HOST yq '.hosts | has(strenv(h))' fleet.yaml
-   ```
+2. **Look up host/HOST.** A host's branch is host/\<name>; a host that has none is not enrolled.
 
 3. **Unlock your recovery identity.** Decrypted into this run's memory only, for the sops commands below. age asks for its passphrase.
 
@@ -61,10 +56,18 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
    $ mkpasswd -m yescrypt --stdin   # the password on stdin
    ```
 
-5. **Create users/USER/HOST.yaml.** It does not exist yet; it is created empty and encrypted to HOST and you.
+5. **Open a worktree of host/HOST.** The change is made in a temporary worktree of the host's branch, so that your checkout stays on main and the commit holds this change and nothing else. It goes away at the end, or when the run stops.
 
-6. **Store the hash in users/USER/HOST.yaml.** As the key password, which hosts read when accounts.\<user>.secrets.password is on.
+6. **Create users/USER/HOST.yaml.** It does not exist yet; it is created empty and encrypted to HOST and your recovery recipient.
 
-7. **Commit.** Signed with your key, if this checkout signs; hosts accept only signed commits. Push it afterwards.
+7. **Store the hash in users/USER/HOST.yaml.** As the key password, which hosts read when accounts.\<user>.secrets.password is on.
+
+8. **Commit.** Signed with your key, if this checkout signs; hosts accept only signed commits. Push the branch afterwards.
+
+9. **Remove the worktree.** It was only for this change; the commit is on host/HOST in your clone.
+
+   ```
+   $ cd REPO && git worktree remove --force WORK
+   ```
 
 It needs `git`, `yq`, `sops`, `age`, `mkpasswd` on the PATH; `fleet doctor` says where to get them.

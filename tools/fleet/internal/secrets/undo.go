@@ -95,7 +95,7 @@ func Committed(x *engine.Ctx, dir, message string) {
 
 // Push pushes the secrets checkout, and drops the note that it is not.
 func Push() *engine.Command {
-	return cmd("git", "push").After(func(x *engine.Ctx) error {
+	return repoCmd("git", "push").After(func(x *engine.Ctx) error {
 		x.Kept("push {{.repo}}", "")
 		return nil
 	})

@@ -1,9 +1,15 @@
 // Package secrets is the port of fleet-secrets (lib/apps/fleet-secrets.nix):
 // the maintainer's side of the secrets repository. It runs the same yq, sops,
 // git, mkpasswd and ssh-keygen commands as the shell tool, in the same order,
-// and leaves the repository in the same state: identical fleet.yaml and
-// .sops.yaml, the same files, encrypted to the same recipients, and the same
-// commit messages. tests/fleet-secrets-parity runs both and compares.
+// and leaves the repository in the same state: the same branches, one
+// host/<name> per host, the same files on them, encrypted to the same
+// recipients, and the same commit messages. tests/fleet-secrets-parity runs
+// both and compares.
+//
+// A command for a host works in a temporary worktree of its branch, so the
+// clone's own checkout stays on main. There is no registry of recipients: a
+// file's recipients are in its own sops metadata, and the maintainer's
+// recovery recipient is the one fleet setup caches.
 package secrets
 
 import (
@@ -14,20 +20,22 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/nnishant776/fleet-manager/tools/fleet/internal/engine"
+	"github.com/nnishant776/fleet-manager/tools/fleet/internal/fleet"
 )
 
 // NamePattern is what host and user names may be: they end up in file names
-// and in the regular expressions of .sops.yaml.
+// and in branch names.
 const NamePattern = `^[a-z0-9][a-z0-9-]*$`
 
 // RepoInput is the secrets checkout.
 var RepoInput = engine.Input{
 	Name:   "repo",
 	Prompt: "Secrets repository checkout",
-	Help:   "The fleet-secrets checkout to change; defaults to FLEET_SECRETS_REPO, then this directory",
+	Help:   "Your clone of the secrets repository, left on main; defaults to FLEET_SECRETS_REPO, then this directory",
 	Default: func(*engine.Ctx) (string, error) {
 		if v := os.Getenv("FLEET_SECRETS_REPO"); v != "" {
 			return v, nil
@@ -75,70 +83,106 @@ var FromInput = engine.Input{
 	Help:   "The host's enrollment file, as written by fleet-secrets-sync init, or - for standard input",
 }
 
-func in(x *engine.Ctx, rel string) string { return filepath.Join(x.Value("repo"), rel) }
+// in is a path in the worktree the command works in.
+func in(x *engine.Ctx, rel string) string { return filepath.Join(x.Value("work"), rel) }
 
 func exists(p string) bool { _, err := os.Stat(p); return err == nil }
 
-// cmd runs in the repository.
-func cmd(name string, args ...string) *engine.Command {
+// repoCmd runs in the maintainer's clone, which stays on main.
+func repoCmd(name string, args ...string) *engine.Command {
 	return engine.Cmd(name, args...).In("{{.repo}}")
 }
 
-// Open checks the repository is one, that the tree is clean, since every
-// command commits exactly its own change, and that it can be trusted: its
-// newest commit is signed by a trusted key, and git does not run the
-// repository's own hook.
-func Open() engine.Step {
+// cmd runs in the worktree of the host's branch.
+func cmd(name string, args ...string) *engine.Command {
+	return engine.Cmd(name, args...).In("{{.work}}")
+}
+
+// RecoveryCache is the file fleet setup keeps the maintainer's recovery
+// recipient in: $XDG_STATE_HOME/fleet/recovery.pub.
+func RecoveryCache() (string, error) {
+	dir, err := fleet.StateDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "recovery.pub"), nil
+}
+
+var agePattern = regexp.MustCompile(`^age1[0-9a-z]+$`)
+
+// ReadRecoveryRecipient reads the cached recovery recipient, one age1… line.
+func ReadRecoveryRecipient() (string, error) {
+	p, err := RecoveryCache()
+	if err != nil {
+		return "", err
+	}
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return "", fmt.Errorf("no recovery recipient in %s: run fleet setup", p)
+	}
+	line, _, _ := strings.Cut(string(b), "\n")
+	line = strings.TrimSpace(line)
+	if !agePattern.MatchString(line) {
+		return "", fmt.Errorf("%s does not hold an age recipient: run fleet setup", p)
+	}
+	return line, nil
+}
+
+// Open checks the repository is one and that it can be trusted: git checks
+// signatures against your own copy of the keys, outside every checkout, and
+// does not run the repository's own hook. With recovery, it also checks that
+// the recovery recipient is cached, since new files are encrypted to it, and
+// keeps it as the value recovery_pub.
+func Open(recovery bool) engine.Step {
+	why := "The change builds on the host's branch and encrypts for the recipients that branch names, so git must check its signatures against keys a pushed commit cannot change."
+	if recovery {
+		why += " New files are encrypted to the host and to your recovery recipient, which fleet setup caches."
+	}
 	return engine.Step{
 		Title: "Open the secrets repository",
-		Why: "Each command commits exactly its own change, so the tree must have no uncommitted changes. " +
-			"It builds on the newest commit and encrypts for the recipients that commit names, so that commit must be one a trusted key signed, not whatever was pushed last.",
-		Do: engine.Checks(
-			engine.Probe{
-				What:   "fleet.yaml in {{.repo}}",
-				Cmd:    cmd("test", "-f", "fleet.yaml"),
-				Expect: func(string) (string, error) { return "", nil },
-			},
-			engine.Probe{
-				// Untracked files are not a reason to refuse: the commands create some.
-				What: "no uncommitted changes",
-				Cmd:  cmd("git", "status", "--porcelain", "--untracked-files=no"),
-				Expect: func(out string) (string, error) {
-					if strings.TrimSpace(out) != "" {
-						return "", errors.New("the working tree has uncommitted changes; commit or discard them first")
-					}
-					return "", nil
+		Why:   why,
+		Do: engine.Seq(
+			engine.Checks(
+				engine.Probe{
+					What:   "{{.repo}} is a git repository",
+					Cmd:    repoCmd("git", "rev-parse", "--git-dir"),
+					Expect: func(string) (string, error) { return "", nil },
 				},
-			},
-			engine.Probe{
-				What: "its newest commit signed by a trusted key",
-				Cmd: cmd("git", "verify-commit", "HEAD").Explain(func(engine.Result) string {
-					return "the newest commit is not signed by a key in gpg.ssh.allowedSignersFile (fleet setup sets it):" +
-						" look at it with git log --show-signature -1 before going on"
-				}),
-			},
-			engine.Probe{
-				What: "git checks signatures against your own copy of the keys",
-				Cmd:  cmd("sh", "-c", signersOutsideCheckout),
-				Expect: func(out string) (string, error) {
-					if f, ok := strings.CutPrefix(strings.TrimSpace(out), "inside "); ok {
-						return "", fmt.Errorf("git checks signatures against %s, which is inside a checkout, so a pushed commit could add "+
-							"the key that signs it: run fleet setup, which points it at your own copy of the keys", f)
-					}
-					return "", nil
+				engine.Probe{
+					What: "git checks signatures against your own copy of the keys",
+					Cmd:  repoCmd("sh", "-c", signersOutsideCheckout),
+					Expect: func(out string) (string, error) {
+						if f, ok := strings.CutPrefix(strings.TrimSpace(out), "inside "); ok {
+							return "", fmt.Errorf("git checks signatures against %s, which is inside a checkout, so a pushed commit could add "+
+								"the key that signs it: run fleet setup, which points it at your own copy of the keys", f)
+						}
+						return "", nil
+					},
 				},
-			},
-			engine.Probe{
-				What: "git runs a copy of the hook you have read",
-				Cmd:  cmd("git", "config", "--local", "--default", "", "--get", "core.hooksPath"),
-				Expect: func(out string) (string, error) {
-					if strings.TrimSpace(out) == ".githooks" {
-						return "", errors.New("git runs the repository's own hook (core.hooksPath is .githooks):" +
-							" run fleet setup, which installs a copy you have read in its place")
-					}
-					return "", nil
+				engine.Probe{
+					What: "git runs a copy of the hook you have read",
+					Cmd:  repoCmd("git", "config", "--local", "--default", "", "--get", "core.hooksPath"),
+					Expect: func(out string) (string, error) {
+						if strings.TrimSpace(out) == ".githooks" {
+							return "", errors.New("git runs the repository's own hook (core.hooksPath is .githooks):" +
+								" run fleet setup, which installs a copy you have read in its place")
+						}
+						return "", nil
+					},
 				},
-			},
+			),
+			engine.Func(func(x *engine.Ctx) error {
+				if !recovery {
+					return nil
+				}
+				r, err := ReadRecoveryRecipient()
+				if err != nil {
+					return err
+				}
+				x.Values["recovery_pub"] = r
+				x.UI.OK("your recovery recipient is cached: " + r)
+				return nil
+			}),
 		),
 	}
 }
@@ -158,25 +202,184 @@ func Unlock() engine.Step {
 	}
 }
 
-// Enrolled checks whether fleet.yaml lists the host; want says which answer
-// lets the command go on, and why tells the person what to do otherwise.
-func Enrolled(want bool, otherwise string) engine.Step {
+// BranchRef is the ref that holds the host's branch: the local branch, or
+// else the one fetched from origin; empty when there is neither.
+func BranchRef(x *engine.Ctx, host string) string {
+	for _, ref := range []string{"refs/heads/host/" + host, "refs/remotes/origin/host/" + host} {
+		if _, err := engine.Silently(x, nil, "git", "-C", x.Value("repo"), "rev-parse", "--verify", "-q", ref); err == nil {
+			return ref
+		}
+	}
+	return ""
+}
+
+// HostRecipient is the host's own recipient on a ref: the one in the sops
+// metadata of hosts/<host>.yaml that is not the recovery recipient.
+func HostRecipient(x *engine.Ctx, ref, host, recovery string) (string, error) {
+	doc, err := repoCmd("git", "show", ref+":hosts/"+host+".yaml").RunQuiet(x)
+	if err != nil {
+		return "", fmt.Errorf("%s has no hosts/%s.yaml", ref, host)
+	}
+	x.Values["host_file"] = doc.Stdout
+	res, err := engine.Cmd("yq", ".sops.age[].recipient").StdinFrom("host_file").StdinNote("the host's file").RunQuiet(x)
+	if err != nil {
+		return "", err
+	}
+	var others []string
+	for _, r := range strings.Fields(res.Stdout) {
+		if r != recovery {
+			others = append(others, r)
+		}
+	}
+	if len(others) != 1 {
+		return "", fmt.Errorf("hosts/%s.yaml on %s should be encrypted to the recovery recipient and exactly one other, the host's", host, ref)
+	}
+	return others[0], nil
+}
+
+// EnrollTarget checks the host has no branch yet, or has one for this very
+// identity, in which case it sets the value done and the later steps skip.
+func EnrollTarget() engine.Step {
 	return engine.Step{
-		Title: "Look up {{.host}} in fleet.yaml",
-		Why:   "fleet.yaml lists every enrolled host with its age recipient.",
-		Do: engine.Checks(engine.Probe{
-			What: "{{.host}} in fleet.yaml",
-			Cmd:  cmd("yq", ".hosts | has(strenv(h))", "fleet.yaml").Env("h={{.host}}"),
-			Expect: func(out string) (string, error) {
-				got := strings.TrimSpace(out) == "true"
-				if got != want {
-					return "", errors.New(otherwise)
+		Title: "Look up host/{{.host}}",
+		Why:   "A host's branch is host/<name>; a host that has one is enrolled. A branch of another identity is re-keyed, not enrolled over.",
+		Do: engine.Func(func(x *engine.Ctx) error {
+			host := x.Value("host")
+			ref := BranchRef(x, host)
+			x.Values["ref"] = ref
+			if ref == "" {
+				x.UI.OK("host/" + host + " does not exist yet")
+				return nil
+			}
+			old, err := HostRecipient(x, ref, host, x.Value("recovery_pub"))
+			if err != nil {
+				return err
+			}
+			if old != x.Value("recipient") {
+				return fmt.Errorf("host '%s' is already enrolled with another identity; use host-rekey", host)
+			}
+			x.Values["done"] = "true"
+			x.UI.OK("host/" + host + " holds this identity already; nothing to do")
+			return nil
+		}),
+	}
+}
+
+// Pending is the When of the steps that follow EnrollTarget.
+func Pending(x *engine.Ctx) (bool, string) {
+	if x.Value("done") == "true" {
+		return false, "it is enrolled already, with this identity"
+	}
+	return true, ""
+}
+
+// Unless makes a step run only when Pending says so, besides its own When.
+func Unless(s engine.Step) engine.Step {
+	own := s.When
+	s.When = func(x *engine.Ctx) (bool, string) {
+		if ok, why := Pending(x); !ok {
+			return false, why
+		}
+		if own != nil {
+			return own(x)
+		}
+		return true, ""
+	}
+	return s
+}
+
+// ExistingBranch checks the host has a branch, host/<name>, and says
+// otherwise when it has not. With work, the command builds on it, so its tip
+// must be signed by a trusted key, and the host's recipient is kept as the
+// value host_recipient.
+func ExistingBranch(otherwise string, work bool) engine.Step {
+	return engine.Step{
+		Title: "Look up host/{{.host}}",
+		Why:   "A host's branch is host/<name>; a host that has none is not enrolled.",
+		Do: engine.Func(func(x *engine.Ctx) error {
+			host := x.Value("host")
+			ref := BranchRef(x, host)
+			if ref == "" {
+				msg, _ := x.Expand(otherwise)
+				return errors.New(msg)
+			}
+			x.Values["ref"] = ref
+			x.UI.OK(ref)
+			if !work {
+				return nil
+			}
+			if _, err := repoCmd("git", "verify-commit", "{{.ref}}").Explain(func(engine.Result) string {
+				return "the newest commit of {{.ref}} is not signed by a key in gpg.ssh.allowedSignersFile (fleet setup sets it):" +
+					" look at it with git log --show-signature -1 {{.ref}} before going on"
+			}).RunQuiet(x); err != nil {
+				return err
+			}
+			x.UI.OK("its newest commit is signed by a trusted key")
+			r, err := HostRecipient(x, ref, host, x.Value("recovery_pub"))
+			if err != nil {
+				return err
+			}
+			x.Values["host_recipient"] = r
+			x.UI.OK("the host's recipient is " + r)
+			return nil
+		}),
+	}
+}
+
+// OpenWork makes the temporary worktree of host/<name> the command works in,
+// as the value work: the branch is made, empty, when it has no ref yet, and
+// made from origin's when only that exists. A run that stops takes the
+// worktree, and a branch made for it, away again.
+func OpenWork() engine.Step {
+	return engine.Step{
+		Title: "Open a worktree of host/{{.host}}",
+		Why: "The change is made in a temporary worktree of the host's branch, so that your checkout stays on main and the commit holds this change and nothing else. " +
+			"It goes away at the end, or when the run stops.",
+		Do: engine.Func(func(x *engine.Ctx) error {
+			dir := "<worktree>"
+			if !x.Options.DryRun {
+				var err error
+				if dir, err = os.MkdirTemp("", "fleet-secrets-"); err != nil {
+					return err
 				}
-				if got {
-					return "enrolled", nil
+			}
+			x.Values["work"] = dir
+			branch := "host/" + x.Value("host")
+			var args []string
+			madeBranch := false
+			switch ref := x.Value("ref"); {
+			case ref == "":
+				args = []string{"worktree", "add", "-q", "--orphan", "-b", branch, "{{.work}}"}
+			case ref == "refs/heads/"+branch:
+				args = []string{"worktree", "add", "-q", "{{.work}}", branch}
+			default:
+				args = []string{"worktree", "add", "-q", "-b", branch, "{{.work}}", ref}
+				madeBranch = true
+			}
+			if _, err := repoCmd("git", args...).Run(x); err != nil {
+				if !x.Options.DryRun {
+					os.Remove(dir)
 				}
-				return "not enrolled yet", nil
-			},
+				return err
+			}
+			undo := []engine.Action{repoCmd("git", "worktree", "remove", "--force", "{{.work}}").OK("the worktree is removed")}
+			if madeBranch {
+				undo = append(undo, repoCmd("git", "branch", "-D", "-q", branch).OK("and the branch made for it"))
+			}
+			x.Undo("worktree", engine.Seq(undo...))
+			return nil
+		}),
+	}
+}
+
+// CloseWork removes the worktree once the commit is made.
+func CloseWork() engine.Step {
+	return engine.Step{
+		Title: "Remove the worktree",
+		Why:   "It was only for this change; the commit is on host/{{.host}} in your clone.",
+		Do: repoCmd("git", "worktree", "remove", "--force", "{{.work}}").OK("removed").After(func(x *engine.Ctx) error {
+			x.Done("worktree")
+			return nil
 		}),
 	}
 }
@@ -244,72 +447,29 @@ func ReadEnrollment() engine.Step {
 	}
 }
 
-// SetRecipient records the host's recipient in fleet.yaml.
-func SetRecipient() engine.Step {
+// WriteEnrollment writes the enrollment file as given to enroll in the
+// worktree: the host's public identity, a record only.
+func WriteEnrollment() engine.Step {
 	return engine.Step{
-		Title: "Record {{.host}} in fleet.yaml",
-		Why:   "The registry is the one thing the rules in .sops.yaml are rendered from.",
-		Do: cmd("yq", "-i", ".hosts[strenv(h)] = strenv(r)", "fleet.yaml").Env("h={{.host}}", "r={{.recipient}}").
-			Before(Restoring("fleet.yaml")),
-	}
-}
-
-// Render writes .sops.yaml from fleet.yaml: literal recipients, no anchors,
-// two rules per host (its own file and its users' files) and none per user.
-func Render() engine.Step {
-	return engine.Step{
-		Title: "Render .sops.yaml from fleet.yaml",
-		Why:   "Two rules per host, its own file and its users' files, each encrypted to that host and you only.",
+		Title: "Write the enrollment record",
+		Why:   "enroll holds the host's public identity as the host wrote it. Hosts do not read it; it is a record of what the branch was made for.",
 		Do: engine.Func(func(x *engine.Ctx) error {
-			res, err := cmd("yq", ".maintainer", "fleet.yaml").RunQuiet(x)
-			if err != nil {
+			if x.Options.DryRun {
+				x.UI.Skip("dry run: not written")
+				return nil
+			}
+			doc := strings.TrimRight(x.Value("enrollment"), "\n") + "\n"
+			if err := os.WriteFile(in(x, "enroll"), []byte(doc), 0o644); err != nil {
 				return err
 			}
-			maintainer := strings.TrimSpace(res.Stdout)
-			res, err = cmd("yq", ".hosts | keys | .[]", "fleet.yaml").RunQuiet(x)
-			if err != nil {
-				return err
-			}
-			hosts := strings.Fields(res.Stdout)
-			if !strings.HasPrefix(maintainer, "age1") {
-				return errors.New("fleet.yaml has no maintainer recipient")
-			}
-			var b bytes.Buffer
-			b.WriteString("# Generated by fleet-secrets from fleet.yaml. Do not edit.\n")
-			if len(hosts) == 0 {
-				b.WriteString("creation_rules: []\n")
-			} else {
-				b.WriteString("creation_rules:\n")
-			}
-			for _, h := range hosts {
-				res, err := cmd("yq", ".hosts[strenv(h)]", "fleet.yaml").Env("h=" + h).RunQuiet(x)
-				if err != nil {
-					return err
-				}
-				recipient := strings.TrimSpace(res.Stdout)
-				for _, re := range []string{`^hosts/` + h + `\.yaml$`, `^users/[^/]+/` + h + `\.yaml$`} {
-					fmt.Fprintf(&b, "  - path_regex: %s\n    key_groups:\n      - age: [\"%s\", \"%s\"]\n", re, maintainer, recipient)
-				}
-			}
-			x.UI.Text(b.String())
-			ok, err := x.Approve("Write it?")
-			if !ok || err != nil {
-				return err
-			}
-			if err := RestoreOnStop(x, "{{.repo}}", ".sops.yaml"); err != nil {
-				return err
-			}
-			if err := os.WriteFile(in(x, ".sops.yaml"), b.Bytes(), 0o644); err != nil {
-				return err
-			}
-			x.UI.OK(fmt.Sprintf("wrote .sops.yaml, %d rules for %d hosts", 2*len(hosts), len(hosts)))
+			x.UI.OK("wrote enroll")
 			return nil
 		}),
 	}
 }
 
-// HostFiles are the files a host's rules cover that exist, in the shell's
-// glob order.
+// HostFiles are the files of the host on the worktree's branch that exist, in
+// the shell's glob order.
 func HostFiles(x *engine.Ctx, host string) []string {
 	var files []string
 	if exists(in(x, "hosts/"+host+".yaml")) {
@@ -317,43 +477,27 @@ func HostFiles(x *engine.Ctx, host string) []string {
 	}
 	users, _ := filepath.Glob(in(x, "users/*/"+host+".yaml"))
 	for _, u := range users {
-		rel, _ := filepath.Rel(x.Value("repo"), u)
+		rel, _ := filepath.Rel(x.Value("work"), u)
 		files = append(files, rel)
 	}
 	return files
 }
 
-// AllFiles are every encrypted file, hosts first, in the shell's glob order.
-func AllFiles(x *engine.Ctx) []string {
-	var files []string
-	for _, pattern := range []string{"hosts/*.yaml", "users/*/*.yaml"} {
-		matches, _ := filepath.Glob(in(x, pattern))
-		for _, m := range matches {
-			if st, err := os.Stat(m); err == nil && st.Mode().IsRegular() {
-				rel, _ := filepath.Rel(x.Value("repo"), m)
-				files = append(files, rel)
-			}
-		}
-	}
-	return files
-}
-
-// UpdateKeys re-encrypts files to the recipients their rules now name. files
-// is computed when the step runs and kept as the value "files", one per line,
-// for the commit.
-func UpdateKeys(title, why string, files func(*engine.Ctx) []string) engine.Step {
+// Rotate replaces the host's old recipient (the value host_recipient) by its
+// new one (the value recipient) in every file of the host on its branch,
+// keeping them as the value "files", one per line, for the commit.
+func Rotate(title, why string) engine.Step {
 	return engine.Step{
 		Title: title,
 		Why:   why,
 		Do: engine.Func(func(x *engine.Ctx) error {
-			fs := files(x)
-			x.Values["files"] = strings.Join(fs, "\n")
-			if len(fs) == 0 {
-				x.UI.Skip("no files to re-encrypt")
-				return nil
+			fs := HostFiles(x, x.Value("host"))
+			if x.Options.DryRun && len(fs) == 0 {
+				fs = []string{"hosts/" + x.Value("host") + ".yaml"}
 			}
+			x.Values["files"] = strings.Join(fs, "\n")
 			for _, f := range fs {
-				if _, err := cmd("sops", "updatekeys", "-y", f).Before(Restoring(f)).Run(x); err != nil {
+				if _, err := cmd("sops", "rotate", "-i", "--rm-age", "{{.host_recipient}}", "--add-age", "{{.recipient}}", f).Run(x); err != nil {
 					return err
 				}
 			}
@@ -362,11 +506,12 @@ func UpdateKeys(title, why string, files func(*engine.Ctx) []string) engine.Step
 	}
 }
 
-// CreateEmpty creates an empty encrypted file under the rules just rendered.
-func CreateEmpty(title, rel string) engine.Step {
+// CreateEmpty creates an empty file encrypted to the host, whose recipient is
+// in the value recipientValue, and to the recovery recipient.
+func CreateEmpty(title, rel, recipientValue string) engine.Step {
 	return engine.Step{
 		Title: title,
-		Why:   "sops encrypts an empty document to the recipients the rules name for this path.",
+		Why:   "sops encrypts an empty document to the host and to your recovery recipient.",
 		Do: engine.Func(func(x *engine.Ctx) error {
 			rel, err := x.Expand(rel)
 			if err != nil {
@@ -381,16 +526,14 @@ func CreateEmpty(title, rel string) engine.Step {
 				return err
 			}
 			tmp.Close()
-			res, err := cmd("sops", "--encrypt", "--input-type", "yaml", "--output-type", "yaml",
-				"--filename-override", rel, tmp.Name()).Quiet().OK("encrypted").Run(x)
+			x.Values["recipients"] = x.Value(recipientValue) + "," + x.Value("recovery_pub")
+			res, err := cmd("sops", "--encrypt", "--age", "{{.recipients}}", "--input-type", "yaml", "--output-type", "yaml",
+				tmp.Name()).Quiet().OK("encrypted").Run(x)
 			if err != nil {
 				return fmt.Errorf("could not create %s: %w", rel, err)
 			}
 			if x.Options.DryRun {
 				return nil
-			}
-			if err := RestoreOnStop(x, "{{.repo}}", rel); err != nil {
-				return err
 			}
 			if err := os.MkdirAll(filepath.Dir(in(x, rel)), 0o755); err != nil {
 				return err
@@ -404,12 +547,12 @@ func CreateEmpty(title, rel string) engine.Step {
 	}
 }
 
-// Commit adds paths (templated; "{{.files}}" expands to one per line) and
-// commits them with message.
+// Commit adds paths (templated; "{{.files}}" expands to one per line) in the
+// worktree and commits them with message, on the host's branch.
 func Commit(message string, paths ...string) engine.Step {
 	return engine.Step{
 		Title: "Commit",
-		Why:   "Signed with your key, if this checkout signs; hosts accept only signed commits. Push it afterwards.",
+		Why:   "Signed with your key, if this checkout signs; hosts accept only signed commits. Push the branch afterwards.",
 		Do: engine.Func(func(x *engine.Ctx) error {
 			args := []string{"add"}
 			for _, p := range paths {
@@ -419,10 +562,7 @@ func Commit(message string, paths ...string) engine.Step {
 				}
 				args = append(args, strings.Fields(e)...)
 			}
-			added := args[1:]
-			if _, err := cmd("git", args...).Before(func(x *engine.Ctx) error {
-				return Unstage(x, "{{.repo}}", added)
-			}).Run(x); err != nil {
+			if _, err := cmd("git", args...).Run(x); err != nil {
 				return err
 			}
 			msg, err := x.Expand(message)
@@ -430,12 +570,21 @@ func Commit(message string, paths ...string) engine.Step {
 				return err
 			}
 			_, err = cmd("git", "commit", "-q", "-m", msg).OK("committed: " + msg).After(func(x *engine.Ctx) error {
-				Committed(x, "{{.repo}}", msg)
+				x.Settled()
+				x.Kept("push host/{{.host}}", "the commit “"+msg+"” on host/{{.host}} in {{.repo}}, not pushed yet (git -C {{.repo}} push origin host/{{.host}})")
 				return nil
 			}).Run(x)
 			return err
 		}),
 	}
+}
+
+// PushBranch pushes the host's branch, and drops the note that it is not.
+func PushBranch() *engine.Command {
+	return repoCmd("git", "push", "origin", "host/{{.host}}").After(func(x *engine.Ctx) error {
+		x.Kept("push host/{{.host}}", "")
+		return nil
+	})
 }
 
 // JSON encodes s as a JSON string for sops set, the way the shell tool did
@@ -448,11 +597,10 @@ func JSON(s string) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-// Set sets one key of an encrypted file from a value, passed on stdin so it
-// never appears in a process listing.
+// Set sets one key of an encrypted file in the worktree from a value, passed
+// on stdin so it never appears in a process listing.
 func Set(file, key, value, note string) *engine.Command {
-	return cmd("sops", "set", "--value-stdin", file, `["`+key+`"]`).StdinFrom(value).StdinNote(note).
-		Before(Restoring(file))
+	return cmd("sops", "set", "--value-stdin", file, `["`+key+`"]`).StdinFrom(value).StdinNote(note)
 }
 
 // signersOutsideCheckout prints "inside FILE" when git's
