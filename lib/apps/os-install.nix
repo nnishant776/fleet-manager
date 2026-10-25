@@ -174,8 +174,8 @@ pkgs.writeShellApplication {
           echo "os-install: enrollment file copied to $enrollOut"
         fi
         echo "On the maintainer's machine: fleet secrets host-enroll $host --from <that file>,"
-        echo "push, then register its deploy key read-only on the secrets repository and"
-        echo "its configuration key read-only on the configuration repository."
+        echo "push host/$host, then register its deploy key read-only on the secrets"
+        echo "repository and its configuration key read-only on the configuration repository."
       fi
       # The document the step after nixos-install reads, as with --identity.
       fleet-identity --state "$ramState" --export > "$ramState/identity.yaml"

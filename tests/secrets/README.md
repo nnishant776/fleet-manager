@@ -17,11 +17,13 @@ is missing. `down` stops the sshd and keeps the files.
   `allowed_signers` (principal `maintainer@test`), `support_ed25519`.
 - `sshd/`: host key, `sshd_config` and `authorized_keys` (the deploy key). An
   sshd runs as the current user on port 2222 and accepts only that user.
-- `secrets.git` (bare) and `secrets/` (a clone): `fleet.yaml`, `.sops.yaml`,
+- `secrets.git` (bare) and `secrets/` (a clone): `main` with a README, and the
+  scratch host's branch, `host/scratch-secrets`, with
   `hosts/scratch-secrets.yaml` (`support_password`, hash of `support`) and
   `users/alice/scratch-secrets.yaml` (`password`, hash of `alice`, plus
   `ssh_key` and `ssh_key_pub`), encrypted to the recovery key and `host.key`,
-  in one signed commit.
+  in one signed commit. There is no `fleet.yaml` and no `.sops.yaml`: the host
+  tracks its branch, which is the default of `conf.secrets.repo.ref`.
 - `config.git` (bare): this checkout's files plus `hosts/scratch-secrets/*`, in
   one signed commit. Delete it and run `up` again to refresh the snapshot.
 
@@ -37,5 +39,8 @@ the URLs in `harness.nix` use that address. The scratch host's deploy key is
 `nix build .#checks.x86_64-linux.secrets-sync` runs a NixOS VM test
 (`vm-test.nix`): a `forge` node serves signed bare repositories over sshd and a
 `fleet` node built from the scratch host has to bootstrap, snapshot, activate
-and refuse an unsigned commit. It needs KVM and takes a few minutes; the CI
+and refuse an unsigned commit on its branch. The forge also plays the
+maintainer: `fleet host secret` works in a worktree of `host/scratch-secrets` in
+a clone that stays on `main`, with the recovery recipient cached the way
+`fleet setup` leaves it. It needs KVM and takes a few minutes; the CI
 workflow does not run it.
