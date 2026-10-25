@@ -20,7 +20,8 @@
 #   from the newest commit there;
 # - after a sync the checkout is the verified commit and nothing else: HEAD
 #   detached at it, origin the only remote, holding only the tracked branch,
-#   and no local branches.
+#   and no local branches;
+# - a missing checkout stops the sync, which starts the first-boot clone.
 # The graphical notification is not covered: the VM has no session.
 # Run it with `nix build .#checks.x86_64-linux.fleet-sync-status`.
 { pkgs, inputs }:
@@ -263,6 +264,19 @@ pkgs.testers.runNixOSTest {
         assert refs == ["refs/remotes/origin/main"], refs
         remotes = checkout.succeed("${git} -C /etc/nixos remote").split()
         assert remotes == ["origin"], remotes
+        checkout.fail("test -e /var/lib/fleet-sync/status")
+
+    with subtest("a missing checkout stops the sync, which starts the first-boot clone"):
+        # This machine has the first-boot clone switched off, so starting it
+        # fails; the sync says so and stops as it should all the same.
+        checkout.succeed("mv /etc/nixos /etc/nixos.away")
+        checkout.fail("systemctl start config-auto-update.service")
+        assert field("kind") == "checkout", field("kind")
+        checkout.succeed("journalctl -u config-auto-update | grep -q 'starting the first-boot clone'")
+        checkout.succeed(
+            "mv /etc/nixos.away /etc/nixos",
+            "systemctl start config-auto-update.service",
+        )
         checkout.fail("test -e /var/lib/fleet-sync/status")
   '';
 }

@@ -82,9 +82,12 @@ let
       ''}
 
       if [ ! -d "$repo/.git" ]; then
-        log "no git checkout at $repo — refusing to sync"
-        log "os-install populates it; see conf.fleet.repo"
-        stop checkout "The configuration checkout at $repo is missing, so this machine cannot update."
+        # The first-boot clone makes it whenever it is missing, and keeps
+        # trying until it can, so a machine whose checkout was lost, whatever
+        # the cause, mends itself.
+        log "no git checkout at $repo; starting the first-boot clone to make it"
+        systemctl start --no-block fleet-bootstrap.service || log "could not start fleet-bootstrap"
+        stop checkout "The configuration checkout at $repo is missing, so this machine cannot update until it is made again."
       fi
 
       # The checkout is evaluated as root; whoever can write it owns the machine.
