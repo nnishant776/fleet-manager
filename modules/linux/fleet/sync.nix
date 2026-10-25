@@ -166,6 +166,29 @@ let
         fi
       ''}
 
+      # The checkout belongs to the fleet: it is the verified commit and
+      # nothing else. HEAD is detached at it, origin is the only remote, and
+      # it holds only the branch it tracks, so what a machine set up by hand
+      # or moved from another repository left behind goes. Local branches go
+      # too when local changes do. Best effort: a failure is logged, and
+      # never stops the update.
+      tidy() {
+        git -C "$repo" checkout -q --detach "$target" || return 1
+        git -C "$repo" remote | while read -r r; do
+          [ "$r" = origin ] || git -C "$repo" remote remove "$r" || exit 1
+        done || return 1
+        # --no-deref: origin/HEAD is a symbolic ref, and deleting through it
+        # would delete the branch it names.
+        git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/origin | while read -r r; do
+          [ "$r" = "refs/remotes/origin/$ref" ] || git -C "$repo" update-ref --no-deref -d "$r" || exit 1
+        done || return 1${lib.optionalString au.resetLocalChanges ''
+
+        git -C "$repo" for-each-ref --format='%(refname:short)' refs/heads | while read -r b; do
+          git -C "$repo" branch -q -D "$b" || exit 1
+        done || return 1''}
+      }
+      tidy || log "could not tidy $repo; it stays at $target"
+
       # Recorded now, before the build: the commit is verified and checked
       # out, and a build that fails is fixed by a newer commit on top of it.
       printf '%s\n' "$target" > "$accepted.tmp" && chmod 0644 "$accepted.tmp" && mv -f "$accepted.tmp" "$accepted"

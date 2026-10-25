@@ -17,7 +17,10 @@
 # - a record of the same history under another address passes as it is;
 # - a record from another history, as on a host whose configuration has just
 #   moved, stops the sync until it is removed, which lets the sync start
-#   from the newest commit there.
+#   from the newest commit there;
+# - after a sync the checkout is the verified commit and nothing else: HEAD
+#   detached at it, origin the only remote, holding only the tracked branch,
+#   and no local branches.
 # The graphical notification is not covered: the VM has no session.
 # Run it with `nix build .#checks.x86_64-linux.fleet-sync-status`.
 { pkgs, inputs }:
@@ -239,6 +242,27 @@ pkgs.testers.runNixOSTest {
         )
         assert accepted() == four, accepted()
         assert checkout.succeed("cat /var/lib/fleet-sync/accepted.url").strip() == url
+        checkout.fail("test -e /var/lib/fleet-sync/status")
+
+    with subtest("the checkout holds the verified commit and nothing else"):
+        # What a machine set up by hand, or moved from another repository,
+        # leaves behind: a branch of its own checked out, another remote, and
+        # refs of branches the sync does not track.
+        checkout.succeed(
+            "${git} -C /etc/nixos checkout -q -b sudo-ssh-key",
+            "${git} -C /etc/nixos branch -q leftover",
+            "${git} -C /etc/nixos remote add before-fleet file:///srv/old.git",
+            f"${git} -C /etc/nixos update-ref refs/remotes/before-fleet/main {four}",
+            f"${git} -C /etc/nixos update-ref refs/remotes/origin/stale {four}",
+            "${git} -C /etc/nixos symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main",
+            "systemctl start config-auto-update.service",
+        )
+        checkout.fail("${git} -C /etc/nixos symbolic-ref -q HEAD")
+        assert head("/etc/nixos") == four, head("/etc/nixos")
+        refs = checkout.succeed("${git} -C /etc/nixos for-each-ref --format='%(refname)'").split()
+        assert refs == ["refs/remotes/origin/main"], refs
+        remotes = checkout.succeed("${git} -C /etc/nixos remote").split()
+        assert remotes == ["origin"], remotes
         checkout.fail("test -e /var/lib/fleet-sync/status")
   '';
 }
