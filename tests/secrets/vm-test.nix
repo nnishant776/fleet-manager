@@ -22,7 +22,7 @@ let
   # Everything the nodes need that depends on keys: made once at build time,
   # the same way tests/secrets/harness.nix makes it on a developer machine.
   fixtures = pkgs.runCommand "secrets-vm-fixtures" {
-    nativeBuildInputs = with pkgs; [ age openssh sops git yq-go mkpasswd coreutils findutils ];
+    nativeBuildInputs = with pkgs; [ age openssh sops git mkpasswd coreutils findutils ];
   } ''
     export HOME="$TMPDIR/home"
     mkdir -p "$HOME" "$out"
@@ -71,32 +71,22 @@ let
         -c commit.gpgsign=true -c user.name=maintainer -c user.email=maintainer@test "$@"
     }
 
-    # Writes .sops.yaml from fleet.yaml: literal recipients, two rules per
-    # host. Copied from tests/secrets/harness.nix.
-    render_sops_yaml() {  # render_sops_yaml REPO
-      local repo="$1" maintainer host rec
-      maintainer="$(yq -r '.maintainer' "$repo/fleet.yaml")"
-      {
-        echo "creation_rules:"
-        while read -r host; do
-          [ -n "$host" ] || continue
-          rec="$(yq -r ".hosts.\"$host\"" "$repo/fleet.yaml")"
-          echo "  - path_regex: ^hosts/$host\\.yaml\$"
-          echo "    key_groups: [{ age: [$maintainer, $rec] }]"
-          echo "  - path_regex: ^users/[^/]+/$host\\.yaml\$"
-          echo "    key_groups: [{ age: [$maintainer, $rec] }]"
-        done < <(yq -r '.hosts | keys | .[]' "$repo/fleet.yaml")
-      } > "$repo/.sops.yaml"
-    }
+    # What fleet setup caches for the maintainer's tools.
+    echo "$recovery" > "$out/recovery.pub"
 
-    # The secrets repository: one signed commit holding both secret files.
+    # The secrets repository: main holds a README; the scratch host's branch,
+    # host/${hostName}, one signed commit holding both secret files, encrypted
+    # to the host and the recovery key.
     git init -q --bare -b main "$out/secrets.git"
     git init -q -b main "$TMPDIR/secrets"
     git -C "$TMPDIR/secrets" remote add origin "$out/secrets.git"
     (
       cd "$TMPDIR/secrets"
-      printf 'maintainer: %s\nhosts:\n  ${hostName}: %s\n' "$recovery" "$recipient" > fleet.yaml
-      render_sops_yaml "$PWD"
+      echo "# Scratch secrets" > README.md
+      git add -A
+      signed_git commit -q -S -m "Scratch secrets repository"
+      git push -q origin main
+      git switch -q --orphan host/${hostName}
       mkdir -p hosts users/alice
       printf 'support_password: "%s"\n' "$(mkpasswd -m yescrypt -s <<<support)" > hosts/${hostName}.yaml
       ssh-keygen -q -t ed25519 -N "" -C "alice@${hostName}" -f "$keys/alice_ed25519"
@@ -106,11 +96,11 @@ let
         sed 's/^/  /' "$keys/alice_ed25519"
         printf 'ssh_key_pub: "%s"\n' "$(cat "$keys/alice_ed25519.pub")"
       } > users/alice/${hostName}.yaml
-      sops --encrypt --in-place hosts/${hostName}.yaml
-      sops --encrypt --in-place users/alice/${hostName}.yaml
+      sops --encrypt --in-place --age "$recipient,$recovery" hosts/${hostName}.yaml
+      sops --encrypt --in-place --age "$recipient,$recovery" users/alice/${hostName}.yaml
       git add -A
       signed_git commit -q -S -m "Initial scratch secrets"
-      git push -q origin main
+      git push -q origin host/${hostName}
     )
 
     # The configuration upstream: this flake's files in one signed commit.
@@ -299,7 +289,7 @@ pkgs.testers.runNixOSTest {
   testScript = ''
     sync_cmd = (
         "fleet-secrets-sync sync --state /var/lib/fleet --host ${hostName}"
-        " --repo ${secretsUrl} --signers ${fixtures}/allowed_signers"
+        " --repo ${secretsUrl} --ref host/${hostName} --signers ${fixtures}/allowed_signers"
     )
 
     start_all()
@@ -356,9 +346,9 @@ pkgs.testers.runNixOSTest {
     with subtest("7: an unsigned commit is refused and the snapshot stays"):
         forge.succeed(
             "su git -c '"
-            "cd $(mktemp -d) && git clone /var/lib/forge/secrets.git w && cd w"
+            "cd $(mktemp -d) && git clone -b host/${hostName} /var/lib/forge/secrets.git w && cd w"
             " && git -c user.name=x -c user.email=x@test -c commit.gpgsign=false"
-            " commit --allow-empty -m unsigned && git push origin main'"
+            " commit --allow-empty -m unsigned && git push origin host/${hostName}'"
         )
         status, out = fleet.execute(sync_cmd)
         assert status == 11, f"sync after unsigned commit exited {status}, expected 11: {out}"
@@ -366,17 +356,20 @@ pkgs.testers.runNixOSTest {
         assert after == current, f"snapshot moved from {current} to {after}"
         # The forge goes back to the signed commit before it: the maintainer's
         # tools refuse to build on one that no trusted key signed.
-        forge.succeed("su git -c 'git -C /var/lib/forge/secrets.git update-ref refs/heads/main refs/heads/main~1'")
+        forge.succeed("su git -c 'git -C /var/lib/forge/secrets.git update-ref refs/heads/host/${hostName} refs/heads/host/${hostName}~1'")
 
     # The forge as the maintainer's machine: a signing clone of the secrets
-    # repository, the recovery key for sops, and the support key for the
-    # host, whose key it knows.
+    # repository, which stays on main while fleet works on the host's branch in
+    # a worktree of its own, the recovery key for sops and its recipient as
+    # fleet setup caches it, and the support key for the host, whose key it
+    # knows.
     forge.succeed(
         "install -d -o git -m 700 /home/git/.ssh",
         "install -o git -m 600 /etc/test-keys/recovery.key /etc/test-keys/signing_ed25519 /home/git/",
         "install -o git -m 600 /etc/test-keys/support_ed25519 /home/git/.ssh/id_ed25519",
         "ssh-keyscan -t ed25519 fleet > /home/git/.ssh/known_hosts 2>/dev/null",
         "chown git /home/git/.ssh/known_hosts",
+        "su git -c 'mkdir -p ~/.local/state/fleet && cp ${fixtures}/recovery.pub ~/.local/state/fleet/recovery.pub'",
         "su git -c 'git clone -q /var/lib/forge/secrets.git /home/git/w"
         " && git -C /home/git/w config user.name maintainer"
         " && git -C /home/git/w config user.email maintainer@test"
@@ -438,8 +431,8 @@ pkgs.testers.runNixOSTest {
         accepted = fleet.succeed("cat /var/lib/fleet/accepted").strip()
         assert accepted == current, f"accepted {accepted}, but the snapshot is {current}"
         # Someone who can push, with only old signed commits, rewinds the branch.
-        older = forge.succeed("su git -c 'git -C /home/git/w rev-parse HEAD~1'").strip()
-        forge.succeed(f"su git -c 'git -C /home/git/w push -q --force origin {older}:main'")
+        older = forge.succeed("su git -c 'git -C /home/git/w rev-parse host/${hostName}~1'").strip()
+        forge.succeed(f"su git -c 'git -C /home/git/w push -q --force origin {older}:host/${hostName}'")
         status, out = fleet.execute(sync_cmd)
         assert status == 16, f"sync after a rollback exited {status}, expected 16: {out}"
         assert fleet.succeed("basename $(readlink /var/lib/fleet/secrets)").strip() == current
@@ -647,9 +640,14 @@ pkgs.testers.runNixOSTest {
             return status, fleet.succeed("journalctl -u config-auto-update")[len(before):]
 
         def push_secrets_commit():
+            # A signed commit on the host's branch, on top of the local branch,
+            # which still holds the commit the host accepted last (11 only
+            # rewound the forge's): the clone itself stays on main.
             forge.succeed(
-                "su git -c 'git -C /home/git/w commit -q --allow-empty -m secrets-only"
-                " && git -C /home/git/w push -q origin HEAD:main'"
+                "su git -c 'cd /home/git/w"
+                " && c=$(git commit-tree -S -p host/${hostName} -m secrets-only host/${hostName}^{tree})"
+                " && git update-ref refs/heads/host/${hostName} $c"
+                " && git push -q origin host/${hostName}'"
             )
 
         status, out = run_sync()

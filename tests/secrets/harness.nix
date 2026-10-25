@@ -1,15 +1,16 @@
 # A reproducible stand-in for the private secrets repository and the
 # configuration upstream, for testing the secrets design without any hosting
 # service. `up` creates keys, a user-level sshd on port 2222, a bare secrets
-# repository with a signed commit and a bare configuration repository with a
-# signed commit; a QEMU guest reaches them at 10.0.2.2 (see README.md).
+# repository (a signed commit on main, and one on the scratch host's branch,
+# host/scratch-secrets, with its files) and a bare configuration repository
+# with a signed commit; a QEMU guest reaches them at 10.0.2.2 (see README.md).
 #
 # Everything lives in one directory and `up` only creates what is missing, so
 # running it twice changes nothing.
 { pkgs }:
 pkgs.writeShellApplication {
   name = "secrets-harness";
-  runtimeInputs = with pkgs; [ git openssh sops age yq-go mkpasswd coreutils util-linux jq ];
+  runtimeInputs = with pkgs; [ git openssh sops age mkpasswd coreutils util-linux jq ];
   text = ''
     usage() {
       cat >&2 <<'EOF'
@@ -44,25 +45,6 @@ pkgs.writeShellApplication {
     signed_git() {
       git -c gpg.format=ssh -c "user.signingkey=$dir/signing_ed25519" \
         -c commit.gpgsign=true -c user.name=maintainer -c user.email=maintainer@test "$@"
-    }
-
-    # Writes .sops.yaml from fleet.yaml: literal recipients, two rules per
-    # host. This duplicates the renderer of fleet-secrets on purpose
-    # so the harness does not depend on it.
-    render_sops_yaml() {  # render_sops_yaml REPO
-      local repo="$1" maintainer host rec
-      maintainer="$(yq -r '.maintainer' "$repo/fleet.yaml")"
-      {
-        echo "creation_rules:"
-        while read -r host; do
-          [ -n "$host" ] || continue
-          rec="$(yq -r ".hosts.\"$host\"" "$repo/fleet.yaml")"
-          echo "  - path_regex: ^hosts/$host\\.yaml\$"
-          echo "    key_groups: [{ age: [$maintainer, $rec] }]"
-          echo "  - path_regex: ^users/[^/]+/$host\\.yaml\$"
-          echo "    key_groups: [{ age: [$maintainer, $rec] }]"
-        done < <(yq -r '.hosts | keys | .[]' "$repo/fleet.yaml")
-      } > "$repo/.sops.yaml"
     }
 
     case "$cmd" in
@@ -136,18 +118,22 @@ pkgs.writeShellApplication {
       ${pkgs.openssh}/bin/sshd -f "$dir/sshd/sshd_config" -E "$dir/sshd/log"
     fi
 
-    # The secrets repository: one signed commit holding both secret files.
+    # The secrets repository: main holds a README; the scratch host's branch,
+    # host/$host, one signed commit holding both secret files, encrypted to the
+    # host and the recovery key.
     if [ ! -d "$dir/secrets.git" ]; then
       git init -q --bare -b main "$dir/secrets.git"
       rm -rf "$dir/secrets"
       git init -q -b main "$dir/secrets"
       git -C "$dir/secrets" remote add origin "$dir/secrets.git"
-      printf 'maintainer: %s\nhosts:\n  %s: %s\n' "$recovery" "$host" "$recipient" \
-        > "$dir/secrets/fleet.yaml"
-      render_sops_yaml "$dir/secrets"
-      mkdir -p "$dir/secrets/hosts" "$dir/secrets/users/alice"
       (
         cd "$dir/secrets"
+        echo "# Scratch secrets" > README.md
+        git add -A
+        signed_git commit -q -S -m "Scratch secrets repository"
+        git push -q origin main
+        git switch -q --orphan "host/$host"
+        mkdir -p hosts users/alice
         support_hash="$(mkpasswd -m yescrypt -s <<<support)"
         printf 'support_password: "%s"\n' "$support_hash" > "hosts/$host.yaml"
         ssh-keygen -q -t ed25519 -N "" -C "alice@$host" -f "$dir/alice_ed25519.tmp"
@@ -159,11 +145,11 @@ pkgs.writeShellApplication {
           printf 'ssh_key_pub: "%s"\n' "$(cat "$dir/alice_ed25519.tmp.pub")"
         } > "users/alice/$host.yaml"
         rm -f "$dir/alice_ed25519.tmp" "$dir/alice_ed25519.tmp.pub"
-        sops --encrypt --in-place "hosts/$host.yaml"
-        sops --encrypt --in-place "users/alice/$host.yaml"
+        sops --encrypt --in-place --age "$recipient,$recovery" "hosts/$host.yaml"
+        sops --encrypt --in-place --age "$recipient,$recovery" "users/alice/$host.yaml"
         git add -A
         signed_git commit -q -S -m "Initial scratch secrets"
-        git push -q origin main
+        git push -q origin "host/$host"
       )
     fi
 

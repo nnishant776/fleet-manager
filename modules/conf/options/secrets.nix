@@ -1,4 +1,4 @@
-{ lib, ... }: {
+{ config, lib, ... }: {
   options.conf.secrets = {
     repo = {
       url = lib.mkOption {
@@ -18,8 +18,13 @@
       };
       ref = lib.mkOption {
         type = lib.types.str;
-        default = "main";
-        description = "Branch of the secrets repository to track.";
+        default = "host/${config.conf.host.name}";
+        defaultText = lib.literalExpression ''"host/''${config.conf.host.name}"'';
+        description = ''
+          Branch of the secrets repository to track. Each host has a branch
+          of its own, `host/<name>`, holding its files and no other host's;
+          `fleet secrets host-enroll` creates it.
+        '';
       };
     };
 
