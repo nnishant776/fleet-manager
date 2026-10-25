@@ -6,9 +6,10 @@ Set up this machine as the maintainer's: recovery identity, signing key, both ch
 
 The one-time setup: a passphrase-encrypted recovery identity, which can decrypt
 every secret; an SSH key that signs commits, trusted by the fleet through
-fleet/allowed_signers; both checkouts set to sign every commit; and fleet.yaml's
-maintainer recipient. Each step that is done already is skipped, so it is safe
-to run again.
+fleet/allowed_signers; both checkouts set to sign every commit; and the recovery
+recipient, cached so that the secrets commands can encrypt to it without asking
+for the passphrase. Each step that is done already is skipped, so it is safe to
+run again.
 
 ```
 fleet setup [flags]
@@ -38,7 +39,7 @@ A value that is neither given nor has a default is asked for on a terminal.
    $ sh -c 'umask 077 && mkdir -p "$(dirname "$1")" && age-keygen | age -p -o "$1"' sh RECOVERY
    ```
 
-2. **Find your recovery identity's recipient.** The public half, which fleet.yaml names as the maintainer. Read from fleet.yaml when it is set already; otherwise age asks for the passphrase.
+2. **Cache your recovery identity's recipient.** The public half. Every secrets file is encrypted to it as well as to its host, and fleet secrets reads it from the cache, fleet/recovery.pub in your state folder (XDG_STATE_HOME), so that it never needs the passphrase for that. age asks for the passphrase once, if the cache is missing.
 
 3. **Create your signing key.** An SSH key that signs every commit. Give it a passphrase, and load it into your agent with ssh-add when you work.
 
@@ -54,18 +55,10 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 7. **Keep your copy of the configuration repository's keys.** fleet and git check commits against your own copy of the keys, kept outside every checkout, not against fleet/allowed_signers, which a pushed commit could change. The first copy is the one you approve now; fleet trust signers takes later changes.
 
-8. **Name yourself as the maintainer in fleet.yaml.** Every secrets file is encrypted to the maintainer as well as to its host; fleet secrets refuses to enroll hosts until this is set.
-
-   ```
-   $ cd REPO && r=RECIPIENT yq -i '.maintainer = strenv(r)' fleet.yaml
-   $ cd REPO && git commit -q -m 'fleet: set maintainer recipient' fleet.yaml
-   $ cd REPO && git push
-   ```
-
-9. **Next.** With that, hosts can be enrolled.
+8. **Next.** With that, hosts can be enrolled.
 
    > Push the allowed_signers commit to fleet-manager's main if one was made, merging
    > locally: GitHub's merge buttons drop the signature. Then, for each host:
    > fleet host enroll \<host>
 
-It needs `git`, `yq`, `age`, `age-keygen`, `ssh-keygen` on the PATH; `fleet doctor` says where to get them.
+It needs `git`, `age`, `age-keygen`, `ssh-keygen` on the PATH; `fleet doctor` says where to get them.

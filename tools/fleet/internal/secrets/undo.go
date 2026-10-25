@@ -68,12 +68,6 @@ func RestoreOnStop(x *engine.Ctx, dir, rel string) error {
 	return nil
 }
 
-// Restoring is RestoreOnStop as a command's Before hook, for rel in the
-// secrets checkout.
-func Restoring(rel string) func(*engine.Ctx) error {
-	return func(x *engine.Ctx) error { return RestoreOnStop(x, "{{.repo}}", rel) }
-}
-
 // Unstage registers how to take paths in the checkout dir out of the index
 // again, before a commit adds them, should the commit not happen.
 func Unstage(x *engine.Ctx, dir string, paths []string) error {
@@ -84,19 +78,4 @@ func Unstage(x *engine.Ctx, dir string, paths []string) error {
 	x.Undo("unstage "+d+" "+strings.Join(paths, " "),
 		engine.Cmd("git", append([]string{"-C", d, "reset", "-q", "--"}, paths...)...).OK("nothing is staged"))
 	return nil
-}
-
-// Committed marks the run's changes in the checkout dir as complete, and
-// notes, until Pushed, that the commit is not pushed yet.
-func Committed(x *engine.Ctx, dir, message string) {
-	x.Settled()
-	x.Kept("push "+dir, "the commit “"+message+"” in "+dir+", not pushed yet (git -C "+dir+" push)")
-}
-
-// Push pushes the secrets checkout, and drops the note that it is not.
-func Push() *engine.Command {
-	return repoCmd("git", "push").After(func(x *engine.Ctx) error {
-		x.Kept("push {{.repo}}", "")
-		return nil
-	})
 }

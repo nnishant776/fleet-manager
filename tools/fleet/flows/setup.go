@@ -21,9 +21,10 @@ var Setup = &engine.Flow{
 	Short: "Set up this machine as the maintainer's: recovery identity, signing key, both checkouts",
 	Long: "The one-time setup: a passphrase-encrypted recovery identity, which can decrypt\n" +
 		"every secret; an SSH key that signs commits, trusted by the fleet through\n" +
-		"fleet/allowed_signers; both checkouts set to sign every commit; and fleet.yaml's\n" +
-		"maintainer recipient. Each step that is done already is skipped, so it is safe\n" +
-		"to run again.",
+		"fleet/allowed_signers; both checkouts set to sign every commit; and the recovery\n" +
+		"recipient, cached so that the secrets commands can encrypt to it without asking\n" +
+		"for the passphrase. Each step that is done already is skipped, so it is safe to\n" +
+		"run again.",
 	Example: "  fleet setup --config ~/Projects/nixos-config --repo ~/Projects/fleet-secrets",
 	Inputs: []engine.Input{
 		{Name: "config", Prompt: "Configuration checkout", Help: "The fleet-manager checkout; defaults to this directory's flake, then /etc/nixos",
@@ -54,7 +55,7 @@ var Setup = &engine.Flow{
 				return "maintainer", nil
 			}},
 	},
-	Needs: []string{"git", "yq", "age", "age-keygen", "ssh-keygen"},
+	Needs: []string{"git", "age", "age-keygen", "ssh-keygen"},
 	Steps: []engine.Step{
 		{
 			Title: "Create your recovery identity",
@@ -70,9 +71,11 @@ var Setup = &engine.Flow{
 				"your recovery identity, {{.recovery}}; keep a copy offline", "{{.recovery}}"),
 		},
 		{
-			Title: "Find your recovery identity's recipient",
-			Why:   "The public half, which fleet.yaml names as the maintainer. Read from fleet.yaml when it is set already; otherwise age asks for the passphrase.",
-			Do:    engine.Func(recoveryRecipient),
+			Title: "Cache your recovery identity's recipient",
+			Why: "The public half. Every secrets file is encrypted to it as well as to its host, and fleet secrets reads it from the cache, fleet/recovery.pub in your state folder (XDG_STATE_HOME), " +
+				"so that it never needs the passphrase for that. age asks for the passphrase once, if the cache is missing.",
+			When: recipientNotCached,
+			Do:   engine.Func(cacheRecipient),
 		},
 		{
 			Title: "Create your signing key",
@@ -123,26 +126,6 @@ var Setup = &engine.Flow{
 			}),
 		},
 		{
-			Title: "Name yourself as the maintainer in fleet.yaml",
-			Why:   "Every secrets file is encrypted to the maintainer as well as to its host; fleet secrets refuses to enroll hosts until this is set.",
-			When: func(x *engine.Ctx) (bool, string) {
-				if x.Value("maintainer_set") == "true" {
-					return false, "fleet.yaml names you already"
-				}
-				return true, ""
-			},
-			Do: engine.Seq(
-				engine.Cmd("yq", "-i", ".maintainer = strenv(r)", "fleet.yaml").In("{{.repo}}").Env("r={{.recipient}}").
-					Before(secrets.Restoring("fleet.yaml")),
-				engine.Cmd("git", "commit", "-q", "-m", "fleet: set maintainer recipient", "fleet.yaml").In("{{.repo}}").
-					After(func(x *engine.Ctx) error {
-						secrets.Committed(x, "{{.repo}}", "fleet: set maintainer recipient")
-						return nil
-					}),
-				secrets.Push(),
-			),
-		},
-		{
 			Title: "Next",
 			Why:   "With that, hosts can be enrolled.",
 			Do: engine.Show("Push the allowed_signers commit to fleet-manager's main if one was made, merging\n" +
@@ -152,19 +135,29 @@ var Setup = &engine.Flow{
 	},
 }
 
-func recoveryRecipient(x *engine.Ctx) error {
-	maintainer, err := engine.Cmd("yq", ".maintainer", "fleet.yaml").In("{{.repo}}").RunQuiet(x)
+// recipientNotCached skips the step when the cache holds a recipient already.
+func recipientNotCached(x *engine.Ctx) (bool, string) {
+	path, err := secrets.RecoveryCache()
+	if err != nil {
+		return true, ""
+	}
+	x.Values["recipient_cache"] = path
+	if r, err := secrets.ReadRecoveryRecipient(); err == nil {
+		return false, path + " holds " + r
+	}
+	return true, ""
+}
+
+// cacheRecipient derives the recovery identity's recipient, which asks for
+// its passphrase, and keeps it in the cache.
+func cacheRecipient(x *engine.Ctx) error {
+	path, err := secrets.RecoveryCache()
 	if err != nil {
 		return err
 	}
-	if m := strings.TrimSpace(maintainer.Stdout); strings.HasPrefix(m, "age1") {
-		x.Values["recipient"], x.Values["maintainer_set"] = m, "true"
-		x.UI.OK("fleet.yaml names " + m)
-		return nil
-	}
+	x.Values["recipient_cache"] = path
 	if x.Options.DryRun && !fileExists(x.Value("recovery")) {
 		x.UI.Skip("dry run: it would be read from the new identity")
-		x.Values["recipient"] = "<your recipient>"
 		return nil
 	}
 	res, err := engine.Cmd("sh", "-c", `age -d "$1" | age-keygen -y`, "sh", "{{.recovery}}").
@@ -172,9 +165,21 @@ func recoveryRecipient(x *engine.Ctx) error {
 	if err != nil {
 		return err
 	}
-	if !x.Options.DryRun && !strings.HasPrefix(strings.TrimSpace(res.Stdout), "age1") {
+	if x.Options.DryRun {
+		x.UI.Skip("dry run: not written to " + path)
+		return nil
+	}
+	recipient := strings.TrimSpace(res.Stdout)
+	if !strings.HasPrefix(recipient, "age1") {
 		return errors.New("that is not an age recipient: " + res.Stdout)
 	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, []byte(recipient+"\n"), 0o644); err != nil {
+		return err
+	}
+	x.UI.OK("wrote " + path)
 	return nil
 }
 

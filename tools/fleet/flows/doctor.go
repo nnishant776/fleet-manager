@@ -27,7 +27,7 @@ var Tools = []Tool{
 	{Name: "sops", Package: "sops", For: "encrypting secrets"},
 	{Name: "age", Package: "age", For: "the recovery identity"},
 	{Name: "age-keygen", Package: "age", For: "the recovery identity"},
-	{Name: "yq", Package: "yq-go", For: "fleet.yaml"},
+	{Name: "yq", Package: "yq-go", For: "enrollment files and the recipients in sops files"},
 	{Name: "mkpasswd", Package: "mkpasswd", For: "password hashes"},
 	{Name: "nix", Package: "nix", For: "reading the configuration"},
 	{Name: "gh", Package: "gh", Optional: true, For: "adding deploy keys; without it fleet shows the web steps"},

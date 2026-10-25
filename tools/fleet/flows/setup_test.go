@@ -42,7 +42,8 @@ func keygen(s engine.Spec) {
 }
 
 func TestSetupOnAFreshMachine(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	state := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", state)
 	dir := t.TempDir()
 	config, repo := filepath.Join(dir, "config"), filepath.Join(dir, "secrets")
 	_ = os.MkdirAll(filepath.Join(config, "fleet"), 0o755)
@@ -53,8 +54,6 @@ func TestSetupOnAFreshMachine(t *testing.T) {
 		switch {
 		case s.Name == "ssh-keygen":
 			keygen(s)
-		case s.Name == "yq" && s.Args[0] == ".maintainer":
-			return engine.Result{Stdout: "null\n"}, nil
 		case s.Name == "sh" && strings.Contains(s.Args[1], "age-keygen -y"):
 			return engine.Result{Stdout: "age1freshrecipient\n"}, nil
 		}
@@ -69,8 +68,7 @@ func TestSetupOnAFreshMachine(t *testing.T) {
 	}
 	cmds := strings.Join(fake.Commands(), "\n")
 	for _, want := range []string{"age-keygen | age -p -o", "ssh-keygen -t ed25519", "config gpg.format ssh",
-		"add fleet/allowed_signers", "trust me@test",
-		"yq -i '.maintainer = strenv(r)' fleet.yaml", "set maintainer recipient", "git push"} {
+		"add fleet/allowed_signers", "trust me@test", "age-keygen -y"} {
 		if !strings.Contains(cmds, want) {
 			t.Errorf("did not run %q:\n%s", want, cmds)
 		}
@@ -101,17 +99,26 @@ func TestSetupOnAFreshMachine(t *testing.T) {
 	if strings.Contains(cmds, "core.hooksPath .githooks") {
 		t.Error("pointed git at the repository's own hook")
 	}
-	for _, r := range fake.Ran {
-		if r.Name == "yq" && strings.Contains(strings.Join(r.Args, " "), ".maintainer =") {
-			if len(r.Env) != 1 || r.Env[0] != "r=age1freshrecipient" {
-				t.Errorf("the maintainer was set to %q", r.Env)
-			}
+	// The recovery recipient is cached, for the secrets commands to encrypt to;
+	// the secrets repository gets no commit and no push.
+	if got, _ := os.ReadFile(filepath.Join(state, "fleet", "recovery.pub")); string(got) != "age1freshrecipient\n" {
+		t.Errorf("the recovery cache holds %q", got)
+	}
+	for _, unwanted := range []string{"fleet.yaml", " push"} {
+		if strings.Contains(cmds, unwanted) {
+			t.Errorf("ran %q:\n%s", unwanted, cmds)
 		}
+	}
+	if strings.Contains(cmds, "-C "+repo+" commit") {
+		t.Errorf("committed in the secrets repository:\n%s", cmds)
 	}
 }
 
 func TestSetupSkipsWhatIsDone(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	state := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", state)
+	_ = os.MkdirAll(filepath.Join(state, "fleet"), 0o755)
+	_ = os.WriteFile(filepath.Join(state, "fleet", "recovery.pub"), []byte("age1donerecipient\n"), 0o644)
 	dir := t.TempDir()
 	config, repo := filepath.Join(dir, "config"), filepath.Join(dir, "secrets")
 	_ = os.MkdirAll(filepath.Join(config, "fleet"), 0o755)
@@ -130,8 +137,6 @@ func TestSetupSkipsWhatIsDone(t *testing.T) {
 	}
 	x, fake, out := newFakeCtx(func(s engine.Spec) (engine.Result, error) {
 		switch {
-		case s.Name == "yq" && s.Args[0] == ".maintainer":
-			return engine.Result{Stdout: "age1donerecipient\n"}, nil
 		case s.Name == "git" && len(s.Args) > 4 && s.Args[2] == "config" && s.Args[4] == "--get":
 			if s.Args[1] == config && s.Args[5] == "gpg.ssh.allowedSignersFile" {
 				// Relative, as git config writes it when run in the checkout.
@@ -148,7 +153,7 @@ func TestSetupSkipsWhatIsDone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
-	for _, unwanted := range []string{"age -p", "ssh-keygen", "commit -q", "push", "config gpg.format"} {
+	for _, unwanted := range []string{"age -p", "age -d", "ssh-keygen", "commit -q", "push", "config gpg.format"} {
 		for _, c := range fake.Commands() {
 			if strings.Contains(c, unwanted) {
 				t.Errorf("ran %q on a machine that is set up: %s", unwanted, c)
@@ -217,9 +222,6 @@ func TestSetupDryRunOnAFreshMachineChangesNothing(t *testing.T) {
 	_ = os.MkdirAll(filepath.Join(config, "fleet"), 0o755)
 	_ = os.MkdirAll(repo, 0o755)
 	x, fake, out := newFakeCtx(func(s engine.Spec) (engine.Result, error) {
-		if s.Name == "yq" {
-			return engine.Result{Stdout: "null\n"}, nil
-		}
 		return engine.Result{}, nil
 	})
 	x.Options = engine.Options{DryRun: true}
@@ -231,7 +233,7 @@ func TestSetupDryRunOnAFreshMachineChangesNothing(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 	for _, s := range fake.Ran {
-		if !(s.Name == "yq" && s.Args[0] == ".maintainer") && !(s.Name == "git" && (strings.Contains(s.String(), "--get") || strings.Contains(s.String(), "remote get-url"))) {
+		if !(s.Name == "git" && (strings.Contains(s.String(), "--get") || strings.Contains(s.String(), "remote get-url"))) {
 			t.Errorf("a dry run ran %s", s)
 		}
 	}

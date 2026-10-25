@@ -213,20 +213,30 @@ func BranchRef(x *engine.Ctx, host string) string {
 	return ""
 }
 
-// HostRecipient is the host's own recipient on a ref: the one in the sops
-// metadata of hosts/<host>.yaml that is not the recovery recipient.
-func HostRecipient(x *engine.Ctx, ref, host, recovery string) (string, error) {
+// Recipients are the age recipients in the sops metadata of hosts/<host>.yaml
+// on a ref.
+func Recipients(x *engine.Ctx, ref, host string) ([]string, error) {
 	doc, err := repoCmd("git", "show", ref+":hosts/"+host+".yaml").RunQuiet(x)
 	if err != nil {
-		return "", fmt.Errorf("%s has no hosts/%s.yaml", ref, host)
+		return nil, fmt.Errorf("%s has no hosts/%s.yaml", ref, host)
 	}
 	x.Values["host_file"] = doc.Stdout
 	res, err := engine.Cmd("yq", ".sops.age[].recipient").StdinFrom("host_file").StdinNote("the host's file").RunQuiet(x)
 	if err != nil {
+		return nil, err
+	}
+	return strings.Fields(res.Stdout), nil
+}
+
+// HostRecipient is the host's own recipient on a ref: the one in the sops
+// metadata of hosts/<host>.yaml that is not the recovery recipient.
+func HostRecipient(x *engine.Ctx, ref, host, recovery string) (string, error) {
+	all, err := Recipients(x, ref, host)
+	if err != nil {
 		return "", err
 	}
 	var others []string
-	for _, r := range strings.Fields(res.Stdout) {
+	for _, r := range all {
 		if r != recovery {
 			others = append(others, r)
 		}

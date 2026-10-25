@@ -52,12 +52,12 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 6. **Copy its enrollment file here.** It holds the public halves only. Copied over SSH to a host whose key is known, so it cannot be swapped on the way; the checksums must match.
 
-7. **Enroll HOST in the secrets repository.** fleet secrets host-enroll records its recipient, renders the rules and creates its empty file, each step shown.
+7. **Enroll HOST in the secrets repository.** fleet secrets host-enroll creates its branch, host/HOST, with its empty file encrypted to it and to your recovery recipient, each step shown.
 
-8. **Push the secrets repository.** HOST fetches from GitHub; it accepts the commit only if it is signed by an allowed key.
+8. **Push host/HOST.** HOST fetches its branch from GitHub; it accepts the commit only if it is signed by an allowed key.
 
    ```
-   $ cd REPO && git push
+   $ cd REPO && git push origin host/HOST
    ```
 
 9. **Register HOST's deploy key, read-only.** It is how HOST fetches the private secrets repository. Read-only: a host never writes to it.

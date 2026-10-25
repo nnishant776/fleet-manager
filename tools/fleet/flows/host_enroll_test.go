@@ -45,6 +45,11 @@ func enrollHost(identity, enrolled, tamper bool) func(engine.Spec) (engine.Resul
 			return engine.Result{Stdout: "https://github.com/nnishant776/fleet-manager.git"}, nil
 		case s.Name == "ssh" && strings.Contains(last, "pi.enroll"):
 			return engine.Result{Stdout: enrollDoc + sumLine}, nil
+		case s.Name == "git" && strings.Contains(strings.Join(s.Args, " "), "rev-parse --verify"):
+			if enrolled {
+				return engine.Result{}, nil // host/pi exists
+			}
+			return engine.Result{Code: 1}, errors.New("exited with code 1")
 		case s.Name == "yq":
 			if enrolled {
 				return engine.Result{Stdout: "age1testrecipient\n"}, nil
@@ -428,6 +433,24 @@ func TestEnrollSkipsWhatIsDone(t *testing.T) {
 	for _, want := range []string{"skipped: it has one", "skipped: it is enrolled already, with this identity", "skipped: nothing to push"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestEnrollRefusesAHostEnrolledWithAnotherIdentity(t *testing.T) {
+	base := enrollHost(true, true, false)
+	err, fake, out := runEnroll(t, func(s engine.Spec) (engine.Result, error) {
+		if s.Name == "yq" { // the recipients of host/pi's file: not the one the host has now
+			return engine.Result{Stdout: "age1otherrecipient\nage1recoveryrecipient\n"}, nil
+		}
+		return base(s)
+	})
+	if err == nil || !strings.Contains(err.Error()+out, "fleet secrets host-rekey pi --from") {
+		t.Fatalf("got %v\n%s", err, out)
+	}
+	for _, unwanted := range []string{"secrets host-enroll", "git push"} {
+		if got := ranMatching(fake, unwanted); len(got) > 0 {
+			t.Errorf("ran %q although pi is enrolled with another identity", unwanted)
 		}
 	}
 }

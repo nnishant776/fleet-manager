@@ -87,7 +87,7 @@ func TestSetupPutsBackAllowedSignersFromItsCopy(t *testing.T) {
 	x, _, out := newFakeCtx(func(s engine.Spec) (engine.Result, error) {
 		args := strings.Join(s.Args, " ")
 		switch {
-		case s.Name == "yq":
+		case s.Name == "sh" && strings.Contains(s.Args[1], "age-keygen -y"):
 			return engine.Result{Stdout: "age1donerecipient\n"}, nil
 		case strings.Contains(args, "cat-file"):
 			return engine.Result{Code: 1}, errFailed // not committed: only a copy can put it back

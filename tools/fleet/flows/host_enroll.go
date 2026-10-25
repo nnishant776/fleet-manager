@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/nnishant776/fleet-manager/tools/fleet/internal/engine"
@@ -103,15 +104,15 @@ var HostEnroll = &engine.Flow{
 		},
 		{
 			Title: "Enroll {{.host}} in the secrets repository",
-			Why:   "fleet secrets host-enroll records its recipient, renders the rules and creates its empty file, each step shown.",
+			Why:   "fleet secrets host-enroll creates its branch, host/{{.host}}, with its empty file encrypted to it and to your recovery recipient, each step shown.",
 			When:  enrolledWithThisIdentity,
 			Do:    engine.Func(runHostEnroll),
 		},
 		{
-			Title: "Push the secrets repository",
-			Why:   "{{.host}} fetches from GitHub; it accepts the commit only if it is signed by an allowed key.",
+			Title: "Push host/{{.host}}",
+			Why:   "{{.host}} fetches its branch from GitHub; it accepts the commit only if it is signed by an allowed key.",
 			When:  aheadOfUpstream,
-			Do:    secrets.Push(),
+			Do:    secrets.PushBranch(),
 		},
 		{
 			Title: "Register {{.host}}'s deploy key, read-only",
@@ -605,18 +606,30 @@ func cutLast(s string) (string, string, bool) {
 	return s[:i+1], s[i+1:], true
 }
 
+// enrolledWithThisIdentity looks at the host's branch: none means it is not
+// enrolled; its file encrypted to this identity, that it is, already.
 func enrolledWithThisIdentity(x *engine.Ctx) (bool, string) {
-	got, _ := engine.Silently(x, []string{"h=" + x.Value("host")},
-		"yq", `.hosts[strenv(h)] // ""`, filepath.Join(x.Value("repo"), "fleet.yaml"))
-	switch {
-	case got == "" || got == "null":
-		return true, ""
-	case got == x.Value("recipient"):
-		return false, "it is enrolled already, with this identity"
-	default:
-		x.Values["enrolled_with"] = got
+	host := x.Value("host")
+	ref := secrets.BranchRef(x, host)
+	if ref == "" {
 		return true, ""
 	}
+	recipients, err := secrets.Recipients(x, ref, host)
+	if err != nil {
+		// Not readable: host-enroll says what is wrong with it.
+		return true, ""
+	}
+	if slices.Contains(recipients, x.Value("recipient")) {
+		return false, "it is enrolled already, with this identity"
+	}
+	recovery, _ := secrets.ReadRecoveryRecipient()
+	for _, r := range recipients {
+		if r != recovery {
+			x.Values["enrolled_with"] = r
+			break
+		}
+	}
+	return true, ""
 }
 
 func runHostEnroll(x *engine.Ctx) error {
@@ -632,8 +645,12 @@ func runHostEnroll(x *engine.Ctx) error {
 	return err
 }
 
+// aheadOfUpstream is whether the host's branch has commits origin's copy
+// lacks, or origin has none.
 func aheadOfUpstream(x *engine.Ctx) (bool, string) {
-	out, err := engine.Silently(x, nil, "git", "-C", x.Value("repo"), "rev-list", "--count", "@{u}..HEAD")
+	branch := "host/" + x.Value("host")
+	out, err := engine.Silently(x, nil, "git", "-C", x.Value("repo"), "rev-list", "--count",
+		"refs/remotes/origin/"+branch+"..refs/heads/"+branch)
 	if err == nil && out == "0" {
 		return false, "nothing to push"
 	}
