@@ -5,7 +5,8 @@
 # secrets the maintainer adds with `fleet host secret` (the forge also plays
 # the maintainer), and fetch its configuration from a private repository with
 # its own configuration key (an SSH conf.fleet.repo.url), refusing what is not
-# signed. No network and no hosting service are involved. Run it with
+# signed, and activate the running system again when only the secrets changed.
+# No network and no hosting service are involved. Run it with
 # `nix build .#checks.x86_64-linux.secrets-sync` (see README.md).
 { pkgs, inputs, self }:
 let
@@ -135,6 +136,39 @@ let
       git push -q origin host/other
       git rev-parse HEAD > "$out/other-branch"
     )
+  '';
+
+  # Stands in for a configuration that builds, since the VM cannot evaluate a
+  # real one (subtest 19; as in tests/fleet/sync-status.nix): a flake with no
+  # inputs whose system is a directory with the nixos-version file
+  # nixos-rebuild looks for and a switch-to-configuration that records how it
+  # was called, can be made to fail, and on switch points /run/current-system
+  # at its own directory, so the next sync finds it already running. The
+  # records are in /var/lib/stc, not /tmp: the sync has a private /tmp.
+  standIn = pkgs.writeText "flake.nix" ''
+    {
+      outputs = _: {
+        nixosConfigurations.${hostName}.config = {
+          system.build = {
+            toplevel = ./system;
+            nixos-rebuild = ./system;
+          };
+          sops.secrets = { };
+        };
+      };
+    }
+  '';
+  standInSwitch = pkgs.writeScript "switch-to-configuration" ''
+    #!/bin/sh
+    echo "$1" >> /var/lib/stc/calls
+    if [ "$1" = test ] && [ -e /var/lib/stc/fail ]; then exit 1; fi
+    if [ "$1" = switch ]; then
+      # With the full paths: systemd-run gives it almost no PATH.
+      ${pkgs.coreutils}/bin/ln -sfn \
+        "$(${pkgs.coreutils}/bin/dirname "$(${pkgs.coreutils}/bin/dirname "$(${pkgs.coreutils}/bin/readlink -f "$0")")")" \
+        /run/current-system
+    fi
+    exit 0
   '';
 
   secretsUrl = "ssh://git@forge/var/lib/forge/secrets.git";
@@ -575,5 +609,88 @@ pkgs.testers.runNixOSTest {
         # Nor does the clone os-install makes.
         fleet.succeed(f"GIT_SSH_COMMAND='{ssh}' fleet-clone-flake 'git+${configUrl}?ref=main' /tmp/one-branch")
         fleet.fail(f"git -C /tmp/one-branch cat-file -e {other}")
+
+    with subtest("19: a change to the secrets alone reaches the running system"):
+        # The stand-in configuration goes onto the configuration branch as a
+        # signed commit on top of its tip (the unsigned commits of 12 and 13
+        # are below it, and only the tip is verified). The maintainer's key is
+        # given to the config account for it, as the git account has it for
+        # the secrets. The stand-in system links to the tools of the system
+        # running now as its sw: the test driver finds its shell through
+        # /run/current-system/sw once the stand-in is the running system.
+        sw = fleet.succeed("readlink -f /run/current-system/sw").strip()
+        forge.succeed(
+            "install -o config -m 600 /etc/test-keys/signing_ed25519 /home/config/",
+            "su config -c 'cd $(mktemp -d) && git clone -q /var/lib/forge/config.git w && cd w"
+            " && git rm -q -r -f . && cp ${standIn} flake.nix"
+            " && install -D -m 755 ${standInSwitch} system/bin/switch-to-configuration"
+            f" && echo stand-in > system/nixos-version && ln -s {sw} system/sw && git add -A"
+            " && git -c user.name=maintainer -c user.email=maintainer@test -c gpg.format=ssh"
+            " -c user.signingKey=/home/config/signing_ed25519 -c commit.gpgSign=true"
+            " commit -q -m stand-in && git push -q origin main'"
+        )
+        fleet.succeed("install -d /var/lib/stc")
+
+        def calls():
+            return fleet.succeed("cat /var/lib/stc/calls").split()
+
+        def applied():
+            return fleet.succeed("cat /var/lib/fleet-sync/secrets-applied").strip()
+
+        def link():
+            return fleet.succeed("readlink /var/lib/fleet/secrets").strip()
+
+        def run_sync():
+            # Whether the run succeeded, and the journal of this run alone.
+            before = fleet.succeed("journalctl -u config-auto-update")
+            status, _ = fleet.execute("systemctl start config-auto-update.service")
+            return status, fleet.succeed("journalctl -u config-auto-update")[len(before):]
+
+        def push_secrets_commit():
+            forge.succeed(
+                "su git -c 'git -C /home/git/w commit -q --allow-empty -m secrets-only"
+                " && git -C /home/git/w push -q origin HEAD:main'"
+            )
+
+        status, out = run_sync()
+        assert status == 0, out
+        assert calls() == ["switch"], calls()
+        fleet.succeed("grep -qx stand-in /run/current-system/nixos-version")
+        fleet.fail("test -e /var/lib/fleet-sync/status")
+        assert applied() == link(), (applied(), link())
+
+        first = link()
+        push_secrets_commit()
+        status, out = run_sync()
+        assert status == 0, out
+        second = link()
+        assert second != first, "the snapshot did not move"
+        assert calls() == ["switch", "test"], calls()
+        assert "activating the running system again" in out, out
+        assert applied() == second, (applied(), second)
+        fleet.fail("test -e /var/lib/fleet-sync/status")
+
+        # Nothing new: the same system, the same secrets, nothing to do.
+        status, out = run_sync()
+        assert status == 0, out
+        assert calls() == ["switch", "test"], calls()
+        assert "already running" in out, out
+
+        # An activation that fails stops the sync and leaves the record, so the
+        # next run, with nothing new, tries again.
+        fleet.succeed("touch /var/lib/stc/fail")
+        push_secrets_commit()
+        status, out = run_sync()
+        assert status != 0, out
+        assert calls() == ["switch", "test", "test"], calls()
+        status_file = fleet.succeed("cat /var/lib/fleet-sync/status")
+        assert "kind=activation" in status_file, status_file
+        assert applied() == second, (applied(), second)
+        fleet.succeed("rm /var/lib/stc/fail")
+        status, out = run_sync()
+        assert status == 0, out
+        assert calls() == ["switch", "test", "test", "test"], calls()
+        assert applied() == link() != second, (applied(), link())
+        fleet.fail("test -e /var/lib/fleet-sync/status")
   '';
 }

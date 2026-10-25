@@ -63,6 +63,18 @@ let
         exit 1
       }${lib.optionalString secretsOn ''
 
+        # The snapshot of the secrets the running system was last activated
+        # with. Activation is what decrypts them into /run/secrets, so a
+        # snapshot that moved while the configuration did not needs one more
+        # activation. A run that fails at it leaves the record as it was, and
+        # the next run tries again.
+        applied=/var/lib/fleet-sync/secrets-applied
+        snapshot() { readlink ${lib.escapeShellArg config.conf.secrets.statePath}/secrets 2>/dev/null || true; }
+        record_applied() {
+          install -d -m 0755 /var/lib/fleet-sync
+          snapshot > "$applied.tmp" && chmod 0644 "$applied.tmp" && mv -f "$applied.tmp" "$applied"
+        }
+
         # Secrets first: a host whose snapshot cannot be refreshed or verified
         # must not go on to build and activate against a stale one.
         rc=0
@@ -216,7 +228,22 @@ let
       fi
 
       running="$(readlink -f /run/current-system)"
-      if [ "$newSystem" = "$running" ]; then
+      if [ "$newSystem" = "$running" ]; then${lib.optionalString secretsOn ''
+
+        if [ "$(snapshot)" != "$(cat "$applied" 2>/dev/null || true)" ]; then
+          # The configuration is the same and the secrets are not: the running
+          # system is activated again, so they reach /run/secrets and the units
+          # that use them restart. test, not switch: the boot entry is right.
+          log "secrets changed to $(snapshot); activating the running system again"
+          if ! "$running/bin/switch-to-configuration" test; then
+            log "activation with the new secrets failed"
+            stop activation "This machine could not start with its new secrets, so some services may still use the old ones. It keeps running its current configuration."
+          fi
+          record_applied
+          log "running $after with the secrets of $(snapshot)"
+          rm -f "$status"
+          exit 0
+        fi''}
         log "already running the configuration at $after"
         rm -f "$status"
         exit 0
@@ -248,7 +275,9 @@ let
           log "leaving the system as it is, which may be partially activated"
           stop activation "The latest configuration failed to start. This machine may be partly updated."
         ''}
-      fi
+      fi${lib.optionalString secretsOn ''
+
+      record_applied''}
       rm -f "$status"
 
       # Reported, not acted on: rolling back on any degraded state would put a
