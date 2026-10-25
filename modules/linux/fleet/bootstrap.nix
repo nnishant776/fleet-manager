@@ -50,8 +50,7 @@ let
       ${(import ./config-fetch.nix { inherit config lib; }).line}
 
       # Clone beside the target and move it into place, so a half-finished
-      # clone never looks like a checkout, and an existing empty directory is
-      # fine.
+      # clone never looks like a checkout.
       tmp="$(mktemp -d "$(dirname "$repo")/.fleet-bootstrap.XXXXXX")"
       trap 'rm -rf "$tmp"' EXIT
       # Only the branch it tracks: with lib.mkFleet's hostBranches, the others
@@ -70,11 +69,12 @@ let
       # Fleet machines pull; see fleet/sync.nix.
       git -C "$tmp/checkout" remote set-url --push origin no_push
 
-      if [ -d "$repo" ] && [ -n "$(ls -A "$repo")" ]; then
-        echo "fleet-bootstrap: $repo exists and is not empty; refusing to replace it" >&2
-        exit 1
+      # The checkout belongs to the fleet, so whatever is there without one
+      # goes; fleet host enroll warns about it before the switch.
+      if [ -d "$repo" ] && [ ! -L "$repo" ] && [ -n "$(ls -A "$repo")" ]; then
+        echo "fleet-bootstrap: replacing $repo, which holds no checkout"
       fi
-      rmdir "$repo" 2>/dev/null || true
+      rm -rf "$repo"
       mv "$tmp/checkout" "$repo"
 
       # The revision the system was installed from is the first commit this
