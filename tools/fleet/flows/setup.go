@@ -216,15 +216,16 @@ func configureSigning(x *engine.Ctx) error {
 	return nil
 }
 
-// hookPaths are the repository's own hook and where git looks for the
-// installed one.
+// hookPaths are the repository's own hook and the installed copy, always in
+// the git directory's hooks, whatever core.hooksPath says: an older setup
+// pointed it at .githooks, which would make the two the same file.
 func hookPaths(x *engine.Ctx) (tracked, installed string) {
 	repo := x.Value("repo")
-	installed, err := engine.Silently(x, nil, "git", "-C", repo, "rev-parse", "--path-format=absolute", "--git-path", "hooks/pre-commit")
-	if err != nil || installed == "" {
-		installed = filepath.Join(repo, ".git", "hooks", "pre-commit")
+	gitDir, err := engine.Silently(x, nil, "git", "-C", repo, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err != nil || gitDir == "" {
+		gitDir = filepath.Join(repo, ".git")
 	}
-	return filepath.Join(repo, ".githooks", "pre-commit"), installed
+	return filepath.Join(repo, ".githooks", "pre-commit"), filepath.Join(gitDir, "hooks", "pre-commit")
 }
 
 func hookNotInstalled(x *engine.Ctx) (bool, string) {

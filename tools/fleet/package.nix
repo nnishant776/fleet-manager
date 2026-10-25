@@ -30,6 +30,8 @@ let
       fileset = lib.fileset.unions [ ./go.mod ./go.sum ./main.go ./flows ./internal ./runbooks ];
     };
     vendorHash = "sha256-nlulmgHFiI8/r6t5Dh6Ze0OxEW91Be4YfE5X2Id6+UM=";
+    # The setup test runs git against a temporary repository.
+    nativeCheckInputs = [ git ];
     env.CGO_ENABLED = "0";
     ldflags = [ "-s" "-w" "-X main.version=${version}" ];
     meta = {

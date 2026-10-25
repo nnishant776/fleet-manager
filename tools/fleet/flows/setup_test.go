@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -239,5 +240,40 @@ func TestSetupDryRunOnAFreshMachineChangesNothing(t *testing.T) {
 	}
 	if fileExists(filepath.Join(dir, "fleet")) {
 		t.Error("a dry run made the recovery directory")
+	}
+}
+
+func TestSetupInstallsTheHookWhereAnOlderSetupPointedGitAtTheRepositorysOwn(t *testing.T) {
+	repo := t.TempDir()
+	for _, args := range [][]string{{"init", "-q"}, {"config", "core.hooksPath", ".githooks"}} {
+		if out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	tracked := filepath.Join(repo, ".githooks", "pre-commit")
+	hook := []byte("#!/bin/sh\nexit 0\n")
+	_ = os.MkdirAll(filepath.Dir(tracked), 0o755)
+	_ = os.WriteFile(tracked, hook, 0o755)
+	x, _, out := newFakeCtx(nil)
+	x.Runner = engine.Exec{}
+	x.Values["repo"] = repo
+	if need, _ := hookNotInstalled(x); !need {
+		t.Fatal("a hook that git is pointed at the repository's own file counts as installed")
+	}
+	if err := installHook(x); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	installed := filepath.Join(repo, ".git", "hooks", "pre-commit")
+	if got, _ := os.ReadFile(installed); !bytes.Equal(got, hook) {
+		t.Errorf("the installed hook is %q", got)
+	}
+	if fi, err := os.Stat(installed); err != nil || fi.Mode().Perm()&0o111 == 0 {
+		t.Errorf("the installed hook is not executable: %v %v", fi, err)
+	}
+	if got, _ := os.ReadFile(tracked); !bytes.Equal(got, hook) {
+		t.Errorf("the repository's hook changed to %q", got)
+	}
+	if v, err := exec.Command("git", "-C", repo, "config", "--local", "--get", "core.hooksPath").Output(); err == nil {
+		t.Errorf("core.hooksPath is still %q", v)
 	}
 }
