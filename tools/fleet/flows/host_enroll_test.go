@@ -241,10 +241,15 @@ func listsEtcNixos(respond func(engine.Spec) (engine.Result, error), listing str
 	}
 }
 
-// remakeRuns finds the run of the remake script among the commands.
+// remakeRuns finds the run of the remake script among the commands: the unit
+// that runs it, once the script has been written to the host.
 func remakeRuns(fake *engine.Fake) (int, engine.Spec) {
+	written := false
 	for i, s := range fake.Ran {
-		if strings.Contains(s.Stdin, "systemctl start fleet-bootstrap") {
+		if strings.Contains(s.Stdin, "systemctl start fleet-bootstrap") && strings.Contains(s.String(), "/run/fleet-enroll-remake.sh") {
+			written = true
+		}
+		if written && strings.Contains(s.String(), "--unit=fleet-enroll-remake") {
 			return i, s
 		}
 	}
@@ -291,10 +296,10 @@ func TestEnrollWarnsThenReplacesEtcNixos(t *testing.T) {
 			if remake.Name == "" || at < 0 {
 				t.Fatalf("the remake script did not run:\n%s", cmds)
 			}
-			if got := remake.String(); !strings.Contains(got, "sudo -n sh -s -- https://github.com/nnishant776/fleet-manager.git "+tc.wasGit) {
+			if got := remake.String(); !strings.Contains(got, "fleet-enroll-remake.sh https://github.com/nnishant776/fleet-manager.git "+tc.wasGit) {
 				t.Errorf("remake args: %s", got)
 			}
-			if strings.Index(cmds, "nixos-rebuild switch") > strings.Index(cmds, "sudo -n sh -s -- https://github.com") {
+			if strings.Index(cmds, "nixos-rebuild switch") > strings.Index(cmds, "fleet-enroll-remake.sh https://github.com") {
 				t.Errorf("replaced /etc/nixos before the switch:\n%s", cmds)
 			}
 			// What the host listed is shown, never used in a command.
@@ -364,7 +369,7 @@ func TestEnrollOnAnEmptyEtcNixosDoesNotWarn(t *testing.T) {
 		t.Errorf("output:\n%s", out)
 	}
 	_, remake := remakeRuns(fake)
-	if !strings.Contains(remake.String(), "sudo -n sh -s -- https://github.com/nnishant776/fleet-manager.git false") {
+	if !strings.Contains(remake.String(), "fleet-enroll-remake.sh https://github.com/nnishant776/fleet-manager.git false") {
 		t.Errorf("remake: %+v", remake)
 	}
 }
@@ -661,7 +666,7 @@ func TestEnrollMovesAHostFromAnotherRepository(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 	cmds := strings.Join(fake.Commands(), "\n")
-	order := []string{"verify-commit abc123", "sh -s -- true / /dev/disk", "symbolic-ref", "nixos-rebuild switch", "sudo -n sh -s -- https://github.com", "systemctl start config-auto-update"}
+	order := []string{"verify-commit abc123", "sh -s -- true / /dev/disk", "symbolic-ref", "nixos-rebuild switch", "fleet-enroll-remake.sh https://github.com", "systemctl start config-auto-update"}
 	pos := 0
 	for _, want := range order {
 		i := strings.Index(cmds[pos:], want)
@@ -674,7 +679,7 @@ func TestEnrollMovesAHostFromAnotherRepository(t *testing.T) {
 		t.Errorf("did not say where it moves from and to:\n%s", out)
 	}
 	_, remake := remakeRuns(fake)
-	if !strings.Contains(remake.String(), "sudo -n sh -s -- https://github.com/nnishant776/fleet-manager.git true") {
+	if !strings.Contains(remake.String(), "fleet-enroll-remake.sh https://github.com/nnishant776/fleet-manager.git true") {
 		t.Errorf("the old checkout is not replaced: %+v", remake)
 	}
 }
@@ -689,7 +694,7 @@ func TestEnrollSkipsTheSwitchOfAHostOnThisRepository(t *testing.T) {
 	if got := strings.Count(out, "skipped: it already runs a configuration with secrets from https://github.com/nnishant776/fleet-manager.git"); got != 4 {
 		t.Errorf("%d steps name the repository, want 4 (choose, fit, warn, switch):\n%s", got, out)
 	}
-	for _, unwanted := range []string{"nixos-rebuild", "verify-commit", "sh -s -- true / /dev/disk", "sudo -n sh -s -- https://github.com"} {
+	for _, unwanted := range []string{"nixos-rebuild", "verify-commit", "sh -s -- true / /dev/disk", "fleet-enroll-remake.sh https://github.com"} {
 		if got := ranMatching(fake, unwanted); len(got) > 0 {
 			t.Errorf("ran %s", got[0])
 		}

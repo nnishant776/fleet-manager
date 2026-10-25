@@ -448,20 +448,37 @@ var remakeEtcNixosScript string
 
 // remakeEtcNixos replaces /etc/nixos with the configuration repository's
 // checkout, made by the first-boot clone (remake-etc-nixos.sh), and checks
-// that it is at the commit the host was switched to.
+// that it is at the commit the host was switched to. The script runs as a
+// unit on the host, as the switch does: a dropped connection must not leave
+// /etc/nixos deleted with no clone started.
 func remakeEtcNixos(x *engine.Ctx) error {
 	if x.Value("config_url") == "" {
 		return errors.New("could not read conf.fleet.repo.url from " + x.Value("flake"))
 	}
 	x.Values["remake_script"] = remakeEtcNixosScript
 	x.Values["remake_args"] = engine.Quote(x.Value("config_url")) + " " + map[bool]string{true: "true", false: "false"}[x.Value("etc_nixos") == "git"]
-	res, err := fleet.OnAdmin("sudo -n sh -s -- {{.remake_args}}").StdinFrom("remake_script").StdinNote("remake-etc-nixos.sh").
-		OK("/etc/nixos is the checkout of {{.config_url}}").Run(x)
+	if _, err := fleet.OnAdmin("sudo -n sh -c 'umask 077 && cat > /run/fleet-enroll-remake.sh'").
+		StdinFrom("remake_script").StdinNote("remake-etc-nixos.sh").Run(x); err != nil {
+		return err
+	}
+	if _, err := fleet.StillRunning(fleet.OnAdmin(`sudo -n systemctl reset-failed fleet-enroll-remake 2>/dev/null; `+
+		`sudo -n systemd-run --wait --collect --unit=fleet-enroll-remake `+
+		`--setenv=PATH=/run/wrappers/bin:/run/current-system/sw/bin `+
+		`sh /run/fleet-enroll-remake.sh {{.remake_args}}; s=$?; `+
+		`sudo -n journalctl -u fleet-enroll-remake -o cat -n 15 --no-pager; `+
+		`sudo -n rm -f /run/fleet-enroll-remake.sh; exit $s`).OK("/etc/nixos is the checkout of {{.config_url}}"),
+		"the new checkout", "fleet-enroll-remake", "{{.admin}}").Run(x); err != nil {
+		return err
+	}
+	if x.Options.DryRun {
+		return nil
+	}
+	res, err := fleet.OnAdmin("sudo -n git -c safe.directory=/etc/nixos -C /etc/nixos rev-parse HEAD").ReadOnly().Quiet().Run(x)
 	if err != nil {
 		return err
 	}
 	lines := strings.Fields(res.Stdout)
-	if x.Options.DryRun || len(lines) == 0 {
+	if len(lines) == 0 {
 		return nil
 	}
 	head := lines[len(lines)-1]

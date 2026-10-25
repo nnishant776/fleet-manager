@@ -10,8 +10,8 @@
 # - a second run finds everything done and changes nothing;
 # - the script enroll runs after a host's first switch makes /etc/nixos the
 #   configuration's checkout, whether it held a checkout of something else or
-#   plain files, with a stub in place of the first-boot clone, and fails
-#   clearly when the clone fails.
+#   plain files, with a stub in place of the first-boot clone, fails clearly
+#   when the clone fails, and deletes nothing on a host without the unit.
 # Run it with `nix build .#checks.x86_64-linux.fleet-enroll`.
 { pkgs, inputs, self }:
 let
@@ -197,6 +197,7 @@ pkgs.testers.runNixOSTest {
             "git -C /tmp/c push -q origin HEAD:main",
             "mkdir -p /tmp/stub",
             "printf '%s\\n' '#!/bin/sh'"
+            " 'if [ \"$1\" = cat ]; then [ -z \"$NO_UNIT\" ]; exit; fi'"
             " '[ -d \"$DIR/.git\" ] && exit 0'"
             " 'rm -rf \"$DIR\"'"
             " 'git clone -q --branch main \"$URL\" \"$DIR\"'"
@@ -245,5 +246,12 @@ pkgs.testers.runNixOSTest {
             " sh ${remakeScript} file:///srv/missing.git false /tmp/etc-nixos /tmp/fleet-sync 2>&1"
         )
         assert status != 0 and "keeps trying every 60 seconds" in out, out
+
+        # A host without the unit could not make the checkout again, so
+        # nothing is deleted.
+        newhost.succeed("rm -rf /tmp/etc-nixos", "mkdir /tmp/etc-nixos", "touch /tmp/etc-nixos/mine.nix")
+        status, out = newhost.execute(f"NO_UNIT=1 {env} sh ${remakeScript} {url} true /tmp/etc-nixos /tmp/fleet-sync 2>&1")
+        assert status != 0 and "left as it is" in out, out
+        newhost.succeed("test -e /tmp/etc-nixos/mine.nix")
   '';
 }
