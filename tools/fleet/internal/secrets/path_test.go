@@ -49,6 +49,8 @@ func TestCheckPlace(t *testing.T) {
 		"hotspot/wls0/inner": "hotspot/wls0 holds a value",
 		"sops":               `"sops" is where sops keeps the file's own keys`,
 		"sops/version":       `"sops" is where sops keeps`,
+		"users":              `"users" is where the host's file lists the users`,
+		"users/alice":        `"users" is where the host's file lists the users`,
 	} {
 		err := CheckPlace(doc, name)
 		switch {

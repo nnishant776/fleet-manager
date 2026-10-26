@@ -35,6 +35,9 @@ func SetAt(file, path, value, note string) *engine.Command {
 // is replaced; what is refused would lose secrets or break the file.
 func CheckPlace(doc map[string]any, name string) error {
 	parts := strings.Split(name, "/")
+	if parts[0] == "users" {
+		return fmt.Errorf("%q is where the host's file lists the users who keep their files on a branch of their own (fleet secrets user-enroll); pick another name", "users")
+	}
 	if parts[0] == "sops" {
 		return fmt.Errorf("%q is where sops keeps the file's own keys; pick another name", "sops")
 	}

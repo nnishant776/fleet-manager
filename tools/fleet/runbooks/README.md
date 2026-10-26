@@ -22,6 +22,8 @@ no arguments offers these as a menu.
 | [`fleet secrets user-password`](secrets-user-password.md) | Set the user's password on that host |
 | [`fleet secrets user-key`](secrets-user-key.md) | Generate the user's SSH key on that host |
 | [`fleet secrets user-keys`](secrets-user-keys.md) | Set the SSH keys that may log in as the user, or unlock their sudo, on that host |
+| [`fleet secrets user-enroll`](secrets-user-enroll.md) | List a user on hosts and move their files to a branch of their own |
+| [`fleet secrets user-retire`](secrets-user-retire.md) | Take a user off the hosts that list them and delete their branch |
 | [`fleet secrets host-enroll`](secrets-host-enroll.md) | Admit a new host from its enrollment file |
 | [`fleet secrets host-rekey`](secrets-host-rekey.md) | Point a known host at a new identity |
 | [`fleet secrets host-retire`](secrets-host-retire.md) | Remove a host and its files |

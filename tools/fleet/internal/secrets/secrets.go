@@ -527,34 +527,40 @@ func CreateEmpty(title, rel, recipientValue string) engine.Step {
 			if err != nil {
 				return err
 			}
-			tmp, err := os.CreateTemp("", "fleet-empty-*.yaml")
-			if err != nil {
-				return err
-			}
-			defer os.Remove(tmp.Name())
-			if _, err := tmp.WriteString("{}\n"); err != nil {
-				return err
-			}
-			tmp.Close()
-			x.Values["recipients"] = x.Value(recipientValue) + "," + x.Value("recovery_pub")
-			res, err := cmd("sops", "--encrypt", "--age", "{{.recipients}}", "--input-type", "yaml", "--output-type", "yaml",
-				tmp.Name()).Quiet().OK("encrypted").Run(x)
-			if err != nil {
-				return fmt.Errorf("could not create %s: %w", rel, err)
-			}
-			if x.Options.DryRun {
-				return nil
-			}
-			if err := os.MkdirAll(filepath.Dir(in(x, rel)), 0o755); err != nil {
-				return err
-			}
-			if err := os.WriteFile(in(x, rel), []byte(strings.TrimRight(res.Stdout, "\n")+"\n"), 0o644); err != nil {
-				return err
-			}
-			x.UI.OK("wrote " + rel)
-			return nil
+			return CreateEmptyFile(x, rel, x.Value(recipientValue))
 		}),
 	}
+}
+
+// CreateEmptyFile creates the empty file rel in the worktree (the value work),
+// encrypted to the recipients (comma-separated) and to the recovery recipient.
+func CreateEmptyFile(x *engine.Ctx, rel, recipients string) error {
+	tmp, err := os.CreateTemp("", "fleet-empty-*.yaml")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.WriteString("{}\n"); err != nil {
+		return err
+	}
+	tmp.Close()
+	x.Values["recipients"] = recipients + "," + x.Value("recovery_pub")
+	res, err := cmd("sops", "--encrypt", "--age", "{{.recipients}}", "--input-type", "yaml", "--output-type", "yaml",
+		tmp.Name()).Quiet().OK("encrypted").Run(x)
+	if err != nil {
+		return fmt.Errorf("could not create %s: %w", rel, err)
+	}
+	if x.Options.DryRun {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(in(x, rel)), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(in(x, rel), []byte(strings.TrimRight(res.Stdout, "\n")+"\n"), 0o644); err != nil {
+		return err
+	}
+	x.UI.OK("wrote " + rel)
+	return nil
 }
 
 // Commit adds paths (templated; "{{.files}}" expands to one per line) in the
