@@ -1278,8 +1278,12 @@ secrets repository and the configuration upstream; see `tests/secrets/README.md`
   other lines. A removal that would leave no key is refused, and a change that
   changes nothing makes no commit. A host with secrets takes its SSH keys from
   here only: keys in the configuration (`sshKeys`, `sudoSshKeys`,
-  `fleet.support.sshKeys`) are a build error there, and support has to have
-  `keysFromSecrets` on. Hosts without secrets keep keys in the configuration. To move a host
+  `fleet.support.sshKeys`, and NixOS's own
+  `users.users.<name>.openssh.authorizedKeys`, root's included) are a build
+  error there, support has to have `keysFromSecrets` on, and sshd does not read
+  `~/.ssh/authorized_keys`, which anything running as the account could add a
+  key to. Hosts without secrets keep keys in the configuration and the home
+  directory. To move a host
   over, add the keys here, turn the flag on and remove them from the configuration in one
   change. Support's keys are set the same way:
   `fleet secrets user-keys support laptop1 --authorized-keys support.keys`, with
