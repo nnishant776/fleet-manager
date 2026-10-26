@@ -66,8 +66,11 @@ type Flow struct {
 	Long    string   // the help page's description
 	Example string
 	Args    []string // inputs that may also be given as positional arguments, in order
-	Inputs  []Input
-	Needs   []string // tools on PATH the flow cannot work without
+	// Rest lets the last of Args take every word that remains, as the values of
+	// its input, which may be given more than once (Many) as well as by flag.
+	Rest   bool
+	Inputs []Input
+	Needs  []string // tools on PATH the flow cannot work without
 	// Report marks a read-only flow: every step runs, and the flow fails at
 	// the end if any found a problem, instead of stopping at the first.
 	Report bool

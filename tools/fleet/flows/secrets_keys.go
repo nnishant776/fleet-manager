@@ -28,6 +28,19 @@ func keyInput(name, prompt, help string) engine.Input {
 		Default: func(*engine.Ctx) (string, error) { return "", nil }}
 }
 
+// keyInputs are the flags that give the key files to store, for the commands
+// that set a user's login and sudo keys.
+func keyInputs() []engine.Input {
+	return []engine.Input{
+		keyInput("authorized-keys", "File of login keys", "SSH public keys that may log in as the user, one per line, replacing those stored; empty to leave them as they are"),
+		keyInput("add-authorized-keys", "File of login keys to add", "SSH public keys to add to those stored; empty to add none"),
+		keyInput("remove-authorized-keys", "File of login keys to remove", "SSH public keys to remove from those stored, matched by type and key material; empty to remove none"),
+		keyInput("sudo-keys", "File of sudo keys", "SSH public keys that unlock the user's sudo, one per line, replacing those stored; empty to leave them as they are"),
+		keyInput("add-sudo-keys", "File of sudo keys to add", "SSH public keys to add to the sudo keys stored; empty to add none"),
+		keyInput("remove-sudo-keys", "File of sudo keys to remove", "SSH public keys to remove from the sudo keys stored, matched by type and key material; empty to remove none"),
+	}
+}
+
 // SecretsUserKeys sets a user's login and sudo keys on a host.
 var SecretsUserKeys = &engine.Flow{
 	Path:  []string{"secrets", "user-keys"},
@@ -47,16 +60,9 @@ var SecretsUserKeys = &engine.Flow{
 		"  fleet secrets user-keys admin laptop1 --authorized-keys admin.keys --sudo-keys admin-sudo.keys\n" +
 		"  fleet secrets user-keys support laptop1 --add-authorized-keys new.pub\n" +
 		"  fleet secrets user-keys support laptop1 --remove-authorized-keys old.pub",
-	Args: []string{"user", "host"},
-	Inputs: []engine.Input{secrets.RepoInput, secrets.RecoveryInput, secrets.UserName(), knownHost(),
-		keyInput("authorized-keys", "File of login keys", "SSH public keys that may log in as the user, one per line, replacing those stored; empty to leave them as they are"),
-		keyInput("add-authorized-keys", "File of login keys to add", "SSH public keys to add to those stored; empty to add none"),
-		keyInput("remove-authorized-keys", "File of login keys to remove", "SSH public keys to remove from those stored, matched by type and key material; empty to remove none"),
-		keyInput("sudo-keys", "File of sudo keys", "SSH public keys that unlock the user's sudo, one per line, replacing those stored; empty to leave them as they are"),
-		keyInput("add-sudo-keys", "File of sudo keys to add", "SSH public keys to add to the sudo keys stored; empty to add none"),
-		keyInput("remove-sudo-keys", "File of sudo keys to remove", "SSH public keys to remove from the sudo keys stored, matched by type and key material; empty to remove none"),
-	},
-	Needs: []string{"git", "yq", "sops", "age", "ssh-keygen"},
+	Args:   []string{"user", "host"},
+	Inputs: append([]engine.Input{secrets.RepoInput, secrets.RecoveryInput, secrets.UserName(), knownHost()}, keyInputs()...),
+	Needs:  []string{"git", "yq", "sops", "age", "ssh-keygen"},
 	Steps: []engine.Step{
 		{
 			Title: "Check the keys",
@@ -275,6 +281,13 @@ func readKeys(x *engine.Ctx, flag, path string, check bool) ([]string, error) {
 // holds now, and keeps the result as the JSON the store steps write; a list
 // that does not change gets none.
 func mergeKeyFiles(x *engine.Ctx) error {
+	return mergeKinds(x, func(key string) (string, error) { return currentKeys(x, key) })
+}
+
+// mergeKinds is mergeKeyFiles for any file: read gets one key of it.
+// A list that is not to change, or that the added and removed keys leave as
+// it is, gets no JSON, not even the one a previous file left.
+func mergeKinds(x *engine.Ctx, read func(key string) (string, error)) error {
 	for _, k := range keyKinds {
 		if x.Value(k.add) == "" && x.Value(k.remove) == "" {
 			continue
@@ -286,7 +299,8 @@ func mergeKeyFiles(x *engine.Ctx) error {
 		if p := x.Value(k.remove); p != "" {
 			remove, _ = keyLinesOf(p)
 		}
-		current, err := currentKeys(x, k.key)
+		x.Values[k.json] = ""
+		current, err := read(k.key)
 		if err != nil {
 			return err
 		}
@@ -335,12 +349,19 @@ func currentKeys(x *engine.Ctx, key string) (string, error) {
 			return "", nil
 		}
 	}
-	res, err := engine.Cmd("sops", "-d", "--extract", `["`+key+`"]`, file).In("{{.work}}").ReadOnly().Quiet().RunQuiet(x)
+	return storedValue(x, file, `["`+key+`"]`, "the "+key+" keys")
+}
+
+// storedValue decrypts one place (a sops path such as ["authorized_keys"]) of
+// a file of the worktree; a place that is not there counts as empty. what
+// names it for the error.
+func storedValue(x *engine.Ctx, file, path, what string) (string, error) {
+	res, err := engine.Cmd("sops", "-d", "--extract", path, file).In("{{.work}}").ReadOnly().Quiet().RunQuiet(x)
 	if err != nil {
 		if strings.Contains(res.Stderr+err.Error(), "not found") {
 			return "", nil
 		}
-		return "", fmt.Errorf("could not read the %s keys stored: %w", key, err)
+		return "", fmt.Errorf("could not read %s stored: %w", what, err)
 	}
 	return res.Stdout, nil
 }

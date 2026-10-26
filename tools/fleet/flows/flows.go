@@ -13,6 +13,7 @@ var Groups = engine.Groups{
 	"support-key": "The key that opens the support account",
 	"trust":       "The keys you trust, kept outside every checkout",
 	"user":        "Your own keys and files, for a user who has a branch of their own in the secrets repository",
+	"secret":      "Secrets of your own, which your hosts hand only to you",
 }
 
 // Menu is what `fleet` offers when run alone, the everyday work first: a
@@ -23,7 +24,7 @@ var Menu = []engine.Section{
 	{Name: "Secrets", Flows: []*engine.Flow{
 		SecretsUserPassword, SecretsUserKey, SecretsUserKeys, SecretsUserEnroll, SecretsUserRetire, SecretsHostEnroll, SecretsHostRekey, SecretsHostRetire,
 	}},
-	{Name: "Your own account", Flows: []*engine.Flow{UserInit}},
+	{Name: "Your own account", Flows: []*engine.Flow{UserInit, UserPassword, UserKeys, UserSecretSet, UserSecretUnset}},
 }
 
 // Every command that reads a checkout starts by comparing its keys with the

@@ -60,6 +60,9 @@ func Runbook(f *Flow) string {
 	for _, a := range f.Args {
 		usage += " [" + strings.ToUpper(a) + "]"
 	}
+	if f.restArg() != "" {
+		usage += "..."
+	}
 	b.WriteString("```\n" + usage + " [flags]\n")
 	if f.Example != "" {
 		b.WriteString("\n")

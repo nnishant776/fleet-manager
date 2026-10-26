@@ -395,3 +395,47 @@ func TestShortAndRepeatedFlags(t *testing.T) {
 		t.Errorf("a value off the pattern was taken: %v", err)
 	}
 }
+
+// A flow with Rest takes every word after its other arguments as values of
+// its last input, together with the ones given by flag.
+func TestRestArgumentTakesTheWordsThatRemain(t *testing.T) {
+	var got []string
+	f := &Flow{
+		Path: []string{"change"}, Title: "t", Args: []string{"name", "host"}, Rest: true,
+		Inputs: []Input{
+			{Name: "name", Prompt: "name"},
+			{Name: "host", Prompt: "host", Many: true, Optional: true},
+		},
+		Steps: []Step{{Title: "s", Do: Func(func(x *Ctx) error {
+			got = []string{x.Value("name"), x.Value("host")}
+			return nil
+		})}},
+	}
+	for _, tc := range []struct {
+		args []string
+		want []string
+	}{
+		{[]string{"change", "token", "nas", "pi"}, []string{"token", "nas\npi"}},
+		{[]string{"change", "token"}, []string{"token", ""}},
+		{[]string{"change", "token", "pi", "--host", "nas"}, []string{"token", "nas\npi"}},
+	} {
+		root := &cobra.Command{Use: "fleet", SilenceUsage: true, SilenceErrors: true}
+		Mount(root, []*Flow{f}, nil, nil)
+		root.SetArgs(tc.args)
+		got = nil
+		if err := root.Execute(); err != nil {
+			t.Fatalf("%v: %v", tc.args, err)
+		}
+		if strings.Join(got, "|") != strings.Join(tc.want, "|") {
+			t.Errorf("%v: got %q, want %q", tc.args, got, tc.want)
+		}
+	}
+	// Without Rest, a second word is too many.
+	f.Rest = false
+	root := &cobra.Command{Use: "fleet", SilenceUsage: true, SilenceErrors: true}
+	Mount(root, []*Flow{f}, nil, nil)
+	root.SetArgs([]string{"change", "token", "nas", "pi"})
+	if err := root.Execute(); err == nil {
+		t.Error("three words were accepted for two arguments")
+	}
+}

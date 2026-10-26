@@ -263,23 +263,43 @@ func VerifyUserTip(x *engine.Ctx, ref, user, key string) error {
 	if p := allowedSigners(x); p != "" {
 		signers, _ = os.ReadFile(p)
 	}
+	return verifyAgainst(x, ref, user, key, signers, "the newest commit of "+ref+" is not signed by a key in gpg.ssh.allowedSignersFile (fleet setup sets it) or by "+user+
+		"'s own signing key: look at it with git log --show-signature -1 "+ref+" before going on")
+}
+
+// VerifyOwnTip is the user's own check of their branch: the newest commit of
+// ref must be signed by their own signing key (key) or by a key in signers,
+// the content of an allowed_signers file (their copy of the configuration
+// repository's, which has the maintainers'); either may be empty. Both go into
+// a temporary file, never into the user's git configuration.
+func VerifyOwnTip(x *engine.Ctx, ref, user, key string, signers []byte) error {
+	return verifyAgainst(x, ref, user, key, signers, "the newest commit of "+ref+" is signed neither by your signing key nor by a key in your copy of the configuration repository's signers"+
+		" (fleet trust signers makes it; --signers names another file): look at it with git log --show-signature -1 "+ref+
+		", and do not go on until you know who made it")
+}
+
+// verifyAgainst runs git verify-commit with a temporary allowed-signers file:
+// signers, then the user's key as a line of its own.
+func verifyAgainst(x *engine.Ctx, ref, user, key string, signers []byte, explain string) error {
 	tmp, err := os.CreateTemp("", "fleet-signers-*")
 	if err != nil {
 		return err
 	}
 	defer os.Remove(tmp.Name())
-	fields := strings.Fields(key)
-	if len(fields) < 2 {
-		return fmt.Errorf("the signing key of %s is not an SSH public key", user)
+	text := strings.TrimRight(string(signers), "\n")
+	if key != "" {
+		fields := strings.Fields(key)
+		if len(fields) < 2 {
+			return fmt.Errorf("the signing key of %s is not an SSH public key", user)
+		}
+		text += "\n" + user + ` namespaces="git" ` + fields[0] + " " + fields[1]
 	}
-	line := user + ` namespaces="git" ` + fields[0] + " " + fields[1]
-	if _, err := tmp.WriteString(strings.TrimRight(string(signers), "\n") + "\n" + line + "\n"); err != nil {
+	if _, err := tmp.WriteString(strings.TrimLeft(text, "\n") + "\n"); err != nil {
 		return err
 	}
 	tmp.Close()
 	_, err = repoCmd("git", "-c", "gpg.ssh.allowedSignersFile="+tmp.Name(), "verify-commit", ref).Explain(func(engine.Result) string {
-		return "the newest commit of " + ref + " is not signed by a key in gpg.ssh.allowedSignersFile (fleet setup sets it) or by " + user +
-			"'s own signing key: look at it with git log --show-signature -1 " + ref + " before going on"
+		return explain
 	}).RunQuiet(x)
 	return err
 }

@@ -83,6 +83,12 @@ func command(f *Flow, opts *Options) *cobra.Command {
 	for _, a := range f.Args {
 		use += " [" + strings.ToUpper(a) + "]"
 	}
+	rest := f.restArg()
+	maxArgs := cobra.MaximumNArgs(len(f.Args))
+	if rest != "" {
+		use += "..."
+		maxArgs = cobra.ArbitraryArgs
+	}
 	values := map[string]*string{}
 	many := map[string]*[]string{}
 	stdin := map[string]*bool{}
@@ -92,7 +98,7 @@ func command(f *Flow, opts *Options) *cobra.Command {
 		Short:   f.Short,
 		Long:    f.Long,
 		Example: f.Example,
-		Args:    cobra.MaximumNArgs(len(f.Args)),
+		Args:    maxArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			given := map[string]string{}
 			for name, v := range values {
@@ -116,10 +122,20 @@ func command(f *Flow, opts *Options) *cobra.Command {
 				}
 			}
 			for i, a := range args {
-				if _, dup := given[f.Args[i]]; dup {
-					return fmt.Errorf("%s given both as an argument and as --%s", f.Args[i], f.Args[i])
+				name := f.Args[min(i, len(f.Args)-1)]
+				if name == rest && i >= len(f.Args)-1 {
+					// The last argument takes every word that remains, like the
+					// values of a flag that may be given more than once.
+					if prev := given[name]; prev != "" {
+						a = prev + "\n" + a
+					}
+					given[name] = a
+					continue
 				}
-				given[f.Args[i]] = a
+				if _, dup := given[name]; dup {
+					return fmt.Errorf("%s given both as an argument and as --%s", name, name)
+				}
+				given[name] = a
 			}
 			return runFlow(cmd.Context(), f, *opts, given)
 		},
@@ -182,4 +198,14 @@ func flagHelp(in Input) string {
 		return in.Help
 	}
 	return in.Prompt
+}
+
+// restArg is the name of the last positional argument when the flow lets it
+// take every word that remains (Flow.Rest), such as the hosts of
+// fleet user password [HOST]...; otherwise empty.
+func (f *Flow) restArg() string {
+	if !f.Rest || len(f.Args) == 0 {
+		return ""
+	}
+	return f.Args[len(f.Args)-1]
 }

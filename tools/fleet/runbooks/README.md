@@ -28,4 +28,8 @@ no arguments offers these as a menu.
 | [`fleet secrets host-rekey`](secrets-host-rekey.md) | Point a known host at a new identity |
 | [`fleet secrets host-retire`](secrets-host-retire.md) | Remove a host and its files |
 | [`fleet user init`](user-init.md) | Make your age identity, your signing key and the enrollment file to give the maintainer |
+| [`fleet user password`](user-password.md) | Set your password on hosts, on your own branch |
+| [`fleet user keys`](user-keys.md) | Set the SSH keys that may log in as you, or unlock your sudo, on hosts, on your own branch |
+| [`fleet user secret set`](user-secret-set.md) | Store a secret of your own, which your hosts hand only to you, on your own branch |
+| [`fleet user secret unset`](user-secret-unset.md) | Remove a secret of your own from your files, on your own branch |
 | [`fleet docs`](docs.md) | Write the runbook pages, tools/fleet/runbooks, from the flows themselves |
