@@ -7,7 +7,7 @@
 #   password/…) is a build error, since it would collide with them in
 #   /run/secrets;
 # - login and sudo keys from a user's file (secrets.authorizedKeys, sudoKeys,
-#   support's keysFromSecrets) are root's, mode 0400, and make sshd and sudo
+#   support's keysFromSecrets) are the account's (login) or root's (sudo), mode 0400, and make sshd and sudo
 #   read them from /run/secrets/users/%u/…, per user; sudoKeys needs a
 #   privileged account, and keysFromSecrets a host with secrets.
 # Run it with `nix build .#checks.x86_64-linux.secrets-user-owner-only`.
@@ -57,9 +57,9 @@ assert lib.assertMsg (rejects ownerOnly (fromAlice { owner = "alice"; mode = "04
 assert lib.assertMsg (rejects ownerOnly (fromAlice { owner = "nobody"; })) "a secret of alice's given to another account is accepted";
 assert lib.assertMsg (rejects taken { sops.secrets.users.key = "x"; }) "a host secret named users is accepted";
 assert lib.assertMsg (rejects taken { sops.secrets."password/root".key = "x"; }) "a host secret named password/… is accepted";
-assert lib.assertMsg (keySecrets."users/alice/authorized_keys".owner == "root" && keySecrets."users/alice/authorized_keys".mode == "0400"
+assert lib.assertMsg (keySecrets."users/alice/authorized_keys".owner == "alice" && keySecrets."users/alice/authorized_keys".mode == "0400"
   && keySecrets."users/alice/authorized_keys".key == "authorized_keys")
-  "alice's login keys are not root's, mode 0400";
+  "alice's login keys are not alice's alone, mode 0400";
 assert lib.assertMsg (keySecrets."users/ops/sudo_keys".owner == "root" && keySecrets."users/ops/sudo_keys".mode == "0400"
   && keySecrets."users/ops/sudo_keys".key == "sudo_keys")
   "ops' sudo keys are not root's, mode 0400";

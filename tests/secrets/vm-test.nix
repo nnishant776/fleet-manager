@@ -402,9 +402,9 @@ pkgs.testers.runNixOSTest {
         fleet.fail("grep -q alice_login /etc/ssh/authorized_keys.d/alice")
         out = forge.succeed(ssh_login.format(key="alice_login", user="alice", command="id -un")).strip()
         assert out == "alice", f"logged in as '{out}'"
-        # root's and 0400: only sshd, as root, reads it.
+        # alice's and 0400: sshd reads it as the user.
         out = fleet.succeed("stat -c '%U %a' /run/secrets/users/alice/authorized_keys").strip()
-        assert out == "root 400", f"authorized_keys is '{out}', expected 'root 400'"
+        assert out == "alice 400", f"authorized_keys is '{out}', expected 'alice 400'"
         # A key in alice's file does not open another account.
         status, _ = forge.execute(ssh_login.format(key="alice_login", user="support", command="true"))
         assert status != 0, "alice's key from the secrets logged in as support"
@@ -416,8 +416,8 @@ pkgs.testers.runNixOSTest {
         fleet.succeed("${withAgent} ops ops_sudo sudo -n true")
         out = fleet.succeed("${withAgent} ops ops_sudo sudo -n id -u").strip()
         assert out == "0", f"sudo id -u printed '{out}'"
-        # Another key, or no agent, does not unlock it, and a key in alice's
-        # login file does not unlock anyone's sudo.
+        # Another key, or no agent, does not unlock it, and alice, who has no
+        # sudo, gets none from a key in her agent.
         fleet.succeed("runuser -u ops -- sudo -K")
         fleet.fail("${withAgent} ops ops_login sudo -n true")
         fleet.succeed("runuser -u ops -- sudo -K")
@@ -549,6 +549,64 @@ pkgs.testers.runNixOSTest {
             "SOPS_AGE_KEY_FILE=/var/lib/fleet/age.key sops -d --extract '[\"sudo_keys\"]'"
             " /var/lib/fleet/secrets/users/carol/${hostName}.yaml | grep -q ops_sudo@test"
         )
+
+    with subtest("10c: user-keys adds and removes single keys in what is stored, by key material"):
+        def tip():
+            return forge.succeed("su git -c 'git -C /var/lib/forge/secrets.git rev-parse host/${hostName}'")
+
+        def stored(user, key="authorized_keys"):
+            # What the host's snapshot holds, decrypted with the host's key.
+            fleet.succeed(sync_cmd)
+            return fleet.succeed(
+                f"SOPS_AGE_KEY_FILE=/var/lib/fleet/age.key sops -d --extract '[\"{key}\"]'"
+                f" /var/lib/fleet/secrets/users/{user}/${hostName}.yaml"
+            ).strip().split("\n")
+
+        def key_of(path):
+            # The key type and material of a public key file, which is what matches.
+            return forge.succeed(f"cut -d' ' -f1,2 {path}").strip()
+
+        forge.succeed(
+            "su git -c 'ssh-keygen -q -t ed25519 -N \"\" -C alice-third@test -f /home/git/alice_third'",
+            "su git -c 'cat ${fixtures}/alice_login.pub /home/git/alice_third.pub > /home/git/alice.rest'",
+        )
+        first, login, third = key_of("/home/git/alice_second.pub"), key_of("${fixtures}/alice_login.pub"), key_of("/home/git/alice_third.pub")
+        # The first stored key under another comment, and with an option.
+        forge.succeed(f"printf '%s\\n' 'from=\"10.0.0.0/8\" {first} renamed' > /home/git/alice_first.renamed")
+
+        # (a) adding a key: a new commit, the keys there stay, in order.
+        before = tip()
+        status, out = user_keys("alice ${hostName} --add-authorized-keys /home/git/alice_third.pub")
+        assert status == 0, out
+        assert tip() != before
+        keys = stored("alice")
+        assert [k.rsplit(" ", 1)[0] for k in keys] == [first, login, third], keys
+        assert keys[0].endswith("alice-second@test"), keys
+
+        # (b) the same again changes nothing: no commit.
+        before = tip()
+        status, out = user_keys("alice ${hostName} --add-authorized-keys /home/git/alice_third.pub")
+        assert status == 0 and "nothing to add or remove" in out, f"{status}: {out}"
+        assert tip() == before, "a commit was made though nothing changed"
+
+        # (c) removing by material, though the file says another comment and an option.
+        status, out = user_keys("alice ${hostName} --remove-authorized-keys /home/git/alice_first.renamed")
+        assert status == 0, out
+        keys = stored("alice")
+        assert [k.rsplit(" ", 1)[0] for k in keys] == [login, third], keys
+
+        # (d) removing every key that is left would lock the account out: refused.
+        before = tip()
+        status, out = user_keys("alice ${hostName} --remove-authorized-keys /home/git/alice.rest")
+        assert status != 0 and "lock the account out" in out, f"{status}: {out}"
+        assert tip() == before
+        assert len(stored("alice")) == 2
+
+        # (e) a file that has no authorized_keys yet (carol's holds sudo_keys only).
+        status, out = user_keys("carol ${hostName} --add-authorized-keys /home/git/alice_third.pub")
+        assert status == 0, out
+        assert [k.rsplit(" ", 1)[0] for k in stored("carol")] == [third]
+        assert any("ops_sudo@test" in k for k in stored("carol", "sudo_keys"))
 
     with subtest("11: an older signed commit served again is refused, unless the record goes"):
         fleet.succeed(sync_cmd)
