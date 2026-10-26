@@ -66,6 +66,7 @@ var SecretsUserKeys = &engine.Flow{
 		secrets.Open(true),
 		secrets.ExistingBranch("host '{{.host}}' is not enrolled; use host-enroll first", true),
 		secrets.Unlock(),
+		secrets.ListedUser(),
 		secrets.OpenWork(),
 		createUserFile(),
 		{
@@ -94,9 +95,9 @@ var SecretsUserKeys = &engine.Flow{
 		withChange(secrets.Commit("user-keys: {{.user}} on {{.host}}", userFile())),
 		secrets.CloseWork(),
 		withChange(engine.Step{
-			Title: "Push host/{{.host}}",
-			Why:   "{{.host}} fetches its branch from the forge; it accepts the commit only if it is signed by an allowed key.",
-			Do:    secrets.PushBranch(),
+			Title: "Push {{.branch}}",
+			Why:   "{{.host}} fetches this branch from the forge; it accepts the commit only if it is signed by an allowed key.",
+			Do:    secrets.PushWork(),
 		}),
 	},
 }

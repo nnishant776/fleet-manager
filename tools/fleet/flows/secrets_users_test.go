@@ -340,3 +340,123 @@ func TestHostSecretRefusesTheNameUsers(t *testing.T) {
 		}
 	}
 }
+
+// listedAlice is a repo where nas lists alice, who has user/alice with a file for nas.
+func listedAlice() *userRepo {
+	return &userRepo{hosts: []string{"nas"}, userBranch: true, userFiles: map[string]bool{"nas": true},
+		listed: map[string]string{"nas": `{"age_recipient":"` + aliceAge + `","signing_key":"` + aliceKey + `"}`}}
+}
+
+func runUserFlow(t *testing.T, f *engine.Flow, r *userRepo, args map[string]string, extra func(engine.Spec)) (error, *engine.Fake, string) {
+	t.Helper()
+	cacheRecovery(t)
+	x, fake, out := newFakeCtx(func(s engine.Spec) (engine.Result, error) {
+		if extra != nil {
+			extra(s)
+		}
+		return r.respond(s)
+	})
+	a := map[string]string{"repo": t.TempDir(), "recovery": "", "user": "alice", "host": "nas"}
+	for k, v := range args {
+		a[k] = v
+	}
+	err := engine.RunWith(x, f, a)
+	return err, fake, out.String()
+}
+
+func TestUserPasswordOfAListedUserWorksOnTheirBranchAndEncryptsToThem(t *testing.T) {
+	r := listedAlice()
+	r.userFiles["nas"] = false // no file yet: it is created
+	err, fake, out := runUserFlow(t, SecretsUserPassword, r, map[string]string{"password": "pw"}, nil)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	inOrder(t, fake,
+		"git verify-commit refs/heads/user/alice",
+		"sops --encrypt --age age1hostrecipient,"+aliceAge+",age1recoveryrecipient",
+		`sops set --value-stdin users/alice/nas.yaml '["password"]'`,
+		"git commit -q -m 'user-password: alice@nas'",
+	)
+	for _, c := range fake.Commands() {
+		if strings.HasPrefix(c, "git worktree add") && !strings.HasSuffix(c, " user/alice") {
+			t.Errorf("opened a worktree of another branch: %s", c)
+		}
+	}
+}
+
+func TestUserPasswordOfAnUnlistedUserStaysOnTheHostsBranch(t *testing.T) {
+	r := &userRepo{hosts: []string{"nas"}}
+	err, fake, out := runUserFlow(t, SecretsUserPassword, r, map[string]string{"password": "pw"}, nil)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	cmds := strings.Join(fake.Commands(), "\n")
+	for _, want := range []string{"sops --encrypt --age age1hostrecipient,age1recoveryrecipient ", "worktree add -q", " host/nas"} {
+		if !strings.Contains(cmds, want) {
+			t.Errorf("did not run %q:\n%s", want, cmds)
+		}
+	}
+	if strings.Contains(cmds, "user/alice") {
+		t.Errorf("went to user/alice:\n%s", cmds)
+	}
+}
+
+func TestAListedUserWithoutABranchIsAnError(t *testing.T) {
+	r := listedAlice()
+	r.userBranch = false
+	for name, f := range map[string]*engine.Flow{"user-password": SecretsUserPassword, "user-key": SecretsUserKey} {
+		err, fake, out := runUserFlow(t, f, r, map[string]string{"password": "pw"}, nil)
+		if err == nil || !strings.Contains(out, "alice is listed in hosts/nas.yaml, but there is no user/alice") {
+			t.Errorf("%s: got %v\n%s", name, err, out)
+		}
+		for _, c := range fake.Commands() {
+			if strings.HasPrefix(c, "git worktree") || strings.HasPrefix(c, "git commit") {
+				t.Errorf("%s: ran %s", name, c)
+			}
+		}
+	}
+}
+
+func TestUserKeyOfAListedUserWorksOnTheirBranch(t *testing.T) {
+	r := listedAlice()
+	err, fake, out := runUserFlow(t, SecretsUserKey, r, nil, func(s engine.Spec) {
+		if s.Name == "ssh-keygen" {
+			for i, a := range s.Args {
+				if a == "-f" {
+					_ = os.WriteFile(s.Args[i+1], []byte("PRIVATE\n"), 0o600)
+					_ = os.WriteFile(s.Args[i+1]+".pub", []byte("ssh-ed25519 AAAA alice@nas\n"), 0o644)
+				}
+			}
+		}
+	})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	inOrder(t, fake,
+		"cat-file -e refs/heads/user/alice:users/alice/nas.yaml",
+		`sops set --value-stdin users/alice/nas.yaml '["ssh_key"]'`,
+		"git commit -q -m 'user-key: alice@nas'",
+	)
+	// Without the file on the user's branch, user-password comes first.
+	r.userFiles["nas"] = false
+	err, _, out = runUserFlow(t, SecretsUserKey, r, nil, nil)
+	if err == nil || !strings.Contains(out, "users/alice/nas.yaml does not exist on user/alice; run user-password first") {
+		t.Errorf("got %v\n%s", err, out)
+	}
+}
+
+func TestUserKeysOfAListedUserCommitsOnTheirBranchAndPushesIt(t *testing.T) {
+	err, fake, out := runUserFlow(t, SecretsUserKeys, listedAlice(), map[string]string{"authorized-keys": writeKeys(t, keyA+"\n")}, nil)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	inOrder(t, fake,
+		"git verify-commit refs/heads/user/alice",
+		`sops set --value-stdin users/alice/nas.yaml '["authorized_keys"]'`,
+		"git commit -q -m 'user-keys: alice on nas'",
+		"git push origin user/alice",
+	)
+	if strings.Contains(strings.Join(fake.Commands(), "\n"), "git push origin host/nas") {
+		t.Error("pushed the host's branch")
+	}
+}

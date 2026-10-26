@@ -257,6 +257,7 @@ func EnrollTarget() engine.Step {
 			host := x.Value("host")
 			ref := BranchRef(x, host)
 			x.Values["ref"] = ref
+			x.Values["branch"] = "host/" + host
 			if ref == "" {
 				x.UI.OK("host/" + host + " does not exist yet")
 				return nil
@@ -314,6 +315,7 @@ func ExistingBranch(otherwise string, work bool) engine.Step {
 				return errors.New(msg)
 			}
 			x.Values["ref"] = ref
+			x.Values["branch"] = "host/" + host
 			x.UI.OK(ref)
 			if !work {
 				return nil
@@ -336,14 +338,23 @@ func ExistingBranch(otherwise string, work bool) engine.Step {
 	}
 }
 
-// OpenWork makes the temporary worktree of host/<name> the command works in,
-// as the value work: the branch is made, empty, when it has no ref yet, and
-// made from origin's when only that exists. A run that stops takes the
-// worktree, and a branch made for it, away again.
+// WorkBranch is the branch the command works on, the value branch: the
+// host's, host/<name>, unless a step chose another, such as a listed user's.
+func WorkBranch(x *engine.Ctx) string {
+	if b := x.Value("branch"); b != "" {
+		return b
+	}
+	return "host/" + x.Value("host")
+}
+
+// OpenWork makes the temporary worktree of the branch (host/<name>, or the
+// value branch) the command works in, as the value work: the branch is made,
+// empty, when it has no ref yet, and made from origin's when only that exists.
+// A run that stops takes the worktree, and a branch made for it, away again.
 func OpenWork() engine.Step {
 	return engine.Step{
-		Title: "Open a worktree of host/{{.host}}",
-		Why: "The change is made in a temporary worktree of the host's branch, so that your checkout stays on main and the commit holds this change and nothing else. " +
+		Title: "Open a worktree of {{.branch}}",
+		Why: "The change is made in a temporary worktree of the branch, so that your checkout stays on main and the commit holds this change and nothing else. " +
 			"It goes away at the end, or when the run stops.",
 		Do: engine.Func(func(x *engine.Ctx) error {
 			dir := "<worktree>"
@@ -354,7 +365,7 @@ func OpenWork() engine.Step {
 				}
 			}
 			x.Values["work"] = dir
-			branch := "host/" + x.Value("host")
+			branch := WorkBranch(x)
 			var args []string
 			madeBranch := false
 			switch ref := x.Value("ref"); {
@@ -386,7 +397,7 @@ func OpenWork() engine.Step {
 func CloseWork() engine.Step {
 	return engine.Step{
 		Title: "Remove the worktree",
-		Why:   "It was only for this change; the commit is on host/{{.host}} in your clone.",
+		Why:   "It was only for this change; the commit is on {{.branch}} in your clone.",
 		Do: repoCmd("git", "worktree", "remove", "--force", "{{.work}}").OK("removed").After(func(x *engine.Ctx) error {
 			x.Done("worktree")
 			return nil
@@ -587,7 +598,8 @@ func Commit(message string, paths ...string) engine.Step {
 			}
 			_, err = cmd("git", "commit", "-q", "-m", msg).OK("committed: " + msg).After(func(x *engine.Ctx) error {
 				x.Settled()
-				x.Kept("push host/{{.host}}", "the commit “"+msg+"” on host/{{.host}} in {{.repo}}, not pushed yet (git -C {{.repo}} push origin host/{{.host}})")
+				branch := WorkBranch(x)
+				x.Kept("push "+branch, "the commit “"+msg+"” on "+branch+" in {{.repo}}, not pushed yet (git -C {{.repo}} push origin "+branch+")")
 				return nil
 			}).Run(x)
 			return err
@@ -598,7 +610,16 @@ func Commit(message string, paths ...string) engine.Step {
 // PushBranch pushes the host's branch, and drops the note that it is not.
 func PushBranch() *engine.Command {
 	return repoCmd("git", "push", "origin", "host/{{.host}}").After(func(x *engine.Ctx) error {
-		x.Kept("push host/{{.host}}", "")
+		x.Kept("push host/"+x.Value("host"), "")
+		return nil
+	})
+}
+
+// PushWork pushes the branch the command worked on (WorkBranch), and drops
+// the note that it is not pushed.
+func PushWork() *engine.Command {
+	return repoCmd("git", "push", "origin", "{{.branch}}").After(func(x *engine.Ctx) error {
+		x.Kept("push "+WorkBranch(x), "")
 		return nil
 	})
 }

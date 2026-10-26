@@ -30,6 +30,10 @@ pkgs.writeShellApplication {
     ''${XDG_STATE_HOME:-$HOME/.local/state}/fleet/recovery.pub, which fleet
     setup writes.
 
+    For a user that hosts/HOST.yaml lists (fleet secrets user-enroll),
+    user-password and user-key work on the user's branch, user/USER, instead,
+    and a new file is encrypted to the user too.
+
     options:
       --repo DIR        the secrets repository clone, left on main (default: .)
       --recovery FILE   passphrase-encrypted recovery identity (age -p output);
@@ -121,6 +125,16 @@ pkgs.writeShellApplication {
       echo "''${others[0]}"
     }
 
+    # The ref that holds the user's branch: the local branch, or else the one
+    # fetched from origin; empty when there is neither.
+    user_branch_ref() {  # user_branch_ref USER
+      if git rev-parse --verify -q "refs/heads/user/$1" >/dev/null; then
+        echo "refs/heads/user/$1"
+      elif git rev-parse --verify -q "refs/remotes/origin/user/$1" >/dev/null; then
+        echo "refs/remotes/origin/user/$1"
+      fi
+    }
+
     # The change builds on the branch's tip and encrypts for the recipients it
     # names, so the tip must be one a trusted key signed, not whatever was
     # pushed last; and the keys it is checked against must be your own copy,
@@ -142,6 +156,33 @@ pkgs.writeShellApplication {
     require_signed() {  # require_signed REF
       git verify-commit "$1" >/dev/null 2>&1 \
         || die "the newest commit of $1 is not signed by a key in gpg.ssh.allowedSignersFile (fleet setup sets it): look at it with git log --show-signature -1 $1 before going on"
+    }
+
+    # A user that hosts/HOST.yaml lists (fleet secrets user-enroll) keeps their
+    # files on a branch of their own, user/USER: ref and branch become that
+    # branch's, and a new file is also encrypted to the user's recipient. Any
+    # other user's files are on the host's branch. Run it with ref set to the
+    # host's branch, branch to its name and file_recipient to the host's
+    # recipient, after the host's tip is checked.
+    use_user_branch() {  # use_user_branch USER HOST
+      local listed uref user_recipient
+      listed="$(git show "$ref:hosts/$2.yaml" | yq ".users[\"$1\"] != null")" || die "$ref has no hosts/$2.yaml"
+      [ "$listed" = true ] || return 0
+      uref="$(user_branch_ref "$1")"
+      [ -n "$uref" ] \
+        || die "$1 is listed in hosts/$2.yaml, but there is no user/$1 in $repo, local or fetched from origin: fetch it"
+      require_signed "$uref"
+      user_recipient="$(git show "$ref:hosts/$2.yaml" \
+        | sops -d --input-type yaml --output-type json --extract "[\"users\"][\"$1\"]" /dev/stdin \
+        | yq '.age_recipient')" || die "could not read users.$1 in hosts/$2.yaml"
+      case "$user_recipient" in
+        age1|age1*[!0-9a-z]*) die "users.$1 in hosts/$2.yaml holds no age recipient" ;;
+        age1*) ;;
+        *) die "users.$1 in hosts/$2.yaml holds no age recipient" ;;
+      esac
+      ref="$uref"
+      branch="user/$1"
+      file_recipient="$file_recipient,$user_recipient"
     }
 
     # The temporary worktree the command works in, and the local branch made
@@ -174,8 +215,8 @@ pkgs.writeShellApplication {
     }
     trap cleanup EXIT
 
-    open_work() {  # open_work HOST REF — REF empty: the branch is made, empty
-      local branch="host/$1"
+    open_work() {  # open_work BRANCH REF — REF empty: the branch is made, empty
+      local branch="$1"
       work="$(mktemp -d)"
       if [ -z "$2" ]; then
         git worktree add -q --orphan -b "$branch" "$work"
@@ -295,7 +336,7 @@ pkgs.writeShellApplication {
         die "host '$host' is already enrolled with another identity; use host-rekey"
       fi
 
-      open_work "$host" ""
+      open_work "host/$host" ""
       create_empty "hosts/$host.yaml" "$enrolledRecipient"
       printf '%s\n' "$enrolledDoc" > enroll
 
@@ -320,7 +361,7 @@ pkgs.writeShellApplication {
       old="$(host_recipient "$ref" "$host")"
       [ "$old" != "$enrolledRecipient" ] || die "host '$host' holds this identity already; nothing to re-key"
 
-      open_work "$host" "$ref"
+      open_work "host/$host" "$ref"
       mapfile -t files < <(host_files "$host")
       for f in "''${files[@]}"; do
         sops rotate -i --rm-age "$old" --add-age "$enrolledRecipient" "$f"
@@ -376,7 +417,7 @@ pkgs.writeShellApplication {
 
     cmd_user_password() {
       [ $# -eq 2 ] || usage
-      local user="$1" host="$2" pw1 pw2 hash ref recipient
+      local user="$1" host="$2" pw1 pw2 hash ref recipient branch file_recipient
       check_name user "$user"
       check_name host "$host"
       require_trusted
@@ -385,6 +426,9 @@ pkgs.writeShellApplication {
       [ -n "$ref" ] || die "host '$host' is not enrolled; use host-enroll first"
       require_signed "$ref"
       recipient="$(host_recipient "$ref" "$host")"
+      branch="host/$host"
+      file_recipient="$recipient"
+      use_user_branch "$user" "$host"
 
       read -rsp "Password for $user on $host: " pw1; echo >&2
       read -rsp "Again: " pw2; echo >&2
@@ -392,20 +436,20 @@ pkgs.writeShellApplication {
       [ "$pw1" = "$pw2" ] || die "the passwords differ"
       hash="$(printf '%s' "$pw1" | mkpasswd -m yescrypt --stdin)"
 
-      open_work "$host" "$ref"
+      open_work "$branch" "$ref"
       if [ ! -f "users/$user/$host.yaml" ]; then
-        create_empty "users/$user/$host.yaml" "$recipient"
+        create_empty "users/$user/$host.yaml" "$file_recipient"
       fi
       printf '%s' "$hash" | set_from_stdin "users/$user/$host.yaml" password
       git add "users/$user/$host.yaml"
       commit "user-password: $user@$host"
       close_work
-      echo "Push the branch: git push origin host/$host"
+      echo "Push the branch: git push origin $branch"
     }
 
     cmd_user_key() {
       [ $# -eq 2 ] || usage
-      local user="$1" host="$2" base ref
+      local user="$1" host="$2" base ref branch
       check_name user "$user"
       check_name host "$host"
       require_trusted
@@ -413,10 +457,13 @@ pkgs.writeShellApplication {
       ref="$(branch_ref "$host")"
       [ -n "$ref" ] || die "host '$host' is not enrolled; use host-enroll first"
       require_signed "$ref"
+      branch="host/$host"
+      file_recipient=""
+      use_user_branch "$user" "$host"
       git cat-file -e "$ref:users/$user/$host.yaml" 2>/dev/null \
-        || die "users/$user/$host.yaml does not exist on host/$host; run user-password first"
+        || die "users/$user/$host.yaml does not exist on $branch; run user-password first"
 
-      open_work "$host" "$ref"
+      open_work "$branch" "$ref"
       # The private key exists in plain text only in a tmpfs directory, and is
       # shredded however the script ends (cleanup).
       base="/run/user/$(id -u)"
@@ -434,7 +481,7 @@ pkgs.writeShellApplication {
       git add "users/$user/$host.yaml"
       commit "user-key: $user@$host"
       close_work
-      echo "Push the branch: git push origin host/$host"
+      echo "Push the branch: git push origin $branch"
     }
 
     case "$command" in

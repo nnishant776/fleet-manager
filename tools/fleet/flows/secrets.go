@@ -188,7 +188,7 @@ var SecretsUserPassword = &engine.Flow{
 	Path:    []string{"secrets", "user-password"},
 	Title:   "Set a user's password on a host",
 	Short:   "Set the user's password on that host",
-	Long:    "Hashes the password (yescrypt) and stores the hash in users/<user>/<host>.yaml on the host's\nbranch, host/<host>, encrypted to that host and your recovery recipient. Hosts apply it at every\nactivation. Push the branch after.",
+	Long:    "Hashes the password (yescrypt) and stores the hash in users/<user>/<host>.yaml on the host's\nbranch, host/<host>, encrypted to that host and your recovery recipient. Hosts apply it at every\nactivation. For a user the host's file lists (fleet secrets user-enroll) it works on the user's branch,\nuser/<user>, instead, and a new file is encrypted to the user too. Push the branch after.",
 	Example: "  fleet secrets user-password alice laptop1\n  printf %s \"$pw\" | fleet secrets user-password alice laptop1 --password-stdin --yes",
 	Args:    []string{"user", "host"},
 	Inputs: []engine.Input{secrets.RepoInput, secrets.RecoveryInput, secrets.UserName(), knownHost(),
@@ -198,6 +198,7 @@ var SecretsUserPassword = &engine.Flow{
 		secrets.Open(true),
 		secrets.ExistingBranch("host '{{.host}}' is not enrolled; use host-enroll first", true),
 		secrets.Unlock(),
+		secrets.ListedUser(),
 		{
 			Title: "Hash the password",
 			Why:   "Only the yescrypt hash is stored; the password itself goes nowhere.",
@@ -225,7 +226,7 @@ var SecretsUserKey = &engine.Flow{
 	Path:    []string{"secrets", "user-key"},
 	Title:   "Generate a user's SSH key on a host",
 	Short:   "Generate the user's SSH key on that host",
-	Long:    "Generates an ed25519 key in a memory-only directory, stores both halves in\nusers/<user>/<host>.yaml on the host's branch, host/<host>, shreds the plaintext, commits, and shows\nthe public key. Push the branch after.",
+	Long:    "Generates an ed25519 key in a memory-only directory, stores both halves in\nusers/<user>/<host>.yaml on the host's branch, host/<host>, shreds the plaintext, commits, and shows\nthe public key. For a user the host's file lists (fleet secrets user-enroll) it works on the user's branch,\nuser/<user>, instead. Push the branch after.",
 	Example: "  fleet secrets user-key alice laptop1",
 	Args:    []string{"user", "host"},
 	Inputs:  []engine.Input{secrets.RepoInput, secrets.RecoveryInput, secrets.UserName(), knownHost()},
@@ -233,19 +234,20 @@ var SecretsUserKey = &engine.Flow{
 	Steps: []engine.Step{
 		secrets.Open(true),
 		secrets.ExistingBranch("host '{{.host}}' is not enrolled; use host-enroll first", true),
+		secrets.Unlock(),
+		secrets.ListedUser(),
 		{
 			Title: "Check " + userFile() + " exists",
 			Why:   "The key goes next to the user's password, which user-password creates.",
 			Do: engine.Func(func(x *engine.Ctx) error {
 				p, _ := x.Expand(userFile())
 				if _, err := engine.Silently(x, nil, "git", "-C", x.Value("repo"), "cat-file", "-e", x.Value("ref")+":"+p); err != nil {
-					return fmt.Errorf("%s does not exist on host/%s; run user-password first", p, x.Value("host"))
+					return fmt.Errorf("%s does not exist on %s; run user-password first", p, x.Value("branch"))
 				}
 				x.UI.OK(p + " exists")
 				return nil
 			}),
 		},
-		secrets.Unlock(),
 		secrets.OpenWork(),
 		{
 			Title: "Generate the key and store it",
@@ -328,7 +330,7 @@ func shred(dir string) {
 func createUserFile() engine.Step {
 	return engine.Step{
 		Title: "Create " + userFile(),
-		Why:   "It does not exist yet; it is created empty and encrypted to {{.host}} and your recovery recipient.",
+		Why:   "It does not exist yet; it is created empty and encrypted to {{.host}}, the user too when the user is listed, and your recovery recipient.",
 		When: func(x *engine.Ctx) (bool, string) {
 			p, _ := x.Expand(userFile())
 			if _, err := os.Stat(filepath.Join(x.Value("work"), p)); err == nil {
@@ -336,6 +338,6 @@ func createUserFile() engine.Step {
 			}
 			return true, ""
 		},
-		Do: secrets.CreateEmpty("", userFile(), "host_recipient").Do,
+		Do: secrets.CreateEmpty("", userFile(), "file_recipients").Do,
 	}
 }

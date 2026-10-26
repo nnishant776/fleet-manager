@@ -6,7 +6,8 @@ Set the user's password on that host.
 
 Hashes the password (yescrypt) and stores the hash in users/\<user>/\<host>.yaml on the host's
 branch, host/\<host>, encrypted to that host and your recovery recipient. Hosts apply it at every
-activation. Push the branch after.
+activation. For a user the host's file lists (fleet secrets user-enroll) it works on the user's branch,
+user/\<user>, instead, and a new file is encrypted to the user too. Push the branch after.
 
 ```
 fleet secrets user-password [USER] [HOST] [flags]
@@ -50,21 +51,23 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
    $ age -d RECOVERY
    ```
 
-4. **Hash the password.** Only the yescrypt hash is stored; the password itself goes nowhere.
+4. **Look up where USER's files on HOST are kept.** A user that hosts/HOST.yaml lists keeps their files on a branch of their own, user/USER, and a new file is encrypted to the user as well; any other user's files are on the host's branch. The list is encrypted, so this needs your recovery identity.
+
+5. **Hash the password.** Only the yescrypt hash is stored; the password itself goes nowhere.
 
    ```
    $ mkpasswd -m yescrypt --stdin   # the password on stdin
    ```
 
-5. **Open a worktree of host/HOST.** The change is made in a temporary worktree of the host's branch, so that your checkout stays on main and the commit holds this change and nothing else. It goes away at the end, or when the run stops.
+6. **Open a worktree of BRANCH.** The change is made in a temporary worktree of the branch, so that your checkout stays on main and the commit holds this change and nothing else. It goes away at the end, or when the run stops.
 
-6. **Create users/USER/HOST.yaml.** It does not exist yet; it is created empty and encrypted to HOST and your recovery recipient.
+7. **Create users/USER/HOST.yaml.** It does not exist yet; it is created empty and encrypted to HOST, the user too when the user is listed, and your recovery recipient.
 
-7. **Store the hash in users/USER/HOST.yaml.** As the key password, which hosts read when accounts.\<user>.secrets.password is on.
+8. **Store the hash in users/USER/HOST.yaml.** As the key password, which hosts read when accounts.\<user>.secrets.password is on.
 
-8. **Commit.** Signed with your key, if this checkout signs; hosts accept only signed commits. Push the branch afterwards.
+9. **Commit.** Signed with your key, if this checkout signs; hosts accept only signed commits. Push the branch afterwards.
 
-9. **Remove the worktree.** It was only for this change; the commit is on host/HOST in your clone.
+10. **Remove the worktree.** It was only for this change; the commit is on BRANCH in your clone.
 
    ```
    $ cd REPO && git worktree remove --force WORK

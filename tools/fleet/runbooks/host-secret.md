@@ -65,13 +65,13 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
    $ age -d RECOVERY
    ```
 
-5. **Open a worktree of host/HOST.** The change is made in a temporary worktree of the host's branch, so that your checkout stays on main and the commit holds this change and nothing else. It goes away at the end, or when the run stops.
+5. **Open a worktree of BRANCH.** The change is made in a temporary worktree of the branch, so that your checkout stays on main and the commit holds this change and nothing else. It goes away at the end, or when the run stops.
 
 6. **Encrypt it into hosts/HOST.yaml.** The file keeps its recipients, HOST and your recovery key. An existing value of the same name is replaced; a name that would replace a group of secrets, or go under a value, is refused.
 
 7. **Commit.** Signed with your key, if this checkout signs; hosts accept only signed commits. Push the branch afterwards.
 
-8. **Remove the worktree.** It was only for this change; the commit is on host/HOST in your clone.
+8. **Remove the worktree.** It was only for this change; the commit is on BRANCH in your clone.
 
    ```
    $ cd REPO && git worktree remove --force WORK

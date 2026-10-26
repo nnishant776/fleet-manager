@@ -1,7 +1,8 @@
 # Runs the shell fleet-secrets (lib/apps/fleet-secrets.nix) and its Go port
 # (`fleet secrets …`) through the same commands, on two copies of one scratch
 # repository, and checks after every command that they left it the same:
-# - the same branches (one host/<name> per host) and none left over, the same
+# - the same branches (one host/<name> per host, and user/<name> for users the
+#   hosts list) and none left over, the same
 #   tracked files on each and the same commit messages, every tip signed, and
 #   the checkout still on main with no worktree left behind;
 # - every encrypted file decrypting to the same values, for the same
@@ -9,7 +10,8 @@
 # Password hashes and SSH keys are random, so those are checked for what they
 # must be instead: the hash verifies the password, and the key pair matches,
 # with the same comment. After the re-key and the retirement it also checks
-# who can still decrypt what.
+# who can still decrypt what. A last part enrolls users (the port only) and
+# runs the commands for a listed user, whose files are on user/<name>.
 # Run it with `nix build .#checks.x86_64-linux.fleet-secrets-parity`.
 { pkgs, fleet }:
 let
@@ -86,6 +88,16 @@ pkgs.runCommand "fleet-secrets-parity" {
       || { echo "$1 $2:$3: not encrypted to $4 and the recovery key"; exit 1; }
   }
 
+  # The same, for a file of a listed user: the user's recipient too.
+  expect_recipients_of() {  # expect_recipients_of REPO BRANCH FILE IDENTITY...
+    local repo=$1 branch=$2 file=$3 id
+    shift 3
+    unpack $repo $branch
+    { for id in "$@"; do age-keygen -y $id.key; done; age-keygen -y maint.key; } | sort > want.recipients
+    yq '.sops.age[].recipient' out/$repo/$file | sort | diff want.recipients - \
+      || { echo "$repo $branch:$file: not encrypted to $* and the recovery key"; exit 1; }
+  }
+
   # The same as the other copy, but for what is random.
   compare() {  # compare WHAT-JUST-RAN
     echo "== after: $1"
@@ -96,7 +108,7 @@ pkgs.runCommand "fleet-secrets-parity" {
     done
     diff <(git -C sh for-each-ref --format='%(refname)') <(git -C go for-each-ref --format='%(refname)')
     diff <(git -C sh log --format=%s main) <(git -C go log --format=%s main)
-    for b in $(git -C sh for-each-ref --format='%(refname:short)' refs/heads/host); do
+    for b in $(git -C sh for-each-ref --format='%(refname:short)' refs/heads/host refs/heads/user); do
       diff <(git -C sh ls-tree -r --name-only $b) <(git -C go ls-tree -r --name-only $b)
       diff <(git -C sh log --format=%s $b) <(git -C go log --format=%s $b)
       diff <(git -C sh show $b:enroll) <(git -C go show $b:enroll)
@@ -275,8 +287,8 @@ pkgs.runCommand "fleet-secrets-parity" {
   # local branch from it and commits there, and the branch, with the commit,
   # is still there afterwards to be pushed.
   for repo in sh go; do
-    git clone -q --bare $repo $repo-origin.git
-    git -C $repo remote add origin "$PWD/$repo-origin.git"
+    git clone -q --bare $repo origin-$repo.git
+    git -C $repo remote add origin "$PWD/origin-$repo.git"
     git -C $repo fetch -q origin
     git -C $repo branch -q -D host/alpha
   done
@@ -289,6 +301,144 @@ pkgs.runCommand "fleet-secrets-parity" {
       || { echo "$repo: the commit is not on the branch made from origin's"; exit 1; }
   done
   compare "user-password alice alpha, on a branch only origin had"
+
+  # A listed user. fleet secrets user-enroll (the port only) lists alice on
+  # alpha and moves her file to user/alice; from then on both tools work on that
+  # branch for her, and must leave it the same. A second user, dave, has no
+  # file yet and gets an empty one. user-enroll and user-retire push, to the
+  # origin each copy got above.
+  for u in alice dave alice2; do
+    age-keygen -o $u.key 2>/dev/null
+    ssh-keygen -q -t ed25519 -N "" -f $u.sign
+    printf 'version: 1\nuser: %s\nage_recipient: %s\nsigning_key: %s %s@laptop\n' \
+      "$(echo $u | tr -d 2)" "$(age-keygen -y $u.key)" "$(cut -d' ' -f1,2 $u.sign.pub)" $u > $u.uenroll
+  done
+  enroll_both() {  # enroll_both ARGS...: user-enroll in both copies
+    for repo in sh go; do ${fleet}/bin/fleet secrets user-enroll "$@" --repo $repo --yes; done
+  }
+  # Her file as it is on the host's branch now.
+  for repo in sh go; do
+    unpack $repo host/alpha
+    sops -d --output-type json out/$repo/users/alice/alpha.yaml | jq -S 'del(.password)' > alice.before.$repo
+    jq -e 'has("ssh_key")' alice.before.$repo >/dev/null
+  done
+
+  enroll_both alice --from alice.uenroll
+  compare "user-enroll alice"
+  for repo in sh go; do
+    git -C $repo rev-parse --verify -q refs/heads/user/alice >/dev/null || { echo "$repo: no user/alice"; exit 1; }
+    diff <(git -C $repo ls-tree -r --name-only user/alice) <(printf 'enroll\nusers/alice/alpha.yaml\n')
+    diff <(git -C $repo show user/alice:enroll) alice.uenroll
+    diff <(git -C $repo log --format=%s user/alice) <(echo "user-enroll: alice")
+    if git -C $repo ls-tree -r --name-only host/alpha | grep -q '^users/'; then
+      echo "$repo: a user file is left on host/alpha"; exit 1
+    fi
+    [ "$(git -C $repo log -1 --format=%s host/alpha)" = "user-enroll: alice on alpha" ] || { echo "$repo: host/alpha has no enroll commit"; exit 1; }
+    # origin has what was pushed
+    for b in user/alice host/alpha; do
+      [ "$(git -C $repo rev-parse $b)" = "$(git -C origin-$repo.git rev-parse $b)" ] || { echo "$repo: $b was not pushed"; exit 1; }
+    done
+    # The host's file lists her, encrypted; her file keeps what it held.
+    unpack $repo host/alpha
+    [ "$(sops -d --extract '["users"]["alice"]["age_recipient"]' out/$repo/hosts/alpha.yaml)" = "$(age-keygen -y alice.key)" ] \
+      || { echo "$repo: hosts/alpha.yaml does not list alice"; exit 1; }
+    sops -d --extract '["users"]["alice"]["signing_key"]' out/$repo/hosts/alpha.yaml | grep -q '^ssh-ed25519 ' \
+      || { echo "$repo: no signing key listed"; exit 1; }
+    ! grep -q "$(age-keygen -y alice.key)" out/$repo/hosts/alpha.yaml || { echo "$repo: the list is not encrypted"; exit 1; }
+    expect_recipients_of $repo host/alpha hosts/alpha.yaml alpha2
+    unpack $repo user/alice
+    sops -d --output-type json out/$repo/users/alice/alpha.yaml | jq -S 'del(.password)' | diff alice.before.$repo - \
+      || { echo "$repo: her file changed in the move"; exit 1; }
+    expect_recipients_of $repo user/alice users/alice/alpha.yaml alpha2 alice
+    SOPS_AGE_KEY_FILE=$PWD/alice.key sops -d out/$repo/users/alice/alpha.yaml >/dev/null \
+      || { echo "$repo: alice cannot decrypt her file"; exit 1; }
+    if SOPS_AGE_KEY_FILE=$PWD/alice.key sops -d out/$repo/hosts/alpha.yaml >/dev/null 2>&1; then
+      echo "$repo: alice can decrypt the host's file"; exit 1
+    fi
+  done
+  # The host's branch only changes by the move.
+  for repo in sh go; do git -C $repo rev-parse host/alpha > $repo.tip; done
+
+  # Both tools now write to user/alice for her, and not to host/alpha.
+  printf 'pw-alice\npw-alice\n' | sh_tool user-password alice alpha
+  printf 'pw-alice' | go_tool user-password alice alpha --password-stdin
+  compare "user-password alice alpha (listed)"
+  sh_tool user-key alice alpha
+  go_tool user-key alice alpha
+  compare "user-key alice alpha (listed)"
+  for repo in sh go; do
+    diff <(git -C $repo log --format=%s user/alice) <(printf 'user-key: alice@alpha\nuser-password: alice@alpha\nuser-enroll: alice\n')
+    [ "$(git -C $repo rev-parse host/alpha)" = "$(cat $repo.tip)" ] || { echo "$repo: a command for a listed user changed host/alpha"; exit 1; }
+    expect_recipients_of $repo user/alice users/alice/alpha.yaml alpha2 alice
+  done
+
+  # A user with no file gets an empty one, for the host named, and a new file
+  # for a listed user is encrypted to the user as well.
+  enroll_both dave --from dave.uenroll --host alpha
+  compare "user-enroll dave --host alpha"
+  for repo in sh go; do
+    diff <(git -C $repo ls-tree -r --name-only user/dave) <(printf 'enroll\nusers/dave/alpha.yaml\n')
+    expect_recipients_of $repo user/dave users/dave/alpha.yaml alpha2 dave
+  done
+  printf 'pw-dave\npw-dave\n' | sh_tool user-password dave alpha
+  printf 'pw-dave' | go_tool user-password dave alpha --password-stdin
+  compare "user-password dave alpha (listed)"
+  for repo in sh go; do expect_recipients_of $repo user/dave users/dave/alpha.yaml alpha2 dave; done
+  for repo in sh go; do
+    git -C $repo rev-parse user/alice host/alpha > $repo.tips
+  done
+
+  # The same identity again changes nothing; another identity is refused.
+  enroll_both alice --from alice.uenroll
+  if go_tool user-enroll alice --from alice2.uenroll 2>&1 | tee go.err; then echo "enrolled alice with another identity"; exit 1; fi
+  grep -q "already enrolled with another identity" go.err
+  for repo in sh go; do
+    [ "$(git -C $repo rev-parse user/alice host/alpha)" = "$(cat $repo.tips)" ] || { echo "$repo: enrolling alice again changed a branch"; exit 1; }
+  done
+  compare "user-enroll alice again"
+  # A user branch tip no trusted key signed is not built on.
+  for repo in sh go; do
+    git -C $repo checkout -q user/dave
+    git -C $repo -c commit.gpgSign=false commit -q --allow-empty -m "pushed by someone else"
+    git -C $repo checkout -q main
+  done
+  if sh_tool user-key dave alpha > sh.err 2>&1; then echo "sh: built on an unsigned user branch"; exit 1; fi
+  grep -q "not signed by a key in gpg.ssh.allowedSignersFile" sh.err
+  if go_tool user-key dave alpha > go.err 2>&1; then echo "go: built on an unsigned user branch"; exit 1; fi
+  grep -q "not signed by a key in gpg.ssh.allowedSignersFile" go.err
+  for repo in sh go; do
+    git -C $repo checkout -q user/dave
+    git -C $repo reset -q --hard HEAD~1
+    git -C $repo checkout -q main
+  done
+  compare "the refused commands on user/dave"
+
+  # user-retire takes dave off the host and deletes his local branch.
+  for repo in sh go; do ${fleet}/bin/fleet secrets user-retire dave --repo $repo --yes | tee $repo.out; done
+  grep -q "git push origin --delete user/dave" go.out
+  compare "user-retire dave"
+  for repo in sh go; do
+    if git -C $repo rev-parse --verify -q refs/heads/user/dave >/dev/null; then echo "$repo: user/dave is still there"; exit 1; fi
+    unpack $repo host/alpha
+    [ "$(sops -d --extract '["users"]["alice"]["age_recipient"]' out/$repo/hosts/alpha.yaml)" = "$(age-keygen -y alice.key)" ] \
+      || { echo "$repo: retiring dave unlisted alice"; exit 1; }
+    if sops -d --extract '["users"]["dave"]' out/$repo/hosts/alpha.yaml >/dev/null 2>&1; then echo "$repo: dave is still listed"; exit 1; fi
+    [ "$(git -C $repo log -1 --format=%s host/alpha)" = "user-retire: dave on alpha" ] || { echo "$repo: no retire commit"; exit 1; }
+    [ "$(git -C $repo rev-parse host/alpha)" = "$(git -C origin-$repo.git rev-parse host/alpha)" ] || { echo "$repo: the retire commit was not pushed"; exit 1; }
+  done
+
+  # fleet secrets user-keys (the port only) writes alice's login and sudo keys
+  # on her branch too.
+  ssh-keygen -q -t ed25519 -N "" -f alice.login
+  cp alice.login.pub alice.keys
+  go_tool user-keys alice alpha --authorized-keys alice.keys --sudo-keys alice.keys
+  unpack go user/alice
+  [ "$(git -C go log -1 --format=%s user/alice)" = "user-keys: alice on alpha" ] || { echo "go: no user-keys commit on user/alice"; exit 1; }
+  [ "$(sops -d --extract '["authorized_keys"]' out/go/users/alice/alpha.yaml)" = "$(cat alice.keys | tr -d '\n')" ] \
+    || { echo "go: authorized_keys on user/alice is not what was given"; exit 1; }
+  [ "$(git -C go rev-parse host/alpha)" = "$(git -C origin-go.git rev-parse host/alpha)" ]
+  [ "$(git -C go rev-parse user/alice)" = "$(git -C origin-go.git rev-parse user/alice)" ] || { echo "go: user-keys did not push user/alice"; exit 1; }
+  expect_recipients_of go user/alice users/alice/alpha.yaml alpha2 alice
 
   echo "parity: the shell tool and the port agree on every command"
   touch $out

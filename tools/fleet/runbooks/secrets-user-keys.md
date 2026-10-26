@@ -66,36 +66,38 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
    $ age -d RECOVERY
    ```
 
-5. **Open a worktree of host/HOST.** The change is made in a temporary worktree of the host's branch, so that your checkout stays on main and the commit holds this change and nothing else. It goes away at the end, or when the run stops.
+5. **Look up where USER's files on HOST are kept.** A user that hosts/HOST.yaml lists keeps their files on a branch of their own, user/USER, and a new file is encrypted to the user as well; any other user's files are on the host's branch. The list is encrypted, so this needs your recovery identity.
 
-6. **Create users/USER/HOST.yaml.** It does not exist yet; it is created empty and encrypted to HOST and your recovery recipient.
+6. **Open a worktree of BRANCH.** The change is made in a temporary worktree of the branch, so that your checkout stays on main and the commit holds this change and nothing else. It goes away at the end, or when the run stops.
 
-7. **Work out the keys to store.** Added and removed keys are applied to the keys stored now, which are read with your recovery identity; a key list that would end up empty is refused, and one that does not change is left alone.
+7. **Create users/USER/HOST.yaml.** It does not exist yet; it is created empty and encrypted to HOST, the user too when the user is listed, and your recovery recipient.
 
-8. **Store the login keys in users/USER/HOST.yaml.** As the key authorized_keys, which hosts read when accounts.\<user>.secrets.authorizedKeys is on.
+8. **Work out the keys to store.** Added and removed keys are applied to the keys stored now, which are read with your recovery identity; a key list that would end up empty is refused, and one that does not change is left alone.
+
+9. **Store the login keys in users/USER/HOST.yaml.** As the key authorized_keys, which hosts read when accounts.\<user>.secrets.authorizedKeys is on.
 
    ```
    $ cd WORK && sops set --value-stdin users/USER/HOST.yaml '["authorized_keys"]'   # the login keys on stdin
    ```
 
-9. **Store the sudo keys in users/USER/HOST.yaml.** As the key sudo_keys, which hosts read when accounts.\<user>.secrets.sudoKeys is on.
+10. **Store the sudo keys in users/USER/HOST.yaml.** As the key sudo_keys, which hosts read when accounts.\<user>.secrets.sudoKeys is on.
 
    ```
    $ cd WORK && sops set --value-stdin users/USER/HOST.yaml '["sudo_keys"]'   # the sudo keys on stdin
    ```
 
-10. **Commit.** Signed with your key, if this checkout signs; hosts accept only signed commits. Push the branch afterwards.
+11. **Commit.** Signed with your key, if this checkout signs; hosts accept only signed commits. Push the branch afterwards.
 
-11. **Remove the worktree.** It was only for this change; the commit is on host/HOST in your clone.
+12. **Remove the worktree.** It was only for this change; the commit is on BRANCH in your clone.
 
    ```
    $ cd REPO && git worktree remove --force WORK
    ```
 
-12. **Push host/HOST.** HOST fetches its branch from the forge; it accepts the commit only if it is signed by an allowed key.
+13. **Push BRANCH.** HOST fetches this branch from the forge; it accepts the commit only if it is signed by an allowed key.
 
    ```
-   $ cd REPO && git push origin host/HOST
+   $ cd REPO && git push origin BRANCH
    ```
 
 It needs `git`, `yq`, `sops`, `age`, `ssh-keygen` on the PATH; `fleet doctor` says where to get them.

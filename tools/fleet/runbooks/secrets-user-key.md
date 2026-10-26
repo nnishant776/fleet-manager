@@ -6,7 +6,8 @@ Generate the user's SSH key on that host.
 
 Generates an ed25519 key in a memory-only directory, stores both halves in
 users/\<user>/\<host>.yaml on the host's branch, host/\<host>, shreds the plaintext, commits, and shows
-the public key. Push the branch after.
+the public key. For a user the host's file lists (fleet secrets user-enroll) it works on the user's branch,
+user/\<user>, instead. Push the branch after.
 
 ```
 fleet secrets user-key [USER] [HOST] [flags]
@@ -42,27 +43,29 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
 
 2. **Look up host/HOST.** A host's branch is host/\<name>; a host that has none is not enrolled.
 
-3. **Check users/USER/HOST.yaml exists.** The key goes next to the user's password, which user-password creates.
-
-4. **Unlock your recovery identity.** Decrypted into this run's memory only, for the sops commands below. age asks for its passphrase.
+3. **Unlock your recovery identity.** Decrypted into this run's memory only, for the sops commands below. age asks for its passphrase.
 
    ```
    $ age -d RECOVERY
    ```
 
-5. **Open a worktree of host/HOST.** The change is made in a temporary worktree of the host's branch, so that your checkout stays on main and the commit holds this change and nothing else. It goes away at the end, or when the run stops.
+4. **Look up where USER's files on HOST are kept.** A user that hosts/HOST.yaml lists keeps their files on a branch of their own, user/USER, and a new file is encrypted to the user as well; any other user's files are on the host's branch. The list is encrypted, so this needs your recovery identity.
 
-6. **Generate the key and store it.** The private key exists in plain text only in a memory-only directory, overwritten and removed however this step ends.
+5. **Check users/USER/HOST.yaml exists.** The key goes next to the user's password, which user-password creates.
 
-7. **Commit.** Signed with your key, if this checkout signs; hosts accept only signed commits. Push the branch afterwards.
+6. **Open a worktree of BRANCH.** The change is made in a temporary worktree of the branch, so that your checkout stays on main and the commit holds this change and nothing else. It goes away at the end, or when the run stops.
 
-8. **Remove the worktree.** It was only for this change; the commit is on host/HOST in your clone.
+7. **Generate the key and store it.** The private key exists in plain text only in a memory-only directory, overwritten and removed however this step ends.
+
+8. **Commit.** Signed with your key, if this checkout signs; hosts accept only signed commits. Push the branch afterwards.
+
+9. **Remove the worktree.** It was only for this change; the commit is on BRANCH in your clone.
 
    ```
    $ cd REPO && git worktree remove --force WORK
    ```
 
-9. **Register the public key.** Wherever USER needs it on HOST's behalf, such as their forge account.
+10. **Register the public key.** Wherever USER needs it on HOST's behalf, such as their forge account.
 
    > Public key of USER on HOST; register it on the forge:
    > PUBLIC_KEY

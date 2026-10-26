@@ -82,6 +82,43 @@ func ReadListing(x *engine.Ctx, hostRef, host, user string) (bool, Identity, err
 	return true, id, nil
 }
 
+// ListedUser finds where the user's file on the host is kept. A user that the
+// host's file lists works on user/<user>: the value ref and branch become the
+// user's, and a new file is encrypted to the host, the user and the recovery
+// recipient, as the value file_recipients (without the recovery recipient,
+// which CreateEmpty adds). Any other user works on the host's branch. It
+// follows ExistingBranch and Unlock.
+func ListedUser() engine.Step {
+	return engine.Step{
+		Title: "Look up where {{.user}}'s files on {{.host}} are kept",
+		Why: "A user that hosts/{{.host}}.yaml lists keeps their files on a branch of their own, user/{{.user}}, and a new file is encrypted to the user as well; " +
+			"any other user's files are on the host's branch. The list is encrypted, so this needs your recovery identity.",
+		Do: engine.Func(func(x *engine.Ctx) error {
+			host, user := x.Value("host"), x.Value("user")
+			x.Values["file_recipients"] = x.Value("host_recipient")
+			listed, id, err := ReadListing(x, x.Value("ref"), host, user)
+			if err != nil {
+				return err
+			}
+			if !listed {
+				x.UI.OK(user + " is not listed in hosts/" + host + ".yaml: their files are on " + x.Value("branch"))
+				return nil
+			}
+			ref := UserBranchRef(x, user)
+			if ref == "" {
+				return fmt.Errorf("%s is listed in hosts/%s.yaml, but there is no user/%s in %s, local or fetched from origin: fetch it", user, host, user, x.Value("repo"))
+			}
+			if err := VerifyTip(x, ref); err != nil {
+				return err
+			}
+			x.Values["ref"], x.Values["branch"] = ref, "user/"+user
+			x.Values["file_recipients"] = x.Value("host_recipient") + "," + id.AgeRecipient
+			x.UI.OK(user + " is listed: their files are on " + ref + ", its newest commit signed by a trusted key")
+			return nil
+		}),
+	}
+}
+
 // WorktreeAt makes a temporary worktree of branch from ref, empty and
 // orphaned when ref is empty and made from origin's when ref is not the
 // local branch. A run that stops takes the worktree away, and a branch made
