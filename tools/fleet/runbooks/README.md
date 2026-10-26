@@ -27,4 +27,5 @@ no arguments offers these as a menu.
 | [`fleet secrets host-enroll`](secrets-host-enroll.md) | Admit a new host from its enrollment file |
 | [`fleet secrets host-rekey`](secrets-host-rekey.md) | Point a known host at a new identity |
 | [`fleet secrets host-retire`](secrets-host-retire.md) | Remove a host and its files |
+| [`fleet user init`](user-init.md) | Make your age identity, your signing key and the enrollment file to give the maintainer |
 | [`fleet docs`](docs.md) | Write the runbook pages, tools/fleet/runbooks, from the flows themselves |
