@@ -52,21 +52,23 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
    $ age -d RECOVERY
    ```
 
-6. **Open a worktree of BRANCH.** The change is made in a temporary worktree of the branch, so that your checkout stays on main and the commit holds this change and nothing else. It goes away at the end, or when the run stops.
+6. **Re-key the files of the users HOST lists.** A user that hosts/HOST.yaml lists keeps their file for HOST on their own branch, user/\<user>, which the host decrypts too: the old recipient is replaced by the new one there as well, one commit per user. A file that has the new recipient already is left alone, so a run that stopped can be repeated.
 
-7. **Re-encrypt HOST's files to its new identity.** Its own file and its users' files: the old recipient is replaced by the new one, the recovery recipient stays.
+7. **Open a worktree of BRANCH.** The change is made in a temporary worktree of the branch, so that your checkout stays on main and the commit holds this change and nothing else. It goes away at the end, or when the run stops.
 
-8. **Write the enrollment record.** enroll holds the host's public identity as the host wrote it. Hosts do not read it; it is a record of what the branch was made for.
+8. **Re-encrypt HOST's files to its new identity.** Its own file and its users' files: the old recipient is replaced by the new one, the recovery recipient stays.
 
-9. **Commit.** Signed with your key, if this checkout signs; hosts accept only signed commits. Push the branch afterwards.
+9. **Write the enrollment record.** enroll holds the host's public identity as the host wrote it. Hosts do not read it; it is a record of what the branch was made for.
 
-10. **Remove the worktree.** It was only for this change; the commit is on BRANCH in your clone.
+10. **Commit.** Signed with your key, if this checkout signs; hosts accept only signed commits. Push the branch afterwards.
+
+11. **Remove the worktree.** It was only for this change; the commit is on BRANCH in your clone.
 
    ```
    $ cd REPO && git worktree remove --force WORK
    ```
 
-11. **Register HOST's deploy key.** The host fetches this repository with it; it must be read-only.
+12. **Register HOST's deploy key.** The host fetches this repository with it; it must be read-only.
 
    > Secrets deploy key of HOST:
    > DEPLOY_KEY

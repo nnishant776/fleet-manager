@@ -363,11 +363,32 @@ pkgs.runCommand "fleet-secrets-parity" {
   printf 'pw-alice\npw-alice\n' | sh_tool user-password alice alpha
   printf 'pw-alice' | go_tool user-password alice alpha --password-stdin
   compare "user-password alice alpha (listed)"
+  # The tip of her branch may be signed by her own key, which the host's list
+  # holds, but not by one nobody knows.
+  ssh-keygen -q -t ed25519 -N "" -f stranger.sign
+  signed_commit() {  # signed_commit KEYFILE MESSAGE: an empty commit on user/alice in both copies
+    for repo in sh go; do
+      git -C $repo checkout -q user/alice
+      git -C $repo -c user.signingKey=$PWD/$1 commit -q --allow-empty -m "$2"
+      git -C $repo checkout -q main
+    done
+  }
+  signed_commit stranger.sign "signed by a stranger"
+  if sh_tool user-key alice alpha > sh.err 2>&1; then echo "sh: built on a branch signed by a stranger"; exit 1; fi
+  grep -q "not signed by a key in gpg.ssh.allowedSignersFile" sh.err
+  if go_tool user-key alice alpha > go.err 2>&1; then echo "go: built on a branch signed by a stranger"; exit 1; fi
+  grep -q "not signed by a key in gpg.ssh.allowedSignersFile" go.err
+  for repo in sh go; do
+    git -C $repo checkout -q user/alice
+    git -C $repo reset -q --hard HEAD~1
+    git -C $repo checkout -q main
+  done
+  signed_commit alice.sign "signed by alice"
   sh_tool user-key alice alpha
   go_tool user-key alice alpha
-  compare "user-key alice alpha (listed)"
+  compare "user-key alice alpha (listed, the tip signed by alice)"
   for repo in sh go; do
-    diff <(git -C $repo log --format=%s user/alice) <(printf 'user-key: alice@alpha\nuser-password: alice@alpha\nuser-enroll: alice\n')
+    diff <(git -C $repo log --format=%s user/alice) <(printf 'user-key: alice@alpha\nsigned by alice\nuser-password: alice@alpha\nuser-enroll: alice\n')
     [ "$(git -C $repo rev-parse host/alpha)" = "$(cat $repo.tip)" ] || { echo "$repo: a command for a listed user changed host/alpha"; exit 1; }
     expect_recipients_of $repo user/alice users/alice/alpha.yaml alpha2 alice
   done
@@ -413,6 +434,29 @@ pkgs.runCommand "fleet-secrets-parity" {
   done
   compare "the refused commands on user/dave"
 
+  # Re-keying the host re-keys its listed users' files on their branches too:
+  # the host must still decrypt them, and its old identity must not.
+  age-keygen -o alpha3.key 2>/dev/null
+  ssh-keygen -q -t ed25519 -N "" -f alpha3.deploy
+  enrollment alpha3 alpha
+  sh_tool host-rekey alpha --from ../alpha3.enroll
+  go_tool host-rekey alpha --from alpha3.enroll
+  compare "host-rekey alpha (users listed)"
+  for repo in sh go; do
+    for u in alice dave; do
+      expect_recipients_of $repo user/$u users/$u/alpha.yaml alpha3 $u
+      [ "$(git -C $repo log -1 --format=%s user/$u)" = "host-rekey: alpha" ] || { echo "$repo: no host-rekey commit on user/$u"; exit 1; }
+      SOPS_AGE_KEY_FILE=$PWD/alpha3.key sops -d out/$repo/users/$u/alpha.yaml >/dev/null \
+        || { echo "$repo: the new identity cannot decrypt $u's file"; exit 1; }
+      if SOPS_AGE_KEY_FILE=$PWD/alpha2.key sops -d out/$repo/users/$u/alpha.yaml >/dev/null 2>&1; then
+        echo "$repo: the old identity can still decrypt $u's file"; exit 1
+      fi
+      SOPS_AGE_KEY_FILE=$PWD/$u.key sops -d out/$repo/users/$u/alpha.yaml >/dev/null \
+        || { echo "$repo: $u cannot decrypt their file"; exit 1; }
+    done
+    expect_recipients_of $repo host/alpha hosts/alpha.yaml alpha3
+  done
+
   # user-retire takes dave off the host and deletes his local branch.
   for repo in sh go; do ${fleet}/bin/fleet secrets user-retire dave --repo $repo --yes | tee $repo.out; done
   grep -q "git push origin --delete user/dave" go.out
@@ -438,7 +482,7 @@ pkgs.runCommand "fleet-secrets-parity" {
     || { echo "go: authorized_keys on user/alice is not what was given"; exit 1; }
   [ "$(git -C go rev-parse host/alpha)" = "$(git -C origin-go.git rev-parse host/alpha)" ]
   [ "$(git -C go rev-parse user/alice)" = "$(git -C origin-go.git rev-parse user/alice)" ] || { echo "go: user-keys did not push user/alice"; exit 1; }
-  expect_recipients_of go user/alice users/alice/alpha.yaml alpha2 alice
+  expect_recipients_of go user/alice users/alice/alpha.yaml alpha3 alice
 
   echo "parity: the shell tool and the port agree on every command"
   touch $out

@@ -214,7 +214,7 @@ func lookUpUserBranch(x *engine.Ctx) error {
 		x.UI.OK("user/" + user + " does not exist yet")
 		return nil
 	}
-	if err := secrets.VerifyTip(x, ref); err != nil {
+	if err := secrets.VerifyUserTip(x, ref, user, x.Value("signing_key")); err != nil {
 		return err
 	}
 	doc, err := repoGit("show", ref+":enroll").RunQuiet(x)
@@ -595,6 +595,79 @@ func unlistOnHosts(x *engine.Ctx) error {
 	}
 	if len(committed) == 0 {
 		x.UI.Skip("no host lists the user")
+	}
+	return nil
+}
+
+// rekeyListedUsers replaces the host's old recipient (host_recipient) by its
+// new one (recipient) in the file for the host of each user that the host's
+// file lists, on the user's branch, and commits each: host-rekey: <host>.
+func rekeyListedUsers(x *engine.Ctx) error {
+	host, ref := x.Value("host"), x.Value("ref")
+	doc, err := repoGit("show", ref+":hosts/"+host+".yaml").RunQuiet(x)
+	if err != nil {
+		return err
+	}
+	x.Values["host_file"] = doc.Stdout
+	res, err := engine.Cmd("yq", `(.users // {}) | keys | .[]`).StdinFrom("host_file").StdinNote("the host's file").RunQuiet(x)
+	if err != nil {
+		return err
+	}
+	users := strings.Fields(res.Stdout)
+	if len(users) == 0 {
+		x.UI.Skip("the host lists no user")
+		return nil
+	}
+	for _, u := range users {
+		uref := secrets.UserBranchRef(x, u)
+		if uref == "" {
+			return fmt.Errorf("%s is listed in hosts/%s.yaml, but there is no user/%s in %s, local or fetched from origin: fetch it", u, host, u, x.Value("repo"))
+		}
+		key, err := secrets.UserSigningKey(x, u)
+		if err != nil {
+			return err
+		}
+		if err := secrets.VerifyUserTip(x, uref, u, key); err != nil {
+			return err
+		}
+		rel := userFilePath(u, host)
+		if !hasPath(x, uref, rel) {
+			x.UI.Skip(u + " has no file for " + host + " on user/" + u)
+			continue
+		}
+		recipients, err := repoGit("show", uref+":"+rel).RunQuiet(x)
+		if err != nil {
+			return err
+		}
+		x.Values["user_file"] = recipients.Stdout
+		res, err := engine.Cmd("yq", ".sops.age[].recipient").StdinFrom("user_file").StdinNote("the user's file").RunQuiet(x)
+		if err != nil {
+			return err
+		}
+		if slices.Contains(strings.Fields(res.Stdout), x.Value("recipient")) {
+			x.UI.Skip(rel + " on user/" + u + " has the new recipient already")
+			continue
+		}
+		branch := "user/" + u
+		dir, err := secrets.WorktreeAt(x, branch, uref)
+		if err != nil {
+			return err
+		}
+		x.Values["work"] = dir
+		if _, err := engine.Cmd("sops", "rotate", "-i", "--rm-age", "{{.host_recipient}}", "--add-age", "{{.recipient}}", rel).In("{{.work}}").Run(x); err != nil {
+			return err
+		}
+		if _, err := engine.Cmd("git", "add", rel).In("{{.work}}").Run(x); err != nil {
+			return err
+		}
+		msg := "host-rekey: " + host
+		if _, err := engine.Cmd("git", "commit", "-q", "-m", msg).In("{{.work}}").OK("committed: " + msg).Run(x); err != nil {
+			return err
+		}
+		x.Kept("push "+branch, "the commit “"+msg+"” on "+branch+" in {{.repo}}, not pushed yet (git -C {{.repo}} push origin "+branch+")")
+		if err := secrets.CloseWorktree(x, branch, dir); err != nil {
+			return err
+		}
 	}
 	return nil
 }

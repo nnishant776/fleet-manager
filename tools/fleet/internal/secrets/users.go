@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/nnishant776/fleet-manager/tools/fleet/internal/engine"
@@ -108,12 +110,16 @@ func ListedUser() engine.Step {
 			if ref == "" {
 				return fmt.Errorf("%s is listed in hosts/%s.yaml, but there is no user/%s in %s, local or fetched from origin: fetch it", user, host, user, x.Value("repo"))
 			}
-			if err := VerifyTip(x, ref); err != nil {
+			key, err := UserSigningKey(x, user)
+			if err != nil {
+				return err
+			}
+			if err := VerifyUserTip(x, ref, user, key); err != nil {
 				return err
 			}
 			x.Values["ref"], x.Values["branch"] = ref, "user/"+user
 			x.Values["file_recipients"] = x.Value("host_recipient") + "," + id.AgeRecipient
-			x.UI.OK(user + " is listed: their files are on " + ref + ", its newest commit signed by a trusted key")
+			x.UI.OK(user + " is listed: their files are on " + ref + ", its newest commit signed by a trusted key or by their own")
 			return nil
 		}),
 	}
@@ -164,4 +170,116 @@ func CloseWorktree(x *engine.Ctx, branch, dir string) error {
 	}
 	x.Done("worktree " + branch)
 	return nil
+}
+
+// EnrolledHosts are the hosts that have a branch, in the clone or fetched from
+// origin, sorted.
+func EnrolledHosts(x *engine.Ctx) ([]string, error) {
+	res, err := engine.Cmd("git", "for-each-ref", "--format=%(refname)", "refs/heads/host/", "refs/remotes/origin/host/").
+		In("{{.repo}}").RunQuiet(x)
+	if err != nil {
+		return nil, err
+	}
+	var hosts []string
+	for _, ref := range strings.Fields(res.Stdout) {
+		h, ok := strings.CutPrefix(ref, "refs/heads/host/")
+		if !ok {
+			h = strings.TrimPrefix(ref, "refs/remotes/origin/host/")
+		}
+		if !slices.Contains(hosts, h) {
+			hosts = append(hosts, h)
+		}
+	}
+	slices.Sort(hosts)
+	return hosts, nil
+}
+
+// UserSigningKey is the signing key that the host files listing the user hold
+// for them, or "" when no host lists the user. Every host that lists them has
+// its tip verified (a pushed, unsigned commit must not choose who may sign a
+// user's branch), and they must all hold the same key. It needs the recovery
+// identity unlocked.
+func UserSigningKey(x *engine.Ctx, user string) (string, error) {
+	hosts, err := EnrolledHosts(x)
+	if err != nil {
+		return "", err
+	}
+	key, from := "", ""
+	for _, h := range hosts {
+		ref := BranchRef(x, h)
+		listed, err := IsListed(x, ref, h, user)
+		if err != nil {
+			return "", err
+		}
+		if !listed {
+			continue
+		}
+		if err := VerifyTip(x, ref); err != nil {
+			return "", err
+		}
+		_, id, err := ReadListing(x, ref, h, user)
+		if err != nil {
+			return "", err
+		}
+		if key != "" && id.SigningKey != key {
+			return "", fmt.Errorf("hosts/%s.yaml and hosts/%s.yaml list %s with different signing keys", from, h, user)
+		}
+		key, from = id.SigningKey, h
+	}
+	return key, nil
+}
+
+// allowedSigners is the file git checks signatures against, as an absolute
+// path; empty when there is none set.
+func allowedSigners(x *engine.Ctx) string {
+	p, err := engine.Silently(x, nil, "git", "-C", x.Value("repo"), "config", "--get", "gpg.ssh.allowedSignersFile")
+	if err != nil || p == "" {
+		return ""
+	}
+	if rest, ok := strings.CutPrefix(p, "~/"); ok {
+		if home, err := os.UserHomeDir(); err == nil {
+			p = filepath.Join(home, rest)
+		}
+	}
+	if !filepath.IsAbs(p) {
+		top, err := engine.Silently(x, nil, "git", "-C", x.Value("repo"), "rev-parse", "--show-toplevel")
+		if err != nil {
+			return ""
+		}
+		p = filepath.Join(top, p)
+	}
+	return p
+}
+
+// VerifyUserTip checks the newest commit of a user's branch is signed by a key
+// in the maintainer's gpg.ssh.allowedSignersFile or by the user's own signing
+// key (key, when not empty). The user's key goes into a temporary copy of the
+// signers, never into the maintainer's own.
+func VerifyUserTip(x *engine.Ctx, ref, user, key string) error {
+	if key == "" {
+		return VerifyTip(x, ref)
+	}
+	var signers []byte
+	if p := allowedSigners(x); p != "" {
+		signers, _ = os.ReadFile(p)
+	}
+	tmp, err := os.CreateTemp("", "fleet-signers-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	fields := strings.Fields(key)
+	if len(fields) < 2 {
+		return fmt.Errorf("the signing key of %s is not an SSH public key", user)
+	}
+	line := user + ` namespaces="git" ` + fields[0] + " " + fields[1]
+	if _, err := tmp.WriteString(strings.TrimRight(string(signers), "\n") + "\n" + line + "\n"); err != nil {
+		return err
+	}
+	tmp.Close()
+	_, err = repoCmd("git", "-c", "gpg.ssh.allowedSignersFile="+tmp.Name(), "verify-commit", ref).Explain(func(engine.Result) string {
+		return "the newest commit of " + ref + " is not signed by a key in gpg.ssh.allowedSignersFile (fleet setup sets it) or by " + user +
+			"'s own signing key: look at it with git log --show-signature -1 " + ref + " before going on"
+	}).RunQuiet(x)
+	return err
 }

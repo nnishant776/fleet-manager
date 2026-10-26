@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/nnishant776/fleet-manager/tools/fleet/internal/engine"
@@ -18,25 +17,7 @@ import (
 
 // enrolledHosts are the hosts that have a branch, in the clone or fetched
 // from origin.
-func enrolledHosts(x *engine.Ctx) ([]string, error) {
-	res, err := engine.Cmd("git", "for-each-ref", "--format=%(refname)", "refs/heads/host/", "refs/remotes/origin/host/").
-		In("{{.repo}}").RunQuiet(x)
-	if err != nil {
-		return nil, err
-	}
-	var hosts []string
-	for _, ref := range strings.Fields(res.Stdout) {
-		h, ok := strings.CutPrefix(ref, "refs/heads/host/")
-		if !ok {
-			h = strings.TrimPrefix(ref, "refs/remotes/origin/host/")
-		}
-		if !slices.Contains(hosts, h) {
-			hosts = append(hosts, h)
-		}
-	}
-	slices.Sort(hosts)
-	return hosts, nil
-}
+func enrolledHosts(x *engine.Ctx) ([]string, error) { return secrets.EnrolledHosts(x) }
 
 func secretsInputs(host engine.Input, extra ...engine.Input) []engine.Input {
 	return append([]engine.Input{secrets.RepoInput, secrets.RecoveryInput, host}, extra...)
@@ -128,6 +109,12 @@ var SecretsHostRekey = &engine.Flow{
 			}),
 		},
 		secrets.Unlock(),
+		{
+			Title: "Re-key the files of the users {{.host}} lists",
+			Why: "A user that hosts/{{.host}}.yaml lists keeps their file for {{.host}} on their own branch, user/<user>, which the host decrypts too: the old recipient is replaced by the new one there as well, one commit per user. " +
+				"A file that has the new recipient already is left alone, so a run that stopped can be repeated.",
+			Do: engine.Func(rekeyListedUsers),
+		},
 		secrets.OpenWork(),
 		secrets.Rotate("Re-encrypt {{.host}}'s files to its new identity",
 			"Its own file and its users' files: the old recipient is replaced by the new one, the recovery recipient stays."),

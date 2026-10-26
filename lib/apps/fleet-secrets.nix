@@ -158,6 +158,54 @@ pkgs.writeShellApplication {
         || die "the newest commit of $1 is not signed by a key in gpg.ssh.allowedSignersFile (fleet setup sets it): look at it with git log --show-signature -1 $1 before going on"
     }
 
+    # The hosts that have a branch, local or fetched from origin, one per line.
+    list_hosts() {
+      git for-each-ref --format='%(refname)' refs/heads/host/ refs/remotes/origin/host/ \
+        | sed -e 's|^refs/heads/host/||' -e 's|^refs/remotes/origin/host/||' | sort -u
+    }
+
+    # The signing key the host files that list the user hold for them, empty
+    # when no host lists them. Every host that lists them has its tip checked (a
+    # pushed, unsigned commit must not choose who may sign a user's branch), and
+    # they must all hold the same key.
+    user_signing_key() {  # user_signing_key USER
+      local h r k key="" from=""
+      while read -r h; do
+        r="$(branch_ref "$h")"
+        [ "$(git show "$r:hosts/$h.yaml" | yq ".users[\"$1\"] != null")" = true ] || continue
+        require_signed "$r"
+        k="$(git show "$r:hosts/$h.yaml" \
+          | sops -d --input-type yaml --extract "[\"users\"][\"$1\"][\"signing_key\"]" /dev/stdin)" \
+          || die "could not read users.$1 in hosts/$h.yaml"
+        if [ -n "$key" ] && [ "$k" != "$key" ]; then
+          die "hosts/$from.yaml and hosts/$h.yaml list $1 with different signing keys"
+        fi
+        key="$k"
+        from="$h"
+      done < <(list_hosts)
+      printf '%s' "$key"
+    }
+
+    # The tip of a user's branch must be signed by a key in the maintainer's
+    # signers or by the user's own signing key. The user's key goes into a
+    # temporary copy of the signers, never into the maintainer's own.
+    require_user_signed() {  # require_user_signed REF USER KEY
+      local signers tmp rc=0
+      if [ -z "$3" ]; then require_signed "$1"; return 0; fi
+      signers="$(git config --get gpg.ssh.allowedSignersFile || true)"
+      case "$signers" in \~/*) signers="$HOME/''${signers#\~/}" ;; esac
+      case "$signers" in ""|/*) ;; *) signers="$(git rev-parse --show-toplevel)/$signers" ;; esac
+      tmp="$(mktemp)"
+      {
+        if [ -n "$signers" ] && [ -f "$signers" ]; then cat "$signers"; echo; fi
+        printf '%s namespaces="git" %s\n' "$2" "$(cut -d' ' -f1,2 <<<"$3")"
+      } > "$tmp"
+      git -c gpg.ssh.allowedSignersFile="$tmp" verify-commit "$1" >/dev/null 2>&1 || rc=$?
+      rm -f "$tmp"
+      [ "$rc" -eq 0 ] \
+        || die "the newest commit of $1 is not signed by a key in gpg.ssh.allowedSignersFile (fleet setup sets it) or by $2's own signing key: look at it with git log --show-signature -1 $1 before going on"
+    }
+
     # A user that hosts/HOST.yaml lists (fleet secrets user-enroll) keeps their
     # files on a branch of their own, user/USER: ref and branch become that
     # branch's, and a new file is also encrypted to the user's recipient. Any
@@ -165,13 +213,14 @@ pkgs.writeShellApplication {
     # host's branch, branch to its name and file_recipient to the host's
     # recipient, after the host's tip is checked.
     use_user_branch() {  # use_user_branch USER HOST
-      local listed uref user_recipient
+      local listed uref user_recipient key
       listed="$(git show "$ref:hosts/$2.yaml" | yq ".users[\"$1\"] != null")" || die "$ref has no hosts/$2.yaml"
       [ "$listed" = true ] || return 0
       uref="$(user_branch_ref "$1")"
       [ -n "$uref" ] \
         || die "$1 is listed in hosts/$2.yaml, but there is no user/$1 in $repo, local or fetched from origin: fetch it"
-      require_signed "$uref"
+      key="$(user_signing_key "$1")"
+      require_user_signed "$uref" "$1" "$key"
       user_recipient="$(git show "$ref:hosts/$2.yaml" \
         | sops -d --input-type yaml --output-type json --extract "[\"users\"][\"$1\"]" /dev/stdin \
         | yq '.age_recipient')" || die "could not read users.$1 in hosts/$2.yaml"
@@ -348,6 +397,32 @@ pkgs.writeShellApplication {
       echo "Push the branch: git push origin host/$host"
     }
 
+    # The users the host's file lists keep their file for the host on their own
+    # branch, which the host decrypts too: replace the host's old recipient by
+    # its new one there as well, one commit per user. A file that has the new
+    # recipient already is left alone, so a run that stopped can be repeated.
+    rekey_listed_users() {  # rekey_listed_users HOST HOSTREF OLD NEW
+      local u uref key f recips
+      while read -r u; do
+        [ -n "$u" ] || continue
+        uref="$(user_branch_ref "$u")"
+        [ -n "$uref" ] \
+          || die "$u is listed in hosts/$1.yaml, but there is no user/$u in $repo, local or fetched from origin: fetch it"
+        key="$(user_signing_key "$u")"
+        require_user_signed "$uref" "$u" "$key"
+        f="users/$u/$1.yaml"
+        if ! git cat-file -e "$uref:$f" 2>/dev/null; then continue; fi
+        recips="$(git show "$uref:$f" | yq '.sops.age[].recipient')"
+        if grep -qx "$4" <<<"$recips"; then continue; fi
+        open_work "user/$u" "$uref"
+        sops rotate -i --rm-age "$3" --add-age "$4" "$f"
+        git add "$f"
+        commit "host-rekey: $1"
+        close_work
+        echo "Push the branch: git push origin user/$u"
+      done < <(git show "$2:hosts/$1.yaml" | yq '(.users // {}) | keys | .[]')
+    }
+
     cmd_host_rekey() {
       local host source ref old f
       local -a files
@@ -361,6 +436,7 @@ pkgs.writeShellApplication {
       old="$(host_recipient "$ref" "$host")"
       [ "$old" != "$enrolledRecipient" ] || die "host '$host' holds this identity already; nothing to re-key"
 
+      rekey_listed_users "$host" "$ref" "$old" "$enrolledRecipient"
       open_work "host/$host" "$ref"
       mapfile -t files < <(host_files "$host")
       for f in "''${files[@]}"; do

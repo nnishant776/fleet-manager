@@ -372,7 +372,7 @@ func TestUserPasswordOfAListedUserWorksOnTheirBranchAndEncryptsToThem(t *testing
 		t.Fatalf("%v\n%s", err, out)
 	}
 	inOrder(t, fake,
-		"git verify-commit refs/heads/user/alice",
+		"verify-commit refs/heads/user/alice",
 		"sops --encrypt --age age1hostrecipient,"+aliceAge+",age1recoveryrecipient",
 		`sops set --value-stdin users/alice/nas.yaml '["password"]'`,
 		"git commit -q -m 'user-password: alice@nas'",
@@ -451,7 +451,7 @@ func TestUserKeysOfAListedUserCommitsOnTheirBranchAndPushesIt(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 	inOrder(t, fake,
-		"git verify-commit refs/heads/user/alice",
+		"verify-commit refs/heads/user/alice",
 		`sops set --value-stdin users/alice/nas.yaml '["authorized_keys"]'`,
 		"git commit -q -m 'user-keys: alice on nas'",
 		"git push origin user/alice",
@@ -459,4 +459,76 @@ func TestUserKeysOfAListedUserCommitsOnTheirBranchAndPushesIt(t *testing.T) {
 	if strings.Contains(strings.Join(fake.Commands(), "\n"), "git push origin host/nas") {
 		t.Error("pushed the host's branch")
 	}
+}
+
+// The tip of a listed user's branch is checked against the signers plus the
+// user's own key, in a temporary file; two hosts that list her with different
+// keys stop the run.
+func TestListedUsersTipMayBeSignedByTheirOwnKey(t *testing.T) {
+	err, fake, out := runUserFlow(t, SecretsUserKeys, listedAlice(), map[string]string{"authorized-keys": writeKeys(t, keyA+"\n")}, nil)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	found := false
+	for _, c := range fake.Commands() {
+		if strings.Contains(c, "git -c gpg.ssh.allowedSignersFile=") && strings.HasSuffix(c, "verify-commit refs/heads/user/alice") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("did not verify with the user's key added:\n%s", strings.Join(fake.Commands(), "\n"))
+	}
+	r := listedAlice()
+	r.hosts = []string{"nas", "pi"}
+	r.listed["pi"] = `{"age_recipient":"` + aliceAge + `","signing_key":"ssh-ed25519 AAAAOTHER alice@other"}`
+	err, fake, out = runUserFlow(t, SecretsUserKeys, r, map[string]string{"authorized-keys": writeKeys(t, keyA+"\n")}, nil)
+	if err == nil || !strings.Contains(out, "list alice with different signing keys") {
+		t.Fatalf("got %v\n%s", err, out)
+	}
+	for _, c := range fake.Commands() {
+		if strings.HasPrefix(c, "git worktree") || strings.HasPrefix(c, "git commit") {
+			t.Errorf("ran %s", c)
+		}
+	}
+}
+
+func TestHostRekeyRotatesTheFilesOfListedUsersOnTheirBranches(t *testing.T) {
+	r := listedAlice()
+	cacheRecovery(t)
+	x, fake, out := newFakeCtx(func(s engine.Spec) (engine.Result, error) {
+		args := strings.Join(s.Args, " ")
+		if s.Name == "yq" && strings.HasPrefix(args, "(.users") {
+			return engine.Result{Stdout: "alice\n"}, nil
+		}
+		if s.Name == "yq" && s.Stdin == "ENCRYPTED OLD" {
+			return engine.Result{Stdout: "age1hostrecipient\n" + aliceAge + "\nage1recoveryrecipient\n"}, nil
+		}
+		return r.respond(s)
+	})
+	from := filepath.Join(t.TempDir(), "nas.enroll")
+	_ = os.WriteFile(from, []byte("version: 1\nhost: nas\nage_recipient: age1newhost\nsecrets_deploy_pubkey: ssh-ed25519 AAAA x\n"), 0o644)
+	// yq answers the enrollment's fields from its text.
+	inner := x.Runner.(*engine.Fake).Respond
+	x.Runner.(*engine.Fake).Respond = func(s engine.Spec) (engine.Result, error) {
+		if s.Name == "yq" && strings.HasPrefix(s.Stdin, "version: 1\nhost: nas") {
+			doc := map[string]string{}
+			for _, l := range strings.Split(s.Stdin, "\n") {
+				if k, v, ok := strings.Cut(l, ": "); ok {
+					doc[k] = v
+				}
+			}
+			k := strings.TrimPrefix(strings.Fields(s.Args[0])[0], ".")
+			return engine.Result{Stdout: doc[k] + "\n"}, nil
+		}
+		return inner(s)
+	}
+	err := engine.RunWith(x, SecretsHostRekey, map[string]string{"repo": t.TempDir(), "recovery": "", "host": "nas", "from": from})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	inOrder(t, fake,
+		"sops rotate -i --rm-age age1hostrecipient --add-age age1newhost users/alice/nas.yaml",
+		"git commit -q -m 'host-rekey: nas'",
+		"git commit -q -m 'host-rekey: nas'",
+	)
 }
