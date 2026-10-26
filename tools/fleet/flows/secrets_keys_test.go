@@ -123,3 +123,140 @@ func TestUserKeysRefusesNothingToStore(t *testing.T) {
 		t.Errorf("got %v\n%s", err, out)
 	}
 }
+
+const (
+	keyOne = "AAAAC3NzaC1lZDI1NTE5AAAAIONEONEONEONEONEONEONEONEONEONEONEONEONEONE"
+	keyTwo = "AAAAC3NzaC1lZDI1NTE5AAAAITWOTWOTWOTWOTWOTWOTWOTWOTWOTWOTWOTWOTWOTWOTWO"
+	keyNew = "AAAAC3NzaC1lZDI1NTE5AAAAINEWNEWNEWNEWNEWNEWNEWNEWNEWNEWNEWNEWNEWNEWNEW"
+)
+
+func TestMergeKeysAddsOnlyWhatIsNotThereAndKeepsTheRest(t *testing.T) {
+	current := "# maintainers\nfrom=\"10.0.0.0/8\" ssh-ed25519 " + keyOne + " one\nssh-ed25519 " + keyTwo + " two"
+	got, err := mergeKeys(current, []string{"ssh-ed25519 " + keyOne + " again", "ssh-ed25519 " + keyNew + " new", "ssh-ed25519 " + keyNew + " new"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := current + "\nssh-ed25519 " + keyNew + " new"
+	if got != want {
+		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestMergeKeysRemovesByMaterialWhateverTheOptionsAndComment(t *testing.T) {
+	current := "# maintainers\nfrom=\"10.0.0.0/8\" ssh-ed25519 " + keyOne + " other-comment\nssh-ed25519 " + keyTwo + " two"
+	got, err := mergeKeys(current, nil, []string{"ssh-ed25519 " + keyOne + " old"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "# maintainers\nssh-ed25519 " + keyTwo + " two"; got != want {
+		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestMergeKeysRefusesToLeaveNoKey(t *testing.T) {
+	_, err := mergeKeys("# c\nssh-ed25519 "+keyOne+" one\n", nil, []string{"ssh-ed25519 " + keyOne})
+	if err == nil || !strings.Contains(err.Error(), "lock the account out") {
+		t.Errorf("got %v", err)
+	}
+	if _, err := mergeKeys("", nil, []string{"ssh-ed25519 " + keyOne}); err == nil {
+		t.Error("removing from nothing was accepted")
+	}
+}
+
+// runMerge runs user-keys with the flags, the stored authorized_keys being
+// current ("" for a file without that key).
+func runMerge(t *testing.T, current string, flags map[string]string) (error, *engine.Fake, string) {
+	t.Helper()
+	cacheRecovery(t)
+	x, fake, out := newFakeCtx(func(s engine.Spec) (engine.Result, error) {
+		if res, ok := hostFile(s); ok {
+			return res, nil
+		}
+		if s.Name == "sops" && len(s.Args) > 0 && s.Args[0] == "-d" {
+			if current == "" {
+				return engine.Result{Code: 1, Stderr: "component ['authorized_keys'] not found"}, os.ErrInvalid
+			}
+			return engine.Result{Stdout: current}, nil
+		}
+		return engine.Result{}, nil
+	})
+	args := map[string]string{"repo": t.TempDir(), "recovery": "", "user": "support", "host": "nas"}
+	for k, v := range flags {
+		args[k] = v
+	}
+	err := engine.RunWith(x, SecretsUserKeys, args)
+	return err, fake, out.String()
+}
+
+func TestUserKeysAddMergesIntoWhatIsStored(t *testing.T) {
+	current := "ssh-ed25519 " + keyOne + " one\n"
+	err, fake, out := runMerge(t, current, map[string]string{"add-authorized-keys": writeKeys(t, "from=\"10.0.0.0/8\" ssh-ed25519 "+keyNew+" new\n")})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	cmds := strings.Join(fake.Commands(), "\n")
+	for _, want := range []string{"sops -d --extract", "sops set --value-stdin users/support/nas.yaml '[\"authorized_keys\"]'", "git commit -q -m 'user-keys: support on nas'", "git push origin host/nas"} {
+		if !strings.Contains(cmds, want) {
+			t.Errorf("did not run %q:\n%s", want, cmds)
+		}
+	}
+	for _, s := range fake.Ran {
+		if s.Name == "sops" && len(s.Args) > 0 && s.Args[0] == "set" && !strings.Contains(s.Stdin, `one\nfrom=\"10.0.0.0/8\" ssh-ed25519 `+keyNew) {
+			t.Errorf("stored %q", s.Stdin)
+		}
+	}
+}
+
+func TestUserKeysAddOfAKeyAlreadyThereMakesNoCommit(t *testing.T) {
+	current := "ssh-ed25519 " + keyOne + " one\n"
+	err, fake, out := runMerge(t, current, map[string]string{"add-authorized-keys": writeKeys(t, "ssh-ed25519 "+keyOne+" renamed\n")})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	for _, c := range fake.Commands() {
+		if strings.HasPrefix(c, "git commit") || strings.HasPrefix(c, "git push") || strings.HasPrefix(c, "sops set") {
+			t.Errorf("ran %s though nothing changed", c)
+		}
+	}
+	if !strings.Contains(out, "nothing to add or remove") || !strings.Contains(out, "worktree is removed") && !strings.Contains(strings.Join(fake.Commands(), "\n"), "worktree remove") {
+		t.Errorf("did not say so, or left the worktree:\n%s", out)
+	}
+}
+
+func TestUserKeysRemoveToNothingIsRefusedAndAMissingKeyCountsAsEmpty(t *testing.T) {
+	err, fake, out := runMerge(t, "ssh-ed25519 "+keyOne+" one\n", map[string]string{"remove-authorized-keys": writeKeys(t, "ssh-ed25519 "+keyOne+" x\n")})
+	if err == nil || !strings.Contains(out, "lock the account out") {
+		t.Fatalf("got %v\n%s", err, out)
+	}
+	for _, c := range fake.Commands() {
+		if strings.HasPrefix(c, "git commit") || strings.HasPrefix(c, "sops set") {
+			t.Errorf("ran %s", c)
+		}
+	}
+	// With no key stored, adding one works.
+	if err, _, out := runMerge(t, "", map[string]string{"add-authorized-keys": writeKeys(t, "ssh-ed25519 "+keyNew+" n\n")}); err != nil {
+		t.Errorf("%v\n%s", err, out)
+	}
+}
+
+func TestUserKeysReplacingAndChangingExcludeEachOther(t *testing.T) {
+	f := writeKeys(t, "ssh-ed25519 "+keyOne+" one\n")
+	for _, other := range []string{"add-authorized-keys", "remove-authorized-keys"} {
+		err, fake, out := runMerge(t, "", map[string]string{"authorized-keys": f, other: f})
+		if err == nil || !strings.Contains(errors.Unwrap(err).Error(), "give one or the other") {
+			t.Errorf("%s: got %v\n%s", other, err, out)
+		}
+		for _, c := range fake.Commands() {
+			if strings.HasPrefix(c, "git") {
+				t.Errorf("ran %s", c)
+			}
+		}
+	}
+	// The sudo pair is its own: a replaced login list and an added sudo key may go together.
+	if err, _, out := runMerge(t, "", map[string]string{"authorized-keys": f, "add-sudo-keys": f}); err != nil {
+		t.Errorf("%v\n%s", err, out)
+	}
+	if err, _, _ := runMerge(t, "", map[string]string{"sudo-keys": f, "remove-sudo-keys": f}); err == nil {
+		t.Error("--sudo-keys with --remove-sudo-keys was accepted")
+	}
+}

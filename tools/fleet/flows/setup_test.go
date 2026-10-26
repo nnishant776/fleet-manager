@@ -289,7 +289,7 @@ func TestSupportKeyRotationOnAHostWithKeysFromSecrets(t *testing.T) {
 	if err := os.WriteFile(oldKey+".pub", []byte(oldLine+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	var written []string // what each user-keys call was given
+	var calls []string // what each user-keys call was given: its flag and the file's content
 	x, fake, out := newFakeCtx(func(s engine.Spec) (engine.Result, error) {
 		args := strings.Join(s.Args, " ")
 		switch {
@@ -297,9 +297,9 @@ func TestSupportKeyRotationOnAHostWithKeysFromSecrets(t *testing.T) {
 			return engine.Result{Stdout: "true\n"}, nil
 		case s.Name == "fleet":
 			for i, a := range s.Args {
-				if a == "--authorized-keys" {
+				if strings.HasSuffix(a, "-authorized-keys") {
 					b, _ := os.ReadFile(s.Args[i+1])
-					written = append(written, string(b))
+					calls = append(calls, a+" "+string(b))
 				}
 			}
 		case s.Name == "ssh-keygen":
@@ -319,16 +319,16 @@ func TestSupportKeyRotationOnAHostWithKeysFromSecrets(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 	newLine := `from="192.168.0.0/24" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAaJ2zd1Tv4i10L7o8kJBLT2upzNnBOJc13FgTh09Azx fleet`
-	if len(written) != 2 || written[0] != oldLine+"\n"+newLine+"\n" || written[1] != newLine+"\n" {
-		t.Errorf("user-keys was given %q", written)
+	if len(calls) != 2 || calls[0] != "--add-authorized-keys "+newLine+"\n" || calls[1] != "--remove-authorized-keys "+oldLine+"\n" {
+		t.Errorf("user-keys was given %q", calls)
 	}
 	cmds := strings.Join(fake.Commands(), "\n")
 	pos := 0
 	for _, want := range []string{
-		"fleet secrets user-keys support pi --authorized-keys",
+		"fleet secrets user-keys support pi --add-authorized-keys",
 		"-i " + oldKey + " support@pi 'sudo -n systemctl start config-auto-update'",
 		"-i " + newKey + " support@pi 'sudo -n id -u'",
-		"fleet secrets user-keys support pi --authorized-keys",
+		"fleet secrets user-keys support pi --remove-authorized-keys",
 		"-i " + newKey + " support@pi 'sudo -n systemctl start config-auto-update'",
 		"-i " + oldKey + " support@pi true",
 	} {

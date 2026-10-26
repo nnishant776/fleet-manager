@@ -177,48 +177,42 @@ func keysFromSecrets(x *engine.Ctx) bool {
 	return x.Values["keys_from_secrets"] == "true"
 }
 
-// setSupportKeys writes support's keys into its file on the host's branch of
-// the secrets repository and pushes it, with fleet secrets user-keys: the old
-// key and the new one while rotating (both), the new one alone afterwards. The
-// file replaces what was there, so keys the rotation does not know of are
-// listed in the configuration, or added back with user-keys.
-func setSupportKeys(x *engine.Ctx, both bool) error {
-	lines := []string{x.Value("new_line")}
-	if both {
-		old, err := os.ReadFile(x.Value("old-key") + ".pub")
-		if err != nil && !x.Options.DryRun {
-			return errors.New("the old key's public half, " + x.Value("old-key") + ".pub, is needed to keep it listed until the new one is tested: " + err.Error())
+// setSupportKeys changes support's login keys in its file on the host's
+// branch of the secrets repository, with fleet secrets user-keys, which merges
+// into the keys stored and pushes: adding the new key, or removing the old
+// one. Other keys in the file, and their options, stay.
+func setSupportKeys(x *engine.Ctx, adding bool) error {
+	flag, file := "--remove-authorized-keys", x.Value("old-key")+".pub"
+	if adding {
+		// The new line, with its from= restriction, as sshd reads it; only Nix
+		// needs the quotes escaped.
+		line := strings.ReplaceAll(x.Value("new_line"), `\"`, `"`)
+		x.Say("In support's file for {{.host}} on its branch of the secrets repository, the new key is added to the login keys:")
+		x.UI.Text("  " + line)
+		if x.Options.DryRun {
+			x.UI.Skip("dry run: not written")
+			return nil
 		}
-		if line := strings.TrimSpace(string(old)); line != "" {
-			lines = append([]string{line}, lines...)
+		dir, err := os.MkdirTemp("", "fleet-support-keys-")
+		if err != nil {
+			return err
 		}
-	}
-	// A from= restriction goes in as sshd reads it; only Nix needs it escaped.
-	for i := range lines {
-		lines[i] = strings.ReplaceAll(lines[i], `\"`, `"`)
-	}
-	x.Say("In support's file for {{.host}} on its branch of the secrets repository, the login keys become:")
-	for _, l := range lines {
-		x.UI.Text("  " + l)
+		defer os.RemoveAll(dir)
+		flag, file = "--add-authorized-keys", filepath.Join(dir, "new.pub")
+		if err := os.WriteFile(file, []byte(line+"\n"), 0o600); err != nil {
+			return err
+		}
+	} else {
+		x.Say("In support's file for {{.host}} on its branch of the secrets repository, the old key is removed from the login keys.")
+		if _, err := os.Stat(file); err != nil && !x.Options.DryRun {
+			return errors.New("the old key's public half, " + file + ", is needed to remove it: " + err.Error())
+		}
 	}
 	x.UI.Text("Keys listed in conf.fleet.support.sshKeys stay accepted besides these.")
-	if x.Options.DryRun {
-		x.UI.Skip("dry run: not written")
-		return nil
-	}
-	dir, err := os.MkdirTemp("", "fleet-support-keys-")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(dir)
-	file := filepath.Join(dir, "authorized_keys")
-	if err := os.WriteFile(file, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
-		return err
-	}
-	args := []string{"secrets", "user-keys", "support", "{{.host}}", "--authorized-keys", file, "--repo", "{{.repo}}", "--recovery", "{{.recovery}}"}
+	args := []string{"secrets", "user-keys", "support", "{{.host}}", flag, file, "--repo", "{{.repo}}", "--recovery", "{{.recovery}}"}
 	if x.Options.Yes {
 		args = append(args, "--yes")
 	}
-	_, err = engine.Cmd("fleet", args...).ReadOnly().Interactive().OK("support's keys are in the secrets and pushed").Run(x)
+	_, err := engine.Cmd("fleet", args...).ReadOnly().Interactive().OK("support's keys are changed in the secrets and pushed").Run(x)
 	return err
 }

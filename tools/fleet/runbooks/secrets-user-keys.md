@@ -4,18 +4,24 @@
 
 Set the SSH keys that may log in as the user, or unlock their sudo, on that host.
 
-Stores the public keys in a file, one per line, as authorized_keys and sudo_keys in
+Stores public keys, one per line, as authorized_keys and sudo_keys in
 users/\<user>/\<host>.yaml on the host's branch, host/\<host>, encrypted to that host and your
 recovery recipient (the file is created if it is not there yet), then commits and pushes the branch.
 Each line is checked with ssh-keygen first, so that a typo cannot lock anyone out. Hosts read them
 when accounts.\<user>.secrets.authorizedKeys or secrets.sudoKeys is on, at each login, with no
-rebuild. A key file replaces the keys that were stored, so list every key that should stay.
+rebuild. --authorized-keys and --sudo-keys replace the keys stored, so list every key that should stay.
+--add-… and --remove-… change them instead: they read the stored keys, add the keys not there yet or
+remove the ones given (keys are matched by type and key material, so options such as from= and the
+comment do not matter), and keep the other lines as they are. A removal that would leave no key is
+refused; a change that changes nothing makes no commit.
 
 ```
 fleet secrets user-keys [USER] [HOST] [flags]
 
 fleet secrets user-keys alice laptop1 --authorized-keys alice.keys
 fleet secrets user-keys admin laptop1 --authorized-keys admin.keys --sudo-keys admin-sudo.keys
+fleet secrets user-keys support laptop1 --add-authorized-keys new.pub
+fleet secrets user-keys support laptop1 --remove-authorized-keys old.pub
 ```
 
 ## Flags
@@ -26,8 +32,12 @@ fleet secrets user-keys admin laptop1 --authorized-keys admin.keys --sudo-keys a
 | `--recovery` | Your passphrase-encrypted age identity (age -p). Empty: sops uses SOPS_AGE_KEY_FILE or SOPS_AGE_KEY |
 | `--user` | The user's name: lowercase letters, digits and '-' |
 | `--host` | The host's name: lowercase letters, digits and '-' |
-| `--authorized-keys` | SSH public keys that may log in as the user, one per line; empty to leave them as they are |
-| `--sudo-keys` | SSH public keys that unlock the user's sudo, one per line; empty to leave them as they are |
+| `--authorized-keys` | SSH public keys that may log in as the user, one per line, replacing those stored; empty to leave them as they are |
+| `--add-authorized-keys` | SSH public keys to add to those stored; empty to add none |
+| `--remove-authorized-keys` | SSH public keys to remove from those stored, matched by type and key material; empty to remove none |
+| `--sudo-keys` | SSH public keys that unlock the user's sudo, one per line, replacing those stored; empty to leave them as they are |
+| `--add-sudo-keys` | SSH public keys to add to the sudo keys stored; empty to add none |
+| `--remove-sudo-keys` | SSH public keys to remove from the sudo keys stored, matched by type and key material; empty to remove none |
 
 Every command also takes `--dry-run` (show every step and command; look, but
 change nothing), `-y`/`--yes` (run changes without asking) and `--verbose`.
@@ -60,27 +70,29 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
 
 6. **Create users/USER/HOST.yaml.** It does not exist yet; it is created empty and encrypted to HOST and your recovery recipient.
 
-7. **Store the login keys in users/USER/HOST.yaml.** As the key authorized_keys, which hosts read when accounts.\<user>.secrets.authorizedKeys is on.
+7. **Work out the keys to store.** Added and removed keys are applied to the keys stored now, which are read with your recovery identity; a key list that would end up empty is refused, and one that does not change is left alone.
+
+8. **Store the login keys in users/USER/HOST.yaml.** As the key authorized_keys, which hosts read when accounts.\<user>.secrets.authorizedKeys is on.
 
    ```
    $ cd WORK && sops set --value-stdin users/USER/HOST.yaml '["authorized_keys"]'   # the login keys on stdin
    ```
 
-8. **Store the sudo keys in users/USER/HOST.yaml.** As the key sudo_keys, which hosts read when accounts.\<user>.secrets.sudoKeys is on.
+9. **Store the sudo keys in users/USER/HOST.yaml.** As the key sudo_keys, which hosts read when accounts.\<user>.secrets.sudoKeys is on.
 
    ```
    $ cd WORK && sops set --value-stdin users/USER/HOST.yaml '["sudo_keys"]'   # the sudo keys on stdin
    ```
 
-9. **Commit.** Signed with your key, if this checkout signs; hosts accept only signed commits. Push the branch afterwards.
+10. **Commit.** Signed with your key, if this checkout signs; hosts accept only signed commits. Push the branch afterwards.
 
-10. **Remove the worktree.** It was only for this change; the commit is on host/HOST in your clone.
+11. **Remove the worktree.** It was only for this change; the commit is on host/HOST in your clone.
 
    ```
    $ cd REPO && git worktree remove --force WORK
    ```
 
-11. **Push host/HOST.** HOST fetches its branch from the forge; it accepts the commit only if it is signed by an allowed key.
+12. **Push host/HOST.** HOST fetches its branch from the forge; it accepts the commit only if it is signed by an allowed key.
 
    ```
    $ cd REPO && git push origin host/HOST
