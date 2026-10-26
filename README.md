@@ -634,7 +634,9 @@ release, which is whatever `main` had when CI last ran.
 `fleet secrets …` does what `fleet-secrets` does, with the same files and
 commit messages. `nix run .#fleet-secrets` is still the shell version. One
 command is only in `fleet`: `fleet secrets user-keys`, which stores a user's login
-and sudo keys and pushes the branch (see [Secrets](#confsecrets)). On a host whose
+and sudo keys and pushes the branch (see [Secrets](#confsecrets)). So are the
+commands that a user with a branch of their own runs for themselves: `fleet user
+init`, `password`, `keys` and `secret set|unset`. On a host whose
 configuration sets `fleet.support.keysFromSecrets`, `fleet support-key rotate`
 changes support's keys there instead of asking you to edit the configuration; and
 `fleet host enroll` checks, before it switches the host, that its branch holds every
@@ -687,6 +689,7 @@ Each entry in `conf.users.accounts` takes these fields:
 | `secrets.sshKey` | bool | `false` | Deploy a per-host SSH key from the same file to `/run/secrets/users/<name>/ssh_key`. Can be turned on any time after the account exists. Ignored on a host without `conf.secrets.repo.url`. NixOS only. Also deploys `ssh_key.pub` (mode 0400, as all of a user's secrets), and the key becomes the user's default SSH identity and git signing key |
 | `secrets.authorizedKeys` | bool | `false` | Accept the SSH public keys in `users/<name>/<host>.yaml` (`authorized_keys`, one per line) for this account's login, instead of `sshKeys`, which a host with secrets may not use. sshd reads them from `/run/secrets/users/<name>/authorized_keys` at each login, so changing them needs no rebuild. Ignored on a host without `conf.secrets.repo.url`. NixOS only. See [Secrets](#confsecrets) |
 | `secrets.sudoKeys` | bool | `false` | Accept the SSH public keys in the same file (`sudo_keys`, one per line) to unlock sudo for this privileged account, besides `sudoSshKeys`. On an unprivileged account it is an error. Ignored on a host without `conf.secrets.repo.url`. NixOS only. See below |
+| `secrets.own` | bool | `false` | Decrypt the account's whole file, `users/<name>/<host>.yaml`, to `/run/secrets/users/<name>/all`, readable by the account alone (mode 0400), and install `fleet-user-secret`, which prints one of the secrets the user keeps in it (`secrets.<name>`, stored with `fleet user secret set`). For a user with a branch of their own. Ignored on a host without `conf.secrets.repo.url`. NixOS only. See [Secrets](#confsecrets) |
 | `selfManagedHome` | bool | `false` | This user manages their own home instead of the system doing it |
 | `manageAccount` | nullOr bool | `null` | Whether the account itself is created here. `null` means true on Linux and false on macOS. `false` is an error on Linux. On macOS, `true` puts the account on nix-darwin's delete list, so removing it from `accounts` deletes the macOS account at the next switch |
 | `uid` | nullOr int | `null` | Numeric user id. Required on macOS when `manageAccount` is true |
@@ -1121,7 +1124,12 @@ user's SSH signing key and age recipient; the list is encrypted like any other
 value, and only the maintainer changes it. A commit on a user's branch is
 accepted when it is signed by that user's key or by a key in the signers
 file. A user who is not listed has their files on the host's branch, as alice
-does here.
+does here. A user with a branch of their own changes their files themselves,
+without the maintainer: they run `fleet user init` once, which makes their age
+identity, an SSH signing key and the enrollment file to give the maintainer,
+and after that `fleet user password`, `fleet user keys` and `fleet user secret`
+change their files on their own branch, sign the commit with their own key and
+push it.
 
 There is no registry of hosts and no `.sops.yaml`. Each file lists who can
 decrypt it in its own sops metadata: the host's age recipient and the
@@ -1183,6 +1191,7 @@ configuration that needs a secret the snapshot lacks.
 | `/run/secrets/users/alice/ssh_key.pub` | alice, 0400 | For reference |
 | `/run/secrets/users/alice/authorized_keys` | alice, 0400 | sshd, as an `AuthorizedKeysFile` with `%u`, so a file admits only its own account; only if `secrets.authorizedKeys` is on (or for support, `fleet.support.keysFromSecrets`). sshd opens it as the account, which is why the file is hers |
 | `/run/secrets/users/admin/sudo_keys` | root, 0400 | sudo's SSH-agent check, for that account only; only if `secrets.sudoKeys` is on. Root's, so the account cannot add a key |
+| `/run/secrets/users/alice/all` | alice, 0400 | The whole of alice's file, so that she can read what she keeps in it herself, with `fleet-user-secret <name>`; only if `secrets.own` is on |
 | `/run/secrets/<host secret>` | per module | Whichever module declared it |
 
 A user's secrets are that user's alone. Every secret read from a file under
@@ -1214,7 +1223,16 @@ the branch themselves). For a user the host's file lists, `user-password`,
 replaces the host's recipient in the user's files there too. Two more, in the
 Go tool only: `fleet secrets user-enroll <name> --from <name>.enroll` gives a
 user a branch of their own, and `fleet secrets user-retire <name>` takes the
-user off every host's list. The commands that encrypt need your recovery
+user off every host's list. A user with a branch of their own uses `fleet user`
+instead, in their own clone of the secrets repository, with their own identity
+(`~/.fleet/user.age`, asked for its passphrase) and signing key: `fleet user
+init`, `fleet user password [HOST…|--all-hosts]`, `fleet user keys` (the same
+flags as `fleet secrets user-keys`), and `fleet user secret set|unset NAME`.
+Each fetches the branch, refuses to build on a newest commit that neither their
+own key nor a key in their copy of the configuration repository's signers
+(`fleet trust signers`, or `--signers FILE`) signed, makes one signed commit with
+their key (their git configuration is not touched) and pushes the branch; a
+change that changes nothing makes no commit. The commands that encrypt need your recovery
 recipient in the cache `fleet setup` fills, and stop with "run fleet setup"
 without it. `fleet-identity` is installed on opted-in hosts and prints the
 host's enrollment file (`--qr` for a QR code); it needs `sudo`, since the state
@@ -1273,14 +1291,27 @@ secrets repository and the configuration upstream; see `tests/secrets/README.md`
   For a key, register the new public key and revoke the old one on the forge.
   `passwd` on a fleet host does not last, since accounts are fixed by the
   configuration: a password changes in the secrets repository.
-- **Give a user a branch of their own.** The user makes an age identity and an
-  SSH signing key and gives you their enrollment file, `bob.enroll`
-  (`version: 1`, `user`, `age_recipient`, `signing_key`). Run `fleet secrets
+- **Give a user a branch of their own.** The user runs `fleet user init`, which
+  makes an age identity, an SSH signing key and their enrollment file, and gives
+  you the file, `bob.enroll` (`version: 1`, `user`, `age_recipient`,
+  `signing_key`; public keys only). Run `fleet secrets
   user-enroll bob --from bob.enroll`; it finds every host branch that has a file
   for bob (add `--host` for more), moves those files to `user/bob`, encrypted to
   bob as well, lists bob in each host's file, and pushes the branches. From the
   next sync on, each host takes bob's file from his branch. The hosts must run
   a fleet-manager that reads user branches before you do this.
+- **A user changes their own files.** Bob, who has a branch of his own, runs
+  `fleet user password laptop1` for a new password (`--all-hosts` for every host
+  he has a file on), `fleet user keys laptop1 --add-authorized-keys new.pub` for
+  a login key, and `fleet user secret set token laptop1` for a secret of his
+  own. Each asks for his identity's passphrase, and for the SSH key's if it is
+  not in his agent, and pushes `user/bob`; the host takes it at its next sync,
+  with no rebuild. The maintainer does nothing.
+- **A secret of a user's own on a host.** Set `accounts.bob.secrets.own = true`.
+  The host then decrypts bob's whole file for bob alone, and `fleet-user-secret
+  token` run as bob prints the value he stored with `fleet user secret set token
+  laptop1`. It says so and exits 1 when there is no such secret. The whole
+  file also holds bob's password hash and keys, which only bob can read.
 - **Lost or compromised host.** `fleet-secrets host-retire laptop1` deletes its
   branch in your clone; delete it on the forge too (`git push origin --delete
   host/laptop1`), delete its deploy key on the forge (immediate), then rotate what the host
@@ -1391,6 +1422,7 @@ turn the implied option off.
 | `conf.users.accounts.<name>.sudoSshKeys` | • `/etc/ssh/sudo_keys.d/<name>` (root's, mode 0444) with those keys<br>• `security.pam.sshAgentAuth` reading only those files, for sudo<br>• `Defaults noninteractive_auth`, so `sudo -n` can use the key<br>• Listing keys on an unprivileged account is a build error |
 | `conf.users.accounts.<name>.secrets.authorizedKeys` | • `users/<name>/authorized_keys` as a secret (the account's, mode 0400) and `/run/secrets/users/%u/authorized_keys` in sshd's `AuthorizedKeysFile`, read at each login<br>• An administrator with these keys only does not trip NixOS's check that someone can log in (`users.allowNoPasswordLogin`, as a default) |
 | `conf.users.accounts.<name>.secrets.sudoKeys` | • `users/<name>/sudo_keys` as a secret (root's, mode 0400), `/run/secrets/users/%u/sudo_keys` among the files `security.pam.sshAgentAuth` reads, and the same sudo by key as `sudoSshKeys` gives<br>• On an unprivileged account it is a build error |
+| `conf.users.accounts.<name>.secrets.own` | • `users/<name>/all` as a secret: the whole file, the account's, mode 0400, under `/run/secrets`<br>• `fleet-user-secret` on the host, which prints `secrets.<name>` from the file of the user who runs it |
 | `conf.fleet.localPath`<br>*(every NixOS host)* | • Trusted in `/etc/gitconfig` (`safe.directory`), so every account can use the root-owned checkout |
 | `conf.fleet.repo.url` | • `fleet.autoUpdate.enable` on, `users.mutableUsers = false`<br>• On NixOS: requires `fleet.signing.allowedSignersFile`; plain `http://` is rejected<br>• On NixOS: `networking.firewall.enable = false` is rejected; sshd password authentication gives a warning<br>• An SSH address requires `secrets.repo.url`, whose identity holds the key that fetches it |
 | `conf.secrets.repo.url` | • `fleet.support.enable` on, which requires `fleet.support.keysFromSecrets` (and no `fleet.support.sshKeys`) and sets `sharing.ssh.enable = true` (sshd still needs `networking.enable`)<br>• sops-nix reads `<statePath>/secrets`; every account with `secrets.password` (the default) takes its hash from the secrets repository, so `initialHashedPassword` is an error<br>• Requires `fleet.repo.url` (`fleet-bootstrap` and `config-auto-update` refresh the secrets) and `fleet.signing.allowedSignersFile` (every fetched commit is verified against it); an HTTP(S) URL is rejected<br>• Accounts with `secrets.sshKey`: Home Manager points SSH and git signing at `/run/secrets/users/<name>/ssh_key` |
