@@ -13,7 +13,9 @@
 # his file from it when his key signed the tip, a signer it does not know, the
 # wrong recipients, a rollback and a malformed password each keep the previous
 # file and are named in user-problems, and a sync with nothing new makes no
-# new snapshot.
+# new snapshot. Erin is enrolled with fleet secrets user-enroll and retired
+# with user-retire, and the host's sync reads what those commands leave: her
+# file from her branch, signed by her own key.
 # No network and no hosting service are involved. Run it with
 # `nix build .#checks.x86_64-linux.secrets-sync` (see README.md).
 { pkgs, inputs, self }:
@@ -65,6 +67,17 @@ let
     age-keygen -y "$keys/dave.key" > "$out/dave.pub"
     echo "$recipient" > "$out/host.pub"
     cp "$keys/dave_sig" "$keys/dave_sig.pub" "$keys/evil_sig" "$keys/dave.key" "$out/"
+    # Erin, enrolled with the maintainer's tools: the same keys, and the
+    # enrollment file she gives the maintainer.
+    ssh-keygen -q -t ed25519 -N "" -C "erin@test" -f "$keys/erin_sig"
+    age-keygen -o "$keys/erin.key" 2>/dev/null
+    cp "$keys/erin_sig" "$keys/erin.key" "$out/"
+    {
+      echo "version: 1"
+      echo "user: erin"
+      echo "age_recipient: $(age-keygen -y "$keys/erin.key")"
+      echo "signing_key: $(cut -d' ' -f1,2 "$keys/erin_sig.pub")"
+    } > "$out/erin.enroll"
 
     # The identity document that `os-install --identity` reads, for the host
     # key and both deploy keys.
@@ -264,6 +277,19 @@ let
     git push -q origin HEAD:refs/heads/user/dave
   '';
 
+  # Erin's side: a commit on her branch that sets her password to the hash
+  # named PW (erin2), signed by her key, with her age identity for sops.
+  erinCommit = pkgs.writeShellScript "erin-commit" ''
+    set -eu
+    git clone -q -b user/erin /var/lib/forge/secrets.git /home/git/e
+    cd /home/git/e
+    SOPS_AGE_KEY_FILE=/home/git/keys/erin.key sops set users/erin/${hostName}.yaml '["password"]' "\"\$y\$j9T\$salt\$hash$1\""
+    git add -A
+    git -c gpg.format=ssh -c user.signingkey=/home/git/keys/erin_sig -c commit.gpgsign=true \
+      -c user.name=erin -c user.email=erin@test commit -q -m "erin: password"
+    git push -q origin HEAD:refs/heads/user/erin
+  '';
+
   secretsUrl = "ssh://git@forge/var/lib/forge/secrets.git";
   # A private configuration repository, as a fleet's inventory is: its own account
   # on the forge, which takes the host's configuration key and no other.
@@ -294,7 +320,7 @@ pkgs.testers.runNixOSTest {
 
     # sshd runs git-upload-pack through the user's login PATH; fleet is the
     # maintainer's tool.
-    environment.systemPackages = [ pkgs.git pkgs.sops pkgs.age self.packages.${pkgs.stdenv.hostPlatform.system}.fleet ];
+    environment.systemPackages = [ pkgs.git pkgs.sops pkgs.age pkgs.mkpasswd self.packages.${pkgs.stdenv.hostPlatform.system}.fleet ];
 
     systemd.services.forge-repos = {
       description = "Put the fixture repositories where the git user serves them";
@@ -526,7 +552,7 @@ pkgs.testers.runNixOSTest {
         "install -o git -m 600 /etc/test-keys/recovery.key /etc/test-keys/signing_ed25519 /home/git/",
         "install -o git -m 600 /etc/test-keys/support_ed25519 /home/git/.ssh/id_ed25519",
         "install -d -o git -m 700 /home/git/keys",
-        "install -o git -m 600 ${fixtures}/dave_sig ${fixtures}/evil_sig /home/git/keys/",
+        "install -o git -m 600 ${fixtures}/dave_sig ${fixtures}/evil_sig ${fixtures}/erin_sig ${fixtures}/erin.key /home/git/keys/",
         "ssh-keyscan -t ed25519 fleet > /home/git/.ssh/known_hosts 2>/dev/null",
         "chown git /home/git/.ssh/known_hosts",
         "su git -c 'mkdir -p ~/.local/state/fleet && cp ${fixtures}/recovery.pub ~/.local/state/fleet/recovery.pub'",
@@ -1140,5 +1166,58 @@ pkgs.testers.runNixOSTest {
         fleet.fail("test -e /var/lib/fleet/user-problems")
         assert f"user dave {tip}\n" in manifest(), manifest()
         assert dave_password() == password_hash("five"), dave_password()
+
+    with subtest("31: a user enrolled and retired with fleet secrets is read by the host's sync as the tools leave her"):
+        def fleet_cmd(args, stdin=""):
+            # fleet secrets ..., in the maintainer's clone, with the recovery key.
+            return forge.succeed(
+                f"cd /home/git/w && printf %s '{stdin}' | su git -c"
+                f" 'SOPS_AGE_KEY_FILE=/home/git/recovery.key fleet secrets {args} --recovery \"\" --yes' 2>&1"
+            )
+
+        def erin_file(key):
+            return fleet.succeed(
+                f"SOPS_AGE_KEY_FILE=/var/lib/fleet/age.key sops -d --extract '[\"{key}\"]'"
+                " /var/lib/fleet/secrets/users/erin/${hostName}.yaml"
+            )
+
+        def listed():
+            return fleet.succeed(
+                "SOPS_AGE_KEY_FILE=/var/lib/fleet/age.key sops -d --extract '[\"users\"]'"
+                " /var/lib/fleet/secrets/hosts/${hostName}.yaml"
+            )
+
+        # Her password first, on the host's branch, as a maintainer sets it for a
+        # user who has no branch yet; enrolling moves the file to her branch.
+        fleet_cmd("user-password erin ${hostName} --password-stdin", stdin="erin-secret")
+        out = fleet_cmd("user-enroll erin --from ${fixtures}/erin.enroll --host ${hostName}")
+        assert "erin-secret" not in out, out
+        erin_tip = as_git("git -C /var/lib/forge/secrets.git rev-parse user/erin").strip()
+        sync_ok()
+        fleet.fail("test -e /var/lib/fleet/user-problems")
+        assert f"user erin {erin_tip}\n" in manifest(), manifest()
+        # The hash is her password: the same salt, hashed again, gives it.
+        hashed = erin_file("password").strip()
+        salt = "$".join(hashed.split("$")[2:4])
+        forge.succeed(f"test \"$(printf %s erin-secret | mkpasswd -m yescrypt -S '{salt}' -s)\" = '{hashed}'")
+        users = listed()
+        assert "erin:" in users and "ssh-ed25519" in users, users
+        assert "user alice host-branch\n" in manifest(), manifest()
+
+        # Her own commit, signed by her key and not the maintainer's.
+        as_git("${erinCommit} erin2")
+        erin_tip = as_git("git -C /home/git/e rev-parse HEAD").strip()
+        sync_ok()
+        fleet.fail("test -e /var/lib/fleet/user-problems")
+        assert f"user erin {erin_tip}\n" in manifest(), manifest()
+        assert erin_file("password").strip() == password_hash("erin2"), erin_file("password")
+
+        # Retired: the host stops reading her branch, which the forge still has.
+        fleet_cmd("user-retire erin")
+        sync_ok()
+        fleet.fail("test -e /var/lib/fleet/user-problems")
+        assert "erin" not in listed(), listed()
+        assert "user erin" not in manifest(), manifest()
+        fleet.fail("test -e /var/lib/fleet/secrets/users/erin")
   '';
 }
