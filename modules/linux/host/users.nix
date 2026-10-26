@@ -2,9 +2,19 @@
 {
   config = {
     # On a host with secrets, SSH keys live in one place: the secrets
-    # repository. The options stay for hosts without one.
+    # repository. The options stay for hosts without one. NixOS's own
+    # users.users.<name>.openssh.authorizedKeys, which any module or host file
+    # could set, for any account root included, are refused there too: sshd
+    # reads them from /etc/ssh/authorized_keys.d.
     assertions = lib.optionals (config.conf.secrets.repo.url != null)
-      (lib.concatLists (lib.mapAttrsToList (username: user: [
+      ((lib.mapAttrsToList (username: user: {
+        assertion = user.openssh.authorizedKeys.keys == [ ] && user.openssh.authorizedKeys.keyFiles == [ ];
+        message = "users.users.${username}.openssh.authorizedKeys is set on a host with secrets;"
+          + " login keys come only from the account's file in the secrets repository"
+          + " (conf.users.accounts.<name>.secrets.authorizedKeys, set with"
+          + " `fleet secrets user-keys <name> <host>`).";
+      }) config.users.users)
+      ++ lib.concatLists (lib.mapAttrsToList (username: user: [
         {
           assertion = user.sshKeys == [ ];
           message = "conf.users.accounts.${username} lists sshKeys on a host with secrets;"

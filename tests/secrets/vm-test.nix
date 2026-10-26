@@ -8,7 +8,8 @@
 # signed, and activate the running system again when only the secrets changed.
 # Keys come from the secrets too: alice logs in with a key that is in no
 # configuration, support (keysFromSecrets) with its key in its file on the
-# host's branch, and ops unlocks sudo with a key in its file.
+# host's branch, and ops unlocks sudo with a key in its file; a key in
+# alice's ~/.ssh/authorized_keys does not log in.
 # A user the host's file lists (dave) has a branch of his own: the host takes
 # his file from it when his key signed the tip, a signer it does not know, the
 # wrong recipients, a rollback and a malformed password each keep the previous
@@ -549,6 +550,16 @@ pkgs.testers.runNixOSTest {
         # A key in alice's file does not open another account.
         status, _ = forge.execute(ssh_login.format(key="alice_login", user="support", command="true"))
         assert status != 0, "alice's key from the secrets logged in as support"
+        # Nor does a key in her home: on a host with secrets sshd reads no
+        # ~/.ssh/authorized_keys, which anything running as alice could add to.
+        fleet.fail("grep -q '%h/.ssh/authorized_keys' /etc/ssh/sshd_config")
+        fleet.succeed(
+            "install -d -o alice -m 700 /home/alice/.ssh",
+            "install -o alice -m 600 ${fixtures}/support_ed25519.pub /home/alice/.ssh/authorized_keys",
+        )
+        status, _ = forge.execute(ssh_login.format(key="support_ed25519", user="alice", command="true"))
+        assert status != 0, "a key in alice's ~/.ssh/authorized_keys logged in as alice"
+        fleet.succeed("rm /home/alice/.ssh/authorized_keys")
 
     with subtest("5c: sudo by a key from the secrets, for an account that lists it there"):
         assert fleet.succeed("stat -c '%U %a' /run/secrets/users/ops/sudo_keys").strip() == "root 400"

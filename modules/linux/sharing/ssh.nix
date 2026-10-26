@@ -2,7 +2,8 @@
 let
   cfg = config.conf.sharing;
   enabled = config.conf.networking.enable && cfg.ssh.enable;
-  fromSecrets = config.conf.secrets.repo.url != null
+  secretsHost = config.conf.secrets.repo.url != null;
+  fromSecrets = secretsHost
     && lib.any (a: a.secrets.authorizedKeys) (lib.attrValues config.conf.users.accounts);
 in {
   config = lib.mkIf enabled {
@@ -30,6 +31,14 @@ in {
       # admits its own account.
       (lib.mkIf fromSecrets {
         authorizedKeysFiles = [ "/run/secrets/users/%u/authorized_keys" ];
+      })
+      # On a host with secrets, those are the only login keys: not
+      # ~/.ssh/authorized_keys, which anything running as the account could
+      # add a key to. The other file NixOS lists, /etc/ssh/authorized_keys.d,
+      # holds what users.users.<name>.openssh.authorizedKeys declares, and that
+      # is refused on such a host (host/users.nix), so it stays empty.
+      (lib.mkIf secretsHost {
+        authorizedKeysInHomedir = false;
       })
       (if cfg.ssh.config != {} then cfg.ssh.config else {})
     ];

@@ -14,8 +14,10 @@
 #   users/<name>/all, the account's, mode 0400, and installs fleet-user-secret
 #   on that host only;
 # - on a host with secrets, keys in the configuration (sshKeys, sudoSshKeys,
-#   support's sshKeys) and support without keysFromSecrets are build errors,
-#   and on a host without secrets they are not.
+#   support's sshKeys, NixOS's users.users.<name>.openssh.authorizedKeys, root's
+#   included) and support without keysFromSecrets are build errors, and sshd
+#   does not read ~/.ssh/authorized_keys; on a host without secrets none of
+#   this applies.
 # Run it with `nix build .#checks.x86_64-linux.secrets-user-owner-only`.
 { pkgs, inputs }:
 let
@@ -109,6 +111,11 @@ assert lib.assertMsg (rejects "alice lists sshKeys on a host with secrets" { con
 assert lib.assertMsg (rejects "ops lists sudoSshKeys on a host with secrets" { conf.users.accounts.ops = { privileged = true; secrets.password = false; sudoSshKeys = [ "ssh-ed25519 AAAA ops@test" ]; }; }) "sudo keys in the configuration of a host with secrets are accepted";
 assert lib.assertMsg (rejects "sshKeys is set on a host with secrets" { conf.fleet.support.sshKeys = [ "ssh-ed25519 AAAA support@test" ]; }) "support's keys in the configuration of a host with secrets are accepted";
 assert lib.assertMsg (rejects "enabled on a host with secrets but keysFromSecrets is off" { conf.fleet.support.keysFromSecrets = lib.mkOverride 40 false; }) "support without keysFromSecrets on a host with secrets is accepted";
+assert lib.assertMsg (rejects "users.users.alice.openssh.authorizedKeys is set on a host with secrets" { users.users.alice.openssh.authorizedKeys.keys = [ "ssh-ed25519 AAAA alice@test" ]; }) "NixOS's own login keys on a host with secrets are accepted";
+assert lib.assertMsg (rejects "users.users.root.openssh.authorizedKeys is set on a host with secrets" { users.users.root.openssh.authorizedKeys.keyFiles = [ (builtins.toFile "root.pub" "ssh-ed25519 AAAA root@test") ]; }) "a key file for root on a host with secrets is accepted";
+assert lib.assertMsg (!(hostWith { }).config.services.openssh.authorizedKeysInHomedir) "sshd reads ~/.ssh/authorized_keys on a host with secrets";
+assert lib.assertMsg (!(lib.elem "%h/.ssh/authorized_keys" (hostWith { }).config.services.openssh.authorizedKeysFiles)) "a home directory's authorized_keys is in sshd's list on a host with secrets";
+assert lib.assertMsg (hostWith noSecretsKeys).config.services.openssh.authorizedKeysInHomedir "sshd does not read ~/.ssh/authorized_keys on a host without secrets";
 assert lib.assertMsg (!(rejects "on a host with secrets" noSecretsKeys)) "keys in the configuration of a host without secrets are refused: ${lib.concatStringsSep "; " (failed noSecretsKeys)}";
 # Building the command runs shellcheck on it.
 pkgs.runCommand "secrets-user-owner-only"
