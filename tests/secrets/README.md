@@ -60,7 +60,12 @@ recipient, a password that is not a hash and a branch forced back to an older
 commit each keep his previous file and are named in `user-problems` (and in the
 notice every account gets), while the host's own updates and alice, who is not
 listed, go on; that a good commit clears the problem; and that a sync with
-nothing new makes no new snapshot.
+nothing new makes no new snapshot. Dave then changes his own files with `fleet
+user`, from a directory and home of his own with only his identity and signing
+key: his password, a secret, a login key, each signed by his key; a branch whose
+newest commit no trusted key signed is not built on. The host takes it all, and
+once it runs a generation with `secrets.own` for dave, `fleet-user-secret token`
+prints his secret to him alone, and the login key he added logs in as him.
 
 The forge also plays the
 maintainer: `fleet host secret` works in a worktree of `host/scratch-secrets` in

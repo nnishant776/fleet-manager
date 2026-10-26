@@ -16,6 +16,9 @@
 # new snapshot. Erin is enrolled with fleet secrets user-enroll and retired
 # with user-retire, and the host's sync reads what those commands leave: her
 # file from her branch, signed by her own key.
+# Dave changes his own password, login key and secrets with fleet user, from a
+# directory and home of his own with his identity and signing key, signed by
+# him, and the host hands him his secret with fleet-user-secret, to him alone.
 # No network and no hosting service are involved. Run it with
 # `nix build .#checks.x86_64-linux.secrets-sync` (see README.md).
 { pkgs, inputs, self }:
@@ -51,12 +54,13 @@ let
     # Keys that are in no configuration, only in the users' files on the
     # host's branch: alice's login key, and ops' sudo key besides one that
     # is only ops' login key.
-    for k in alice_login ops_sudo ops_login; do
+    for k in alice_login ops_sudo ops_login dave_login; do
       ssh-keygen -q -t ed25519 -N "" -C "$k@test" -f "$keys/$k"
     done
     echo "maintainer@test $(cut -d' ' -f1,2 "$keys/signing_ed25519.pub")" > "$out/allowed_signers"
     cp "$keys/support_ed25519" "$keys/support_ed25519.pub" "$keys/deploy_ed25519.pub" "$keys/config_ed25519.pub" "$out/"
     cp "$keys/alice_login" "$keys/alice_login.pub" "$keys/ops_sudo" "$keys/ops_sudo.pub" "$keys/ops_login" "$out/"
+    cp "$keys/dave_login" "$keys/dave_login.pub" "$out/"
     # The maintainer's keys, for the forge to play the maintainer with fleet.
     cp "$keys/recovery.key" "$keys/signing_ed25519" "$out/"
     # Dave, a user with a branch of his own: his signing key and age identity,
@@ -67,6 +71,15 @@ let
     age-keygen -y "$keys/dave.key" > "$out/dave.pub"
     echo "$recipient" > "$out/host.pub"
     cp "$keys/dave_sig" "$keys/dave_sig.pub" "$keys/evil_sig" "$keys/dave.key" "$out/"
+    # What dave gives the maintainer, and a file of the keys his commits are
+    # checked against (his alone), for the test to see who signed.
+    {
+      echo "version: 1"
+      echo "user: dave"
+      echo "age_recipient: $(age-keygen -y "$keys/dave.key")"
+      echo "signing_key: $(cut -d' ' -f1,2 "$keys/dave_sig.pub")"
+    } > "$out/dave.enroll"
+    echo "dave namespaces=\"git\" $(cut -d' ' -f1,2 "$keys/dave_sig.pub")" > "$out/dave_signers"
     # Erin, enrolled with the maintainer's tools: the same keys, and the
     # enrollment file she gives the maintainer.
     ssh-keygen -q -t ed25519 -N "" -C "erin@test" -f "$keys/erin_sig"
@@ -277,6 +290,21 @@ let
     git push -q origin HEAD:refs/heads/user/dave
   '';
 
+  # Dave with fleet, as the user: from a directory and a home of his own, with
+  # his age identity (sops reads it from SOPS_AGE_KEY_FILE; the maintainer's
+  # recovery key is not in reach), his signing key and his enrollment file, in
+  # a clone of the secrets repository of his own.
+  daveFleet = pkgs.writeShellScript "dave-fleet" ''
+    set -eu
+    export HOME=/home/git/dave-home
+    export SOPS_AGE_KEY_FILE=/home/git/dave/dave.key
+    export GIT_AUTHOR_NAME=dave GIT_AUTHOR_EMAIL=dave@test GIT_COMMITTER_NAME=dave GIT_COMMITTER_EMAIL=dave@test
+    cd /home/git/dave
+    exec fleet user "$@" --repo /home/git/dave/secrets --user dave --identity "" \
+      --signing-key /home/git/dave/dave_sig --enroll /home/git/dave/dave.enroll \
+      --signers ${fixtures}/allowed_signers --flake "" --yes
+  '';
+
   # Erin's side: a commit on her branch that sets her password to the hash
   # named PW (erin2), signed by her key, with her age identity for sops.
   erinCommit = pkgs.writeShellScript "erin-commit" ''
@@ -345,6 +373,10 @@ pkgs.testers.runNixOSTest {
       source = "${fixtures}/alice_login";
       mode = "0600";
     };
+    environment.etc."test-keys/dave_login" = {
+      source = "${fixtures}/dave_login";
+      mode = "0600";
+    };
 
     # The forge also plays the maintainer's machine, running fleet with the
     # maintainer's recovery and signing keys.
@@ -399,6 +431,18 @@ pkgs.testers.runNixOSTest {
           privileged = true;
           secrets.password = false;
           secrets.sudoKeys = true;
+        };
+        # Dave's account, with his login keys and his secrets of his own from
+        # his file, which exists only from subtest 21 on and holds those keys
+        # only after he adds them (subtest 32): the host switches to this
+        # generation then (subtest 33), since sops-nix needs the files of the
+        # secrets a generation declares.
+        specialisation.dave-own.configuration.conf.users.accounts.dave = {
+          fullName = "Dave";
+          groups = [ "ssh-users" ];
+          secrets.password = false;
+          secrets.authorizedKeys = true;
+          secrets.own = true;
         };
       }
     ];
@@ -553,6 +597,10 @@ pkgs.testers.runNixOSTest {
         "install -o git -m 600 /etc/test-keys/support_ed25519 /home/git/.ssh/id_ed25519",
         "install -d -o git -m 700 /home/git/keys",
         "install -o git -m 600 ${fixtures}/dave_sig ${fixtures}/evil_sig ${fixtures}/erin_sig ${fixtures}/erin.key /home/git/keys/",
+        # Dave's own directory and home for fleet user (daveFleet): his identity,
+        # signing key and enrollment file, and nothing of the maintainer's.
+        "install -d -o git -m 700 /home/git/dave /home/git/dave-home",
+        "install -o git -m 600 ${fixtures}/dave_sig ${fixtures}/dave_sig.pub ${fixtures}/dave.key ${fixtures}/dave.enroll ${fixtures}/dave_signers ${fixtures}/dave_login.pub /home/git/dave/",
         "ssh-keyscan -t ed25519 fleet > /home/git/.ssh/known_hosts 2>/dev/null",
         "chown git /home/git/.ssh/known_hosts",
         "su git -c 'mkdir -p ~/.local/state/fleet && cp ${fixtures}/recovery.pub ~/.local/state/fleet/recovery.pub'",
@@ -1219,5 +1267,98 @@ pkgs.testers.runNixOSTest {
         assert "erin" not in listed(), listed()
         assert "user erin" not in manifest(), manifest()
         fleet.fail("test -e /var/lib/fleet/secrets/users/erin")
+
+    # Dave as the user, with fleet user, from his own directory and home: his
+    # identity and signing key, in a clone of his own (daveFleet).
+    forge.succeed("su git -c 'git clone -q /var/lib/forge/secrets.git /home/git/dave/secrets'")
+
+    def dave_fleet(args, stdin=""):
+        return forge.succeed(f"printf %s '{stdin}' | su git -c '${daveFleet} {args}' 2>&1")
+
+    def dave_value(*path):
+        key = "".join(f'["{part}"]' for part in path)
+        return fleet.succeed(
+            f"SOPS_AGE_KEY_FILE=/var/lib/fleet/age.key sops -d --extract '{key}'"
+            " /var/lib/fleet/secrets/users/dave/${hostName}.yaml"
+        )
+
+    def dave_tip():
+        return as_git("git -C /var/lib/forge/secrets.git rev-parse user/dave").strip()
+
+    with subtest("32: dave changes his password, keys and secrets with fleet user, signed by his own key"):
+        before = dave_tip()
+        out = dave_fleet("password ${hostName} --password-stdin", stdin="dave-secret")
+        assert "dave-secret" not in out and "committed: user-password: dave on ${hostName}" in out, out
+        # His commit, on top of the last, signed by his key and by no other.
+        pushed = dave_tip()
+        assert pushed != before
+        assert as_git("git -C /var/lib/forge/secrets.git rev-parse user/dave~1").strip() == before
+        assert as_git(
+            "git -C /var/lib/forge/secrets.git -c gpg.ssh.allowedSignersFile=${fixtures}/dave_signers"
+            " log -1 --format=%G? user/dave"
+        ).strip() == "G"
+        assert as_git("git -C /var/lib/forge/secrets.git log -1 --format=%an user/dave").strip() == "dave"
+
+        out = dave_fleet("secret set token ${hostName} --value-stdin", stdin="tok-123")
+        assert "tok-123" not in out and "committed: user-secret: set token for dave on ${hostName}" in out, out
+        # The same value again changes nothing: no commit, no push.
+        pushed = dave_tip()
+        out = dave_fleet("secret set token ${hostName} --value-stdin", stdin="tok-123")
+        assert "nothing changed" in out and dave_tip() == pushed, out
+        dave_fleet("secret set junk --all-hosts --value-stdin", stdin="x")
+        out = dave_fleet("secret unset junk ${hostName}")
+        assert "committed: user-secret: unset junk for dave on ${hostName}" in out, out
+        out = dave_fleet("secret unset junk --all-hosts")
+        assert "nothing changed" in out, out
+
+        # A login key: replaces nothing but adds to the file.
+        out = dave_fleet("keys ${hostName} --authorized-keys /home/git/dave/dave_login.pub")
+        assert "committed: user-keys: dave on ${hostName}" in out, out
+        tip = dave_tip()
+        assert as_git(
+            "git -C /var/lib/forge/secrets.git -c gpg.ssh.allowedSignersFile=${fixtures}/dave_signers"
+            " log -1 --format=%G? user/dave"
+        ).strip() == "G"
+
+        # A branch whose newest commit nobody trusted signed is built on by no one.
+        as_git("git -C /home/git/d fetch -q origin user/dave && git -C /home/git/d reset -q --hard FETCH_HEAD")
+        dave("evil_sig", "all", "evil")
+        status, out = forge.execute("printf x | su git -c '${daveFleet} password ${hostName} --password-stdin' 2>&1")
+        assert status != 0 and "signed neither by your signing key" in out, out
+        force_dave(tip)
+
+        # The host takes it all from his branch.
+        sync_ok()
+        fleet.fail("test -e /var/lib/fleet/user-problems")
+        assert f"user dave {tip}\n" in manifest(), manifest()
+        hashed = dave_password().strip()
+        assert hashed.startswith("$y$"), hashed
+        salt = "$".join(hashed.split("$")[2:4])
+        forge.succeed(f"test \"$(printf %s dave-secret | mkpasswd -m yescrypt -S '{salt}' -s)\" = '{hashed}'")
+        assert dave_value("secrets", "token") == "tok-123"
+        assert "junk" not in fleet.succeed(
+            "SOPS_AGE_KEY_FILE=/var/lib/fleet/age.key sops -d /var/lib/fleet/secrets/users/dave/${hostName}.yaml"
+        )
+        assert "dave_login@test" in dave_value("authorized_keys")
+
+    with subtest("33: the host hands dave his secret, and him alone, and his key logs in"):
+        # The stand-in switches of the sync tests left /run/current-system on a
+        # directory of their own; this is the system that is really running.
+        fleet.succeed("ln -sfn $(readlink -f /run/booted-system) /run/current-system")
+        fleet.succeed("/run/booted-system/specialisation/dave-own/bin/switch-to-configuration test")
+        out = fleet.succeed("stat -c '%U %a' /run/secrets/users/dave/all").strip()
+        assert out == "dave 400", f"dave's file is '{out}', expected 'dave 400'"
+        assert fleet.succeed("runuser -u dave -- fleet-user-secret token") == "tok-123\n"
+        # Another name, and another user, get nothing.
+        status, out = fleet.execute("runuser -u dave -- fleet-user-secret nothing 2>&1")
+        assert status == 1 and "there is no secret named nothing" in out, (status, out)
+        status, out = fleet.execute("runuser -u alice -- fleet-user-secret token 2>&1")
+        assert status == 1 and "tok-123" not in out and "is not there" in out, (status, out)
+        fleet.fail("runuser -u alice -- cat /run/secrets/users/dave/all")
+        # The key he added with fleet user keys logs in as him, and only as him.
+        out = forge.succeed(ssh_login.format(key="dave_login", user="dave", command="/run/current-system/sw/bin/fleet-user-secret token")).strip()
+        assert out == "tok-123", out
+        status, _ = forge.execute(ssh_login.format(key="dave_login", user="alice", command="true"))
+        assert status != 0, "dave's key logged in as alice"
   '';
 }
