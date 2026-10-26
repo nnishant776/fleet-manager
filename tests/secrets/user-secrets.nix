@@ -9,7 +9,10 @@
 # - login and sudo keys from a user's file (secrets.authorizedKeys, sudoKeys,
 #   support's keysFromSecrets) are the account's (login) or root's (sudo), mode 0400, and make sshd and sudo
 #   read them from /run/secrets/users/%u/…, per user; sudoKeys needs a
-#   privileged account, and keysFromSecrets a host with secrets.
+#   privileged account, and keysFromSecrets a host with secrets;
+# - on a host with secrets, keys in the configuration (sshKeys, sudoSshKeys,
+#   support's sshKeys) and support without keysFromSecrets are build errors,
+#   and on a host without secrets they are not.
 # Run it with `nix build .#checks.x86_64-linux.secrets-user-owner-only`.
 { pkgs, inputs }:
 let
@@ -21,7 +24,7 @@ let
     conf.secrets.repo.url = lib.mkForce "ssh://git@forge/var/lib/forge/secrets.git";
     conf.fleet.repo.url = lib.mkForce "git@forge:config.git";
     conf.fleet.signing.allowedSignersFile = lib.mkForce (builtins.toFile "allowed_signers" "");
-    conf.fleet.support.sshKeys = lib.mkForce [ "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDdBK90 support@test" ];
+    conf.fleet.support.keysFromSecrets = true;
   };
   hostWith = extra: inputs.nixpkgs.lib.nixosSystem
     (hostNode // { modules = hostNode.modules ++ [ withSecrets extra ]; });
@@ -44,9 +47,17 @@ let
   keySecrets = keyed.config.sops.secrets;
   sshFiles = keyed.config.services.openssh.authorizedKeysFiles;
   pamFiles = keyed.config.security.pam.sshAgentAuth.authorizedKeysFiles;
-  plain = (hostWith { }).config;
+  # No account with keys in the secrets: support is off.
+  plain = (hostWith { conf.fleet.support.enable = false; }).config;
   # Support with its keys in the secrets only.
   supportFromSecrets = { conf.fleet.support.sshKeys = lib.mkOverride 40 [ ]; conf.fleet.support.keysFromSecrets = true; };
+  # Keys in the configuration, on a host that has no secrets repository.
+  noSecretsKeys = {
+    conf.secrets.repo.url = lib.mkOverride 40 null;
+    conf.users.accounts.alice.sshKeys = [ "ssh-ed25519 AAAA alice@test" ];
+    conf.users.accounts.ops = { privileged = true; secrets.password = false; sudoSshKeys = [ "ssh-ed25519 AAAA ops@test" ]; };
+    conf.fleet.support.sshKeys = [ "ssh-ed25519 AAAA support@test" ];
+  };
 in
 assert lib.assertMsg (failed { } == [ ]) "the host fails its assertions: ${lib.concatStringsSep "; " (failed { })}";
 assert lib.assertMsg (secrets."users/alice/ssh_key".owner == "alice" && secrets."users/alice/ssh_key".mode == "0400")
@@ -73,10 +84,17 @@ assert lib.assertMsg (!plain.security.pam.sshAgentAuth.enable) "sudo by key is o
 assert lib.assertMsg (rejects "sets secrets.sudoKeys but is not privileged" { conf.users.accounts.alice.secrets.sudoKeys = true; }) "sudoKeys on an unprivileged account is accepted";
 assert lib.assertMsg (failed supportFromSecrets == [ ]) "support with its keys in the secrets fails: ${lib.concatStringsSep "; " (failed supportFromSecrets)}";
 assert lib.assertMsg ((hostWith supportFromSecrets).config.sops.secrets ? "users/support/authorized_keys") "support's keys are not declared as a secret";
-assert lib.assertMsg (rejects "sshKeys is empty and keysFromSecrets is off" { conf.fleet.support.sshKeys = lib.mkOverride 40 [ ]; }) "support without any keys is accepted";
+assert lib.assertMsg (rejects "sshKeys is empty and keysFromSecrets is off" { conf.fleet.support.keysFromSecrets = lib.mkOverride 40 false; }) "support without any keys is accepted";
 assert lib.assertMsg (rejects "keysFromSecrets is set but conf.secrets.repo.url is null" {
   conf.fleet.support.enable = true;
   conf.fleet.support.keysFromSecrets = true;
   conf.secrets.repo.url = lib.mkOverride 40 null;
 }) "keysFromSecrets without a secrets repository is accepted";
+# On a host with secrets the keys are in the secrets only; a host without
+# keeps them in the configuration.
+assert lib.assertMsg (rejects "alice lists sshKeys on a host with secrets" { conf.users.accounts.alice.sshKeys = [ "ssh-ed25519 AAAA alice@test" ]; }) "login keys in the configuration of a host with secrets are accepted";
+assert lib.assertMsg (rejects "ops lists sudoSshKeys on a host with secrets" { conf.users.accounts.ops = { privileged = true; secrets.password = false; sudoSshKeys = [ "ssh-ed25519 AAAA ops@test" ]; }; }) "sudo keys in the configuration of a host with secrets are accepted";
+assert lib.assertMsg (rejects "sshKeys is set on a host with secrets" { conf.fleet.support.sshKeys = [ "ssh-ed25519 AAAA support@test" ]; }) "support's keys in the configuration of a host with secrets are accepted";
+assert lib.assertMsg (rejects "enabled on a host with secrets but keysFromSecrets is off" { conf.fleet.support.keysFromSecrets = lib.mkOverride 40 false; }) "support without keysFromSecrets on a host with secrets is accepted";
+assert lib.assertMsg (!(rejects "on a host with secrets" noSecretsKeys)) "keys in the configuration of a host without secrets are refused: ${lib.concatStringsSep "; " (failed noSecretsKeys)}";
 pkgs.runCommand "secrets-user-owner-only" { } "touch $out"

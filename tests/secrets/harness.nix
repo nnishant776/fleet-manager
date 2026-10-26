@@ -133,7 +133,7 @@ pkgs.writeShellApplication {
         signed_git commit -q -S -m "Scratch secrets repository"
         git push -q origin main
         git switch -q --orphan "host/$host"
-        mkdir -p hosts users/alice
+        mkdir -p hosts users/alice users/support
         support_hash="$(mkpasswd -m yescrypt -s <<<support)"
         printf 'support_password: "%s"\n' "$support_hash" > "hosts/$host.yaml"
         ssh-keygen -q -t ed25519 -N "" -C "alice@$host" -f "$dir/alice_ed25519.tmp"
@@ -144,9 +144,11 @@ pkgs.writeShellApplication {
           sed 's/^/  /' "$dir/alice_ed25519.tmp"
           printf 'ssh_key_pub: "%s"\n' "$(cat "$dir/alice_ed25519.tmp.pub")"
         } > "users/alice/$host.yaml"
+        { echo "authorized_keys: |"; sed 's/^/  /' "$dir/support_ed25519.pub"; } > "users/support/$host.yaml"
         rm -f "$dir/alice_ed25519.tmp" "$dir/alice_ed25519.tmp.pub"
         sops --encrypt --in-place --age "$recipient,$recovery" "hosts/$host.yaml"
         sops --encrypt --in-place --age "$recipient,$recovery" "users/alice/$host.yaml"
+        sops --encrypt --in-place --age "$recipient,$recovery" "users/support/$host.yaml"
         git add -A
         signed_git commit -q -S -m "Initial scratch secrets"
         git push -q origin "host/$host"
@@ -157,7 +159,6 @@ pkgs.writeShellApplication {
     # differ, so a second run leaves the tree alone.
     user_url="ssh://$me@10.0.2.2:$port$dir/secrets.git"
     config_url="ssh://$me@10.0.2.2:$port$dir/config.git"
-    support_key="$(cut -d' ' -f1,2 "$dir/support_ed25519.pub") support@test"
     tmp="$(mktemp)"
     trap 'rm -f "$tmp"' EXIT
     cat > "$tmp" <<EOF
@@ -165,7 +166,7 @@ pkgs.writeShellApplication {
     {
       conf.secrets.repo.url = "$user_url";
       conf.fleet.repo.url = "$config_url";
-      conf.fleet.support.sshKeys = [ "$support_key" ];
+      conf.fleet.support.keysFromSecrets = true;
       conf.fleet.signing.allowedSignersFile = ./allowed_signers;
     }
     EOF

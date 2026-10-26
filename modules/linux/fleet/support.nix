@@ -27,6 +27,19 @@ in
           + " null; the keys have to come from the host's branch of the secrets repository.";
       }
       {
+        assertion = config.conf.secrets.repo.url == null || cfg.sshKeys == [ ];
+        message =
+          "conf.fleet.support.sshKeys is set on a host with secrets; support's keys go in"
+          + " its file in the secrets repository (users/${cfg.user}/<host>.yaml), with"
+          + " keysFromSecrets, set with `fleet secrets user-keys ${cfg.user} <host>`.";
+      }
+      {
+        assertion = config.conf.secrets.repo.url == null || cfg.keysFromSecrets;
+        message =
+          "conf.fleet.support is enabled on a host with secrets but keysFromSecrets is off;"
+          + " support's keys go in its file in the secrets repository, so turn it on.";
+      }
+      {
         assertion = !cfg.consolePassword || config.conf.secrets.repo.url != null;
         message =
           "conf.fleet.support.consolePassword is set but conf.secrets.repo.url is"

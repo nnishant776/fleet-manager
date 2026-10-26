@@ -88,14 +88,25 @@ pkgs.testers.runNixOSTest {
       boot.loader.systemd-boot.enable = lib.mkForce false;
       boot.loader.grub.enable = lib.mkForce false;
 
+      # The host has secrets, so the keys of admin and support belong in their
+      # files on the host's branch. That branch does not exist until enroll
+      # makes it, and enroll logs in first, so the admin key is also offered
+      # from a file of the test's own, to sshd and to sudo.
       conf.users.accounts.admin = {
-        sshKeys = [ (lib.removeSuffix "\n" (builtins.readFile "${fixtures}/admin.pub")) ];
-        sudoSshKeys = [ (lib.removeSuffix "\n" (builtins.readFile "${fixtures}/admin.pub")) ];
+        secrets.authorizedKeys = true;
+        secrets.sudoKeys = true;
       };
+      # Enroll logs in as admin before the host has a branch to take its keys
+      # from, so the test offers admin's key from a file of its own: per
+      # account (%u), as every key file must be, and a copy, not a link into
+      # the store: sshd refuses a key file whose path is group-writable.
+      environment.etc."test-keys/authorized/admin" = { source = "${fixtures}/admin.pub"; mode = "0444"; };
+      services.openssh.authorizedKeysFiles = lib.mkAfter [ "/etc/test-keys/authorized/%u" ];
+      security.pam.sshAgentAuth.authorizedKeysFiles = lib.mkAfter [ "/etc/test-keys/authorized/%u" ];
       conf.fleet = {
         repo.url = "ssh://git@forge/var/lib/forge/config.git";
         signing.allowedSignersFile = "${fixtures}/allowed_signers";
-        support.sshKeys = [ (lib.removeSuffix "\n" (builtins.readFile "${fixtures}/support.pub")) ];
+        support.keysFromSecrets = true;
       };
       conf.secrets.repo.url = secretsUrl;
 

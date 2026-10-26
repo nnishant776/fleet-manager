@@ -21,7 +21,8 @@ is missing. `down` stops the sshd and keeps the files.
   scratch host's branch, `host/scratch-secrets`, with
   `hosts/scratch-secrets.yaml` (`support_password`, hash of `support`) and
   `users/alice/scratch-secrets.yaml` (`password`, hash of `alice`, plus
-  `ssh_key` and `ssh_key_pub`), encrypted to the recovery key and `host.key`,
+  `ssh_key` and `ssh_key_pub`) and `users/support/scratch-secrets.yaml`
+  (`authorized_keys`, the support key), encrypted to the recovery key and `host.key`,
   in one signed commit. There is no `fleet.yaml` and no `.sops.yaml`: the host
   tracks its branch, which is the default of `conf.secrets.repo.ref`.
 - `config.git` (bare): this checkout's files plus `hosts/scratch-secrets/*`, in

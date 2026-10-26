@@ -1,6 +1,24 @@
 { config, lib, ... }:
 {
   config = {
+    # On a host with secrets, SSH keys live in one place: the secrets
+    # repository. The options stay for hosts without one.
+    assertions = lib.optionals (config.conf.secrets.repo.url != null)
+      (lib.concatLists (lib.mapAttrsToList (username: user: [
+        {
+          assertion = user.sshKeys == [ ];
+          message = "conf.users.accounts.${username} lists sshKeys on a host with secrets;"
+            + " the keys go in the account's file in the secrets repository, with"
+            + " secrets.authorizedKeys, set with `fleet secrets user-keys ${username} <host>`.";
+        }
+        {
+          assertion = user.sudoSshKeys == [ ];
+          message = "conf.users.accounts.${username} lists sudoSshKeys on a host with secrets;"
+            + " the keys go in the account's file in the secrets repository, with"
+            + " secrets.sudoKeys, set with `fleet secrets user-keys ${username} <host>`.";
+        }
+      ]) config.conf.users.accounts));
+
     users.users = lib.mkMerge [
       (lib.mapAttrs (username: user: {
         isNormalUser = true;
