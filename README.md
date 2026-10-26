@@ -1109,7 +1109,19 @@ files. Its layout:
     hosts/server1.yaml
     users/alice/server1.yaml   alice's secrets on server1: a different SSH key, if any
     enroll
+  user/bob                     bob's own branch, once he is enrolled as a user
+    users/bob/laptop1.yaml     his file for laptop1, encrypted to him as well
+    enroll                     bob's enrollment file, a record only
 ```
+
+A user can have a branch of their own, `user/<name>`, holding their files for
+every host they have an account on. A host reads it only when its own file,
+`hosts/<host>.yaml`, lists the user under the reserved key `users`, with the
+user's SSH signing key and age recipient; the list is encrypted like any other
+value, and only the maintainer changes it. A commit on a user's branch is
+accepted when it is signed by that user's key or by a key in the signers
+file. A user who is not listed has their files on the host's branch, as alice
+does here.
 
 There is no registry of hosts and no `.sops.yaml`. Each file lists who can
 decrypt it in its own sops metadata: the host's age recipient and the
@@ -1147,12 +1159,22 @@ configuration, from an SSH `conf.fleet.repo.url`. Their public halves are
 `secrets_deploy_pubkey` and `config_deploy_pubkey` in its enrollment file. `os-install` erases the
 whole disk, so it generates new ones, or restores them with `--identity`. No
 copy exists anywhere else, so a reinstall either carries the identity over by hand or re-keys the host. Each
-sync fetches the host's branch of the secrets repository into a temporary directory, verifies the
+sync fetches the host's branch of the secrets repository into a temporary repository, verifies the
 commit signature, checks that the commit follows the one it accepted last
-(kept in `<statePath>/accepted`), copies only this host's files into a snapshot in
-`<statePath>/secrets`, and deletes the clone; sops-nix decrypts the snapshot
-at activation. Before building, the sync also refuses a new configuration that
-needs a secret the snapshot lacks.
+(kept in `<statePath>/accepted/host`), and reads only this host's files, with
+no checkout. For each user its file lists, it fetches the user's branch and
+checks that its newest commit is signed by the user or the maintainer, follows
+the one accepted last (`accepted/user-<name>`), and holds a file for this host
+encrypted to exactly the user, this host and the recovery recipient, with a
+`password`, if any, that is a password hash. A user whose branch fails a check
+keeps the file the host had, and the others carry on; the problem is listed at
+every login, in `fleet-sync-status` and in `fleet host check`, until a good
+commit fixes it. The files go into a snapshot in `<statePath>/secrets`, with a
+`manifest` saying which commit each file came from, named after the manifest,
+so a sync that brings nothing new changes nothing; sops-nix decrypts the
+snapshot at activation, and a snapshot that changed while the configuration
+did not is activated again. Before building, the sync also refuses a new
+configuration that needs a secret the snapshot lacks.
 
 | Path | Owner / mode | Used by |
 |---|---|---|
@@ -1187,7 +1209,12 @@ branch whose newest commit no trusted key signed. `host-enroll` makes the
 branch, `host-rekey` replaces the host's recipient in every file on it, and
 `host-retire` deletes it. None of them pushes; push the branch afterwards with
 `git push origin host/laptop1` (`fleet host enroll` and `fleet host secret` push
-the branch themselves). The commands that encrypt need your recovery
+the branch themselves). For a user the host's file lists, `user-password`,
+`user-key` and `user-keys` work on the user's branch instead, and `host-rekey`
+replaces the host's recipient in the user's files there too. Two more, in the
+Go tool only: `fleet secrets user-enroll <name> --from <name>.enroll` gives a
+user a branch of their own, and `fleet secrets user-retire <name>` takes the
+user off every host's list. The commands that encrypt need your recovery
 recipient in the cache `fleet setup` fills, and stop with "run fleet setup"
 without it. `fleet-identity` is installed on opted-in hosts and prints the
 host's enrollment file (`--qr` for a QR code); it needs `sudo`, since the state
@@ -1242,18 +1269,30 @@ secrets repository and the configuration upstream; see `tests/secrets/README.md`
   sync refuses the configuration, and `fleet host enroll` stops before the switch
   with the command that adds it.
 - **Rotate a password or key.** Run `user-password` or `user-key` again and
-  push the host's branch. For a key, register the new public key and revoke the
-  old one on the forge. Users cannot change their own passwords on a fleet host.
+  push the host's branch, or the user's for a user with a branch of their own.
+  For a key, register the new public key and revoke the old one on the forge.
+  `passwd` on a fleet host does not last, since accounts are fixed by the
+  configuration: a password changes in the secrets repository.
+- **Give a user a branch of their own.** The user makes an age identity and an
+  SSH signing key and gives you their enrollment file, `bob.enroll`
+  (`version: 1`, `user`, `age_recipient`, `signing_key`). Run `fleet secrets
+  user-enroll bob --from bob.enroll`; it finds every host branch that has a file
+  for bob (add `--host` for more), moves those files to `user/bob`, encrypted to
+  bob as well, lists bob in each host's file, and pushes the branches. From the
+  next sync on, each host takes bob's file from his branch. The hosts must run
+  a fleet-manager that reads user branches before you do this.
 - **Lost or compromised host.** `fleet-secrets host-retire laptop1` deletes its
   branch in your clone; delete it on the forge too (`git push origin --delete
   host/laptop1`), delete its deploy key on the forge (immediate), then rotate what the host
   could decrypt, which is only its own files: alice's password and key on
   laptop1, and whatever was in `hosts/laptop1.yaml`. Her keys on other hosts
   were never there.
-- **User leaves.** Delete `users/alice/*.yaml` on each host's branch, remove
-  `accounts.alice` from the hosts, commit and push both repositories, revoke her
-  public keys on the forge. The
-  account disappears at the next sync.
+- **User leaves.** Remove `accounts.alice` from the hosts and push the
+  configuration first, so no host still needs her files. Then delete
+  `users/alice/*.yaml` on each host's branch, or, if she has a branch of her own,
+  run `fleet secrets user-retire alice` and delete `user/alice` on the forge
+  (`git push origin --delete user/alice`). Revoke her public keys on the forge.
+  The account disappears at the next sync.
 - **Reinstall.** After a manual reinstall that kept the `fleet` volume nothing
   is needed. `os-install` erases it, so use `--identity` with the document from
   `fleet-identity --export`, or else it is a re-key: `os-install -H laptop1` creates a new identity and
