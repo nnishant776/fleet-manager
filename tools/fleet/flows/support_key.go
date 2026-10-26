@@ -3,10 +3,12 @@ package flows
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/nnishant776/fleet-manager/tools/fleet/internal/engine"
 	"github.com/nnishant776/fleet-manager/tools/fleet/internal/fleet"
+	"github.com/nnishant776/fleet-manager/tools/fleet/internal/secrets"
 )
 
 // asSupport runs a script on the host as support with one given key only,
@@ -31,13 +33,18 @@ var SupportKeyRotate = &engine.Flow{
 		"configuration next to the old key, syncs the host with the old key, tests the\n" +
 		"new one, then has you remove the old line, syncs with the new key, and checks\n" +
 		"the old key is refused. Optionally the new line accepts logins only from given\n" +
-		"addresses (from=).",
+		"addresses (from=). On a host whose configuration sets\n" +
+		"conf.fleet.support.keysFromSecrets, the keys are changed in the host's secrets\n" +
+		"(fleet secrets user-keys, pushed) instead of its configuration, and the syncs\n" +
+		"apply them without a rebuild.",
 	Example: "  fleet support-key rotate neerajpinew --old-key ~/.ssh/home_network_ssh_key --new-key ~/.ssh/fleet_support --kind hardware\n" +
 		"  fleet support-key rotate neerajpinew --old-key ~/.ssh/home_network_ssh_key --new-key ~/.ssh/fleet_support --from 192.168.0.0/24",
 	Args: []string{"host"},
 	Inputs: []engine.Input{
 		fleet.FlakeInput,
 		{Name: "host", Prompt: "Which host?", Help: "A host of the configuration (hosts/<name>)", Pattern: `^[A-Za-z0-9][A-Za-z0-9-]*$`, Choices: fleet.Hosts},
+		fromSecretsOnly(secrets.RepoInput),
+		fromSecretsOnly(secrets.RecoveryInput),
 		{Name: "address", Prompt: "Address to reach it at", Help: "A name or IP address for SSH; defaults to the host's name",
 			Default: func(x *engine.Ctx) (string, error) { return x.Value("host"), nil }},
 		{Name: "old-key", Prompt: "The key support takes today", Help: "Its private key file"},
@@ -85,6 +92,9 @@ var SupportKeyRotate = &engine.Flow{
 					line = `from=\"` + from + `\" ` + line
 				}
 				x.Values["new_line"] = line
+				if keysFromSecrets(x) {
+					return setSupportKeys(x, true)
+				}
 				x.Say("In hosts/{{.host}}/default.nix, under conf.fleet.support.sshKeys, add:")
 				x.UI.Text(`  "` + line + `"`)
 				x.UI.Text("then commit, push to main (merging locally), and come back.")
@@ -114,6 +124,9 @@ var SupportKeyRotate = &engine.Flow{
 			Title: "Remove the old key",
 			Why:   "Until it is gone, whoever holds it is still root on {{.host}}.",
 			Do: engine.Func(func(x *engine.Ctx) error {
+				if keysFromSecrets(x) {
+					return setSupportKeys(x, false)
+				}
 				x.Say("In hosts/{{.host}}/default.nix, remove the old key from conf.fleet.support.sshKeys,")
 				x.UI.Text("commit, push to main (merging locally), and come back.")
 				return engine.WaitFor(x, "Pushed?")
@@ -140,4 +153,72 @@ var SupportKeyRotate = &engine.Flow{
 			}),
 		},
 	},
+}
+
+// fromSecretsOnly leaves an input out unless the host's configuration takes
+// support's keys from its secrets, the only case that needs it.
+func fromSecretsOnly(in engine.Input) engine.Input {
+	in.Skip = func(x *engine.Ctx) bool { return !keysFromSecrets(x) }
+	return in
+}
+
+// keysFromSecrets is whether the host's configuration sets
+// conf.fleet.support.keysFromSecrets, read from the flake once.
+func keysFromSecrets(x *engine.Ctx) bool {
+	if v, ok := x.Values["keys_from_secrets"]; ok {
+		return v == "true"
+	}
+	if x.Value("flake") == "" || x.Value("host") == "" {
+		return false
+	}
+	out, err := engine.Silently(x, nil, "nix", "eval", "--json",
+		x.Value("flake")+"#nixosConfigurations."+x.Value("host")+".config.conf.fleet.support.keysFromSecrets")
+	x.Values["keys_from_secrets"] = map[bool]string{true: "true", false: "false"}[err == nil && out == "true"]
+	return x.Values["keys_from_secrets"] == "true"
+}
+
+// setSupportKeys writes support's keys into its file on the host's branch of
+// the secrets repository and pushes it, with fleet secrets user-keys: the old
+// key and the new one while rotating (both), the new one alone afterwards. The
+// file replaces what was there, so keys the rotation does not know of are
+// listed in the configuration, or added back with user-keys.
+func setSupportKeys(x *engine.Ctx, both bool) error {
+	lines := []string{x.Value("new_line")}
+	if both {
+		old, err := os.ReadFile(x.Value("old-key") + ".pub")
+		if err != nil && !x.Options.DryRun {
+			return errors.New("the old key's public half, " + x.Value("old-key") + ".pub, is needed to keep it listed until the new one is tested: " + err.Error())
+		}
+		if line := strings.TrimSpace(string(old)); line != "" {
+			lines = append([]string{line}, lines...)
+		}
+	}
+	// A from= restriction goes in as sshd reads it; only Nix needs it escaped.
+	for i := range lines {
+		lines[i] = strings.ReplaceAll(lines[i], `\"`, `"`)
+	}
+	x.Say("In support's file for {{.host}} on its branch of the secrets repository, the login keys become:")
+	for _, l := range lines {
+		x.UI.Text("  " + l)
+	}
+	x.UI.Text("Keys listed in conf.fleet.support.sshKeys stay accepted besides these.")
+	if x.Options.DryRun {
+		x.UI.Skip("dry run: not written")
+		return nil
+	}
+	dir, err := os.MkdirTemp("", "fleet-support-keys-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(dir)
+	file := filepath.Join(dir, "authorized_keys")
+	if err := os.WriteFile(file, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		return err
+	}
+	args := []string{"secrets", "user-keys", "support", "{{.host}}", "--authorized-keys", file, "--repo", "{{.repo}}", "--recovery", "{{.recovery}}"}
+	if x.Options.Yes {
+		args = append(args, "--yes")
+	}
+	_, err = engine.Cmd("fleet", args...).ReadOnly().Interactive().OK("support's keys are in the secrets and pushed").Run(x)
+	return err
 }

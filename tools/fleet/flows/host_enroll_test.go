@@ -28,10 +28,15 @@ func enrollHost(identity, enrolled, tamper bool) func(engine.Spec) (engine.Resul
 	if tamper {
 		sumLine = strings.Repeat("0", 64) + "  /var/lib/fleet/pi.enroll\n"
 	}
+	// The host's branch exists once fleet secrets host-enroll has run.
+	created := false
 	return func(s engine.Spec) (engine.Result, error) {
 		last := ""
 		if len(s.Args) > 0 {
 			last = s.Args[len(s.Args)-1]
+		}
+		if s.Name == "fleet" && strings.Contains(strings.Join(s.Args, " "), "host-enroll") {
+			created = true
 		}
 		switch {
 		case s.Name == "ssh-agent":
@@ -41,12 +46,16 @@ func enrollHost(identity, enrolled, tamper bool) func(engine.Spec) (engine.Resul
 				"has_identity=" + map[bool]string{true: "true", false: "false"}[identity] + "\n" +
 				"has_config_key=" + map[bool]string{true: "true", false: "false"}[identity] + "\n" +
 				"has_checkout=true\norigin=https://github.com/nnishant776/fleet-manager.git\nhas_support=true\n"}, nil
+		case s.Name == "nix" && strings.Contains(strings.Join(s.Args, " "), "conf.secrets.statePath"):
+			return engine.Result{Stdout: "/var/lib/fleet"}, nil
+		case s.Name == "nix" && strings.Contains(strings.Join(s.Args, " "), "config.sops.secrets"):
+			return engine.Result{Stdout: "{}"}, nil
 		case s.Name == "nix" && strings.Contains(strings.Join(s.Args, " "), "conf.fleet.repo.url"):
 			return engine.Result{Stdout: "https://github.com/nnishant776/fleet-manager.git"}, nil
 		case s.Name == "ssh" && strings.Contains(last, "pi.enroll"):
 			return engine.Result{Stdout: enrollDoc + sumLine}, nil
 		case s.Name == "git" && strings.Contains(strings.Join(s.Args, " "), "rev-parse --verify"):
-			if enrolled {
+			if enrolled || created {
 				return engine.Result{}, nil // host/pi exists
 			}
 			return engine.Result{Code: 1}, errors.New("exited with code 1")
@@ -714,8 +723,8 @@ func TestEnrollSkipsTheSwitchOfAHostOnThisRepository(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
-	if got := strings.Count(out, "skipped: it already runs a configuration with secrets from https://github.com/nnishant776/fleet-manager.git"); got != 4 {
-		t.Errorf("%d steps name the repository, want 4 (choose, fit, warn, switch):\n%s", got, out)
+	if got := strings.Count(out, "skipped: it already runs a configuration with secrets from https://github.com/nnishant776/fleet-manager.git"); got != 5 {
+		t.Errorf("%d steps name the repository, want 5 (choose, fit, branch, warn, switch):\n%s", got, out)
 	}
 	for _, unwanted := range []string{"nixos-rebuild", "verify-commit", "sh -s -- true / /dev/disk", "fleet-enroll-remake.sh https://github.com"} {
 		if got := ranMatching(fake, unwanted); len(got) > 0 {

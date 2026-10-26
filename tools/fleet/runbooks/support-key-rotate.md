@@ -10,7 +10,10 @@ and the PIN, on every login), shows the line to add to the host's
 configuration next to the old key, syncs the host with the old key, tests the
 new one, then has you remove the old line, syncs with the new key, and checks
 the old key is refused. Optionally the new line accepts logins only from given
-addresses (from=).
+addresses (from=). On a host whose configuration sets
+conf.fleet.support.keysFromSecrets, the keys are changed in the host's secrets
+(fleet secrets user-keys, pushed) instead of its configuration, and the syncs
+apply them without a rebuild.
 
 ```
 fleet support-key rotate [HOST] [flags]
@@ -25,6 +28,8 @@ fleet support-key rotate neerajpinew --old-key ~/.ssh/home_network_ssh_key --new
 |---|---|
 | `--flake` | A checkout or a flake reference; defaults to this directory's flake, then /etc/nixos |
 | `--host` | A host of the configuration (hosts/\<name>) |
+| `--repo` | Your clone of the secrets repository, left on main; defaults to FLEET_SECRETS_REPO, then this directory |
+| `--recovery` | Your passphrase-encrypted age identity (age -p). Empty: sops uses SOPS_AGE_KEY_FILE or SOPS_AGE_KEY |
 | `--address` | A name or IP address for SSH; defaults to the host's name |
 | `--old-key` | Its private key file |
 | `--new-key` | A private key file; made unless it exists |

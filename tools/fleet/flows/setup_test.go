@@ -279,3 +279,66 @@ func TestSetupInstallsTheHookWhereAnOlderSetupPointedGitAtTheRepositorysOwn(t *t
 		t.Errorf("core.hooksPath is still %q", v)
 	}
 }
+
+// With conf.fleet.support.keysFromSecrets the rotation changes support's keys
+// in the secrets, with user-keys, and shows no configuration lines.
+func TestSupportKeyRotationOnAHostWithKeysFromSecrets(t *testing.T) {
+	dir := t.TempDir()
+	oldKey, newKey := filepath.Join(dir, "old"), filepath.Join(dir, "new")
+	oldLine := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOLDOLDOLDOLDOLDOLDOLDOLDOLDOLDOLDOLDOLDOLD old"
+	if err := os.WriteFile(oldKey+".pub", []byte(oldLine+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var written []string // what each user-keys call was given
+	x, fake, out := newFakeCtx(func(s engine.Spec) (engine.Result, error) {
+		args := strings.Join(s.Args, " ")
+		switch {
+		case s.Name == "nix" && strings.Contains(args, "conf.fleet.support.keysFromSecrets"):
+			return engine.Result{Stdout: "true\n"}, nil
+		case s.Name == "fleet":
+			for i, a := range s.Args {
+				if a == "--authorized-keys" {
+					b, _ := os.ReadFile(s.Args[i+1])
+					written = append(written, string(b))
+				}
+			}
+		case s.Name == "ssh-keygen":
+			keygen(s)
+		case s.Name == "ssh" && strings.Contains(args, "-i "+newKey) && strings.HasSuffix(args, "sudo -n id -u"):
+			return engine.Result{Stdout: "0\n"}, nil
+		case s.Name == "ssh" && strings.Contains(args, "-i "+oldKey) && strings.HasSuffix(args, " true"):
+			return engine.Result{Code: 255}, errors.New("exited with code 255")
+		}
+		return engine.Result{}, nil
+	})
+	err := engine.RunWith(x, SupportKeyRotate, map[string]string{
+		"host": "pi", "flake": "/flake", "old-key": oldKey, "new-key": newKey, "from": "192.168.0.0/24",
+		"repo": "/secrets", "recovery": "/rec.age",
+	})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	newLine := `from="192.168.0.0/24" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAaJ2zd1Tv4i10L7o8kJBLT2upzNnBOJc13FgTh09Azx fleet`
+	if len(written) != 2 || written[0] != oldLine+"\n"+newLine+"\n" || written[1] != newLine+"\n" {
+		t.Errorf("user-keys was given %q", written)
+	}
+	cmds := strings.Join(fake.Commands(), "\n")
+	pos := 0
+	for _, want := range []string{
+		"fleet secrets user-keys support pi --authorized-keys",
+		"-i " + oldKey + " support@pi 'sudo -n systemctl start config-auto-update'",
+		"-i " + newKey + " support@pi 'sudo -n id -u'",
+		"fleet secrets user-keys support pi --authorized-keys",
+		"-i " + newKey + " support@pi 'sudo -n systemctl start config-auto-update'",
+		"-i " + oldKey + " support@pi true",
+	} {
+		i := strings.Index(cmds[pos:], want)
+		if i < 0 {
+			t.Fatalf("%q missing or out of order in:\n%s", want, cmds)
+		}
+		pos += i + len(want)
+	}
+	if strings.Contains(out.String(), "In hosts/pi/default.nix") {
+		t.Errorf("configuration lines were shown:\n%s", out)
+	}
+}

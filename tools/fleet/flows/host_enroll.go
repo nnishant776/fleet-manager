@@ -138,6 +138,13 @@ var HostEnroll = &engine.Flow{
 			Do:   engine.Func(checkFits),
 		},
 		{
+			Title: "Check host/{{.host}} holds the secrets the configuration declares",
+			Why: "After the switch the host's sync refuses a snapshot that lacks a secret the configuration declares, such as the keys of an account that takes them from its secrets. " +
+				"The branch is read as it is in git, without decrypting; if something is missing, this stops before the switch with the command that adds it.",
+			When: needsSwitch,
+			Do:   engine.Func(checkBranchHoldsSecrets),
+		},
+		{
 			Title: "Warn that /etc/nixos on {{.host}} will be replaced",
 			Why: "/etc/nixos belongs to the fleet's configuration: nothing it holds now is kept. This step changes nothing; it shows what is there and asks, before the switch, " +
 				"so that you can copy what you need first.",

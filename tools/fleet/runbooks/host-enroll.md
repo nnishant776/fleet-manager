@@ -66,19 +66,21 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 11. **Check its configuration fits HOST as it is.** Without a reinstall, the configuration must describe the disks the machine has and boot the way it boots: a root or boot filesystem it does not have, or a UEFI boot loader on a machine without UEFI, would leave it unbootable after the switch.
 
-12. **Warn that /etc/nixos on HOST will be replaced.** /etc/nixos belongs to the fleet's configuration: nothing it holds now is kept. This step changes nothing; it shows what is there and asks, before the switch, so that you can copy what you need first.
+12. **Check host/HOST holds the secrets the configuration declares.** After the switch the host's sync refuses a snapshot that lacks a secret the configuration declares, such as the keys of an account that takes them from its secrets. The branch is read as it is in git, without decrypting; if something is missing, this stops before the switch with the command that adds it.
 
-13. **Switch HOST to its fleet configuration.** The switch runs as a service on the host, so it finishes even if this connection drops. A private configuration is fetched with the host's configuration key. /etc/nixos is replaced after it.
+13. **Warn that /etc/nixos on HOST will be replaced.** /etc/nixos belongs to the fleet's configuration: nothing it holds now is kept. This step changes nothing; it shows what is there and asks, before the switch, so that you can copy what you need first.
 
-14. **Make /etc/nixos the configuration repository's checkout.** The sync owns /etc/nixos and fetches the repository the configuration names. What was there is deleted, and the first-boot clone, fleet-bootstrap, makes the checkout at the commit the host runs and records it as the first the machine accepted.
+14. **Switch HOST to its fleet configuration.** The switch runs as a service on the host, so it finishes even if this connection drops. A private configuration is fetched with the host's configuration key. /etc/nixos is replaced after it.
 
-15. **Sync HOST.** Its first sync with secrets: fetch and verify them, then its configuration.
+15. **Make /etc/nixos the configuration repository's checkout.** The sync owns /etc/nixos and fetches the repository the configuration names. What was there is deleted, and the first-boot clone, fleet-bootstrap, makes the checkout at the commit the host runs and records it as the first the machine accepted.
+
+16. **Sync HOST.** Its first sync with secrets: fetch and verify them, then its configuration.
 
    ```
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'sudo -n systemctl start config-auto-update'
    ```
 
-16. **Check HOST.** fleet host check, as support with nothing forwarded: this also shows support works.
+17. **Check HOST.** fleet host check, as support with nothing forwarded: this also shows support works.
 
    ```
    $ fleet host check HOST --address ADDRESS --flake FLAKE
