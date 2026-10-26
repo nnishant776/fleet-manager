@@ -10,6 +10,9 @@
 #   support's keysFromSecrets) are the account's (login) or root's (sudo), mode 0400, and make sshd and sudo
 #   read them from /run/secrets/users/%u/…, per user; sudoKeys needs a
 #   privileged account, and keysFromSecrets a host with secrets;
+# - secrets.own declares the account's whole file (key = "") as
+#   users/<name>/all, the account's, mode 0400, and installs fleet-user-secret
+#   on that host only;
 # - on a host with secrets, keys in the configuration (sshKeys, sudoSshKeys,
 #   support's sshKeys) and support without keysFromSecrets are build errors,
 #   and on a host without secrets they are not.
@@ -47,6 +50,10 @@ let
   keySecrets = keyed.config.sops.secrets;
   sshFiles = keyed.config.services.openssh.authorizedKeysFiles;
   pamFiles = keyed.config.security.pam.sshAgentAuth.authorizedKeysFiles;
+  # An account that keeps its own secrets: its whole file, for it alone.
+  owned = hostWith { conf.users.accounts.alice.secrets.own = true; };
+  ownSecrets = owned.config.sops.secrets;
+  hasUserSecretCommand = h: lib.any (p: (p.name or "") == "fleet-user-secret") h.config.environment.systemPackages;
   # No account with keys in the secrets: support is off.
   plain = (hostWith { conf.fleet.support.enable = false; }).config;
   # Support with its keys in the secrets only.
@@ -74,6 +81,12 @@ assert lib.assertMsg (keySecrets."users/alice/authorized_keys".owner == "alice" 
 assert lib.assertMsg (keySecrets."users/ops/sudo_keys".owner == "root" && keySecrets."users/ops/sudo_keys".mode == "0400"
   && keySecrets."users/ops/sudo_keys".key == "sudo_keys")
   "ops' sudo keys are not root's, mode 0400";
+assert lib.assertMsg (failed { conf.users.accounts.alice.secrets.own = true; } == [ ]) "secrets.own fails the host's assertions: ${lib.concatStringsSep "; " (failed { conf.users.accounts.alice.secrets.own = true; })}";
+assert lib.assertMsg (ownSecrets."users/alice/all".key == "" && ownSecrets."users/alice/all".owner == "alice" && ownSecrets."users/alice/all".mode == "0400" && ownSecrets."users/alice/all".sopsFile == aliceFile)
+  "secrets.own does not declare alice's whole file, hers alone, mode 0400";
+assert lib.assertMsg (!(secrets ? "users/alice/all")) "alice's whole file is declared without secrets.own";
+assert lib.assertMsg (hasUserSecretCommand owned && !(hasUserSecretCommand (hostWith { }))) "fleet-user-secret is not installed exactly where an account has secrets.own";
+assert lib.assertMsg (rejects ownerOnly { conf.users.accounts.alice.secrets.own = true; sops.secrets."users/alice/all".mode = lib.mkForce "0440"; }) "alice's whole file readable by her group is accepted";
 assert lib.assertMsg (failed withKeys == [ ]) "keys from the secrets fail the host's assertions: ${lib.concatStringsSep "; " (failed withKeys)}";
 assert lib.assertMsg (lib.elem "/run/secrets/users/%u/authorized_keys" sshFiles) "sshd does not read the login keys from the secrets";
 assert lib.assertMsg (lib.all (lib.hasInfix "%u") (lib.filter (lib.hasPrefix "/run/secrets/") sshFiles)) "a path under /run/secrets in sshd is not per user";
@@ -97,4 +110,7 @@ assert lib.assertMsg (rejects "ops lists sudoSshKeys on a host with secrets" { c
 assert lib.assertMsg (rejects "sshKeys is set on a host with secrets" { conf.fleet.support.sshKeys = [ "ssh-ed25519 AAAA support@test" ]; }) "support's keys in the configuration of a host with secrets are accepted";
 assert lib.assertMsg (rejects "enabled on a host with secrets but keysFromSecrets is off" { conf.fleet.support.keysFromSecrets = lib.mkOverride 40 false; }) "support without keysFromSecrets on a host with secrets is accepted";
 assert lib.assertMsg (!(rejects "on a host with secrets" noSecretsKeys)) "keys in the configuration of a host without secrets are refused: ${lib.concatStringsSep "; " (failed noSecretsKeys)}";
-pkgs.runCommand "secrets-user-owner-only" { } "touch $out"
+# Building the command runs shellcheck on it.
+pkgs.runCommand "secrets-user-owner-only"
+  { command = lib.findFirst (p: (p.name or "") == "fleet-user-secret") null owned.config.environment.systemPackages; }
+  "touch $out"

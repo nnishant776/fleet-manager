@@ -4,8 +4,10 @@
 # rotated. neededForUsers places the decrypted file under /run/secrets-for-users
 # before accounts are created. The SSH key is deliberately left under
 # /run/secrets rather than linked into ~/.ssh, because sops-nix would create
-# the missing parent directories as root.
-{ config, lib, ... }:
+# the missing parent directories as root. With `secrets.own` the whole file is
+# decrypted for the account alone (users/<name>/all), and fleet-user-secret
+# prints one of the secrets the user keeps in it.
+{ config, lib, pkgs, ... }:
 let
   cfg = config.conf.secrets;
   host = config.conf.host.name;
@@ -14,7 +16,39 @@ let
   withSshKey = lib.filterAttrs (_: a: a.secrets.sshKey) accounts;
   withAuthorizedKeys = lib.filterAttrs (_: a: a.secrets.authorizedKeys) accounts;
   withSudoKeys = lib.filterAttrs (_: a: a.secrets.sudoKeys) accounts;
+  withOwn = lib.filterAttrs (_: a: a.secrets.own) accounts;
   userFile = name: "${cfg.statePath}/secrets/users/${name}/${host}.yaml";
+
+  # fleet-user-secret <name> prints secrets.<name> from the whole file of the
+  # user who runs it, which `own` decrypts for that user alone. The user is
+  # the one running it (id), not what $USER says.
+  userSecret = pkgs.writeShellApplication {
+    name = "fleet-user-secret";
+    runtimeInputs = [ pkgs.coreutils pkgs.yq-go ];
+    text = ''
+      if [ "$#" -ne 1 ]; then
+        echo "usage: fleet-user-secret <name>" >&2
+        exit 2
+      fi
+      name="$1"
+      case "$name" in
+        *[!A-Za-z0-9_-]* | "")
+          echo "fleet-user-secret: a name is letters, digits, - and _" >&2
+          exit 2
+          ;;
+      esac
+      file="/run/secrets/users/$(id -un)/all"
+      if [ ! -r "$file" ]; then
+        echo "fleet-user-secret: $file is not there: this host does not keep your secrets for you (accounts.<you>.secrets.own), or has not synced them yet" >&2
+        exit 1
+      fi
+      if ! value="$(NAME="$name" yq -e '.secrets[strenv(NAME)]' "$file" 2>/dev/null)"; then
+        echo "fleet-user-secret: there is no secret named $name in your file on this host (fleet user secret set $name)" >&2
+        exit 1
+      fi
+      printf '%s\n' "$value"
+    '';
+  };
 
   # A user's secrets are that user's alone: every secret read from a file
   # under users/<name>/, whoever declares it, belongs to that account or to
@@ -82,7 +116,17 @@ in {
         key = "sudo_keys";
         owner = "root";
         mode = "0400";
-      }) withSudoKeys;
+      }) withSudoKeys
+      # The whole file, for the account alone: it holds the user's own secrets
+      # (secrets.<name>), which the user stores themselves.
+      // lib.mapAttrs' (name: _: lib.nameValuePair "users/${name}/all" {
+        sopsFile = userFile name;
+        key = "";
+        owner = name;
+        mode = "0400";
+      }) withOwn;
+
+    environment.systemPackages = lib.optional (withOwn != { }) userSecret;
 
     users.users = lib.mapAttrs (name: _: {
       hashedPasswordFile = config.sops.secrets."password/${name}".path;
