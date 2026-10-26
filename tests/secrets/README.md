@@ -39,7 +39,15 @@ the URLs in `harness.nix` use that address. The scratch host's deploy key is
 `nix build .#checks.x86_64-linux.secrets-sync` runs a NixOS VM test
 (`vm-test.nix`): a `forge` node serves signed bare repositories over sshd and a
 `fleet` node built from the scratch host has to bootstrap, snapshot, activate
-and refuse an unsigned commit on its branch. The forge also plays the
+and refuse an unsigned commit on its branch. Keys come from the secrets too:
+alice logs in with a key that is in no configuration (her file has
+`authorized_keys`, and the forge holds the private half), support does the same
+with `fleet.support.keysFromSecrets` and its key in `users/support/<host>.yaml`,
+and `ops`, a privileged account, unlocks sudo with a key from `sudo_keys` through a
+forwarded agent, as `tests/users/ssh-key-sudo.nix` does for `sudoSshKeys`. A check
+with a file that lacks `authorized_keys` is refused, and `fleet secrets user-keys`
+is run on the forge: a line that is not a key stops it, and keys it stores reach
+the host's snapshot. The forge also plays the
 maintainer: `fleet host secret` works in a worktree of `host/scratch-secrets` in
 a clone that stays on `main`, with the recovery recipient cached the way
 `fleet setup` leaves it. It needs KVM and takes a few minutes; the CI

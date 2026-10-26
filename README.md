@@ -632,7 +632,13 @@ it, `bootstrap` builds `fleet` from that commit rather than taking the latest
 release, which is whatever `main` had when CI last ran.
 
 `fleet secrets …` does what `fleet-secrets` does, with the same files and
-commit messages. `nix run .#fleet-secrets` is still the shell version.
+commit messages. `nix run .#fleet-secrets` is still the shell version. One
+command is only in `fleet`: `fleet secrets user-keys`, which stores a user's login
+and sudo keys and pushes the branch (see [Secrets](#confsecrets)). On a host whose
+configuration sets `fleet.support.keysFromSecrets`, `fleet support-key rotate`
+changes support's keys there instead of asking you to edit the configuration; and
+`fleet host enroll` checks, before it switches the host, that its branch holds every
+secret the configuration declares, reading the sops files without decrypting them.
 
 ### Checking the flake
 
@@ -679,6 +685,8 @@ Each entry in `conf.users.accounts` takes these fields:
 | `sudoSshKeys` | listOf str | `[]` | SSH public keys that unlock sudo for this privileged account instead of its password. Not the same as `sshKeys`. Listing keys on an unprivileged account is an error. NixOS only. See below |
 | `secrets.password` | bool | `true` | Take the account's password hash from `users/<name>/<host>.yaml` in the secrets repository. Ignored on a host without `conf.secrets.repo.url`; setting `initialHashedPassword` as well is an error on an opted-in host |
 | `secrets.sshKey` | bool | `false` | Deploy a per-host SSH key from the same file to `/run/secrets/users/<name>/ssh_key`. Can be turned on any time after the account exists. Ignored on a host without `conf.secrets.repo.url`. NixOS only. Also deploys `ssh_key.pub` (mode 0400, as all of a user's secrets), and the key becomes the user's default SSH identity and git signing key |
+| `secrets.authorizedKeys` | bool | `false` | Accept the SSH public keys in `users/<name>/<host>.yaml` (`authorized_keys`, one per line) for this account's login, besides `sshKeys`. sshd reads them from `/run/secrets/users/<name>/authorized_keys` at each login, so changing them needs no rebuild. Ignored on a host without `conf.secrets.repo.url`. NixOS only. See [Secrets](#confsecrets) |
+| `secrets.sudoKeys` | bool | `false` | Accept the SSH public keys in the same file (`sudo_keys`, one per line) to unlock sudo for this privileged account, besides `sudoSshKeys`. On an unprivileged account it is an error. Ignored on a host without `conf.secrets.repo.url`. NixOS only. See below |
 | `selfManagedHome` | bool | `false` | This user manages their own home instead of the system doing it |
 | `manageAccount` | nullOr bool | `null` | Whether the account itself is created here. `null` means true on Linux and false on macOS. `false` is an error on Linux. On macOS, `true` puts the account on nix-darwin's delete list, so removing it from `accounts` deletes the macOS account at the next switch |
 | `uid` | nullOr int | `null` | Numeric user id. Required on macOS when `manageAccount` is true |
@@ -715,6 +723,7 @@ How it behaves:
 - Hardware security keys (`sk-ssh-ed25519`) do not work for sudo. The PAM module that checks the key only knows RSA, ECDSA and Ed25519 keys.
 - Without one of these keys, or without the agent, sudo asks for the password as before. `sudo -n`, as scripts use it, works with the key too.
 - Only sudo changes. Console login and `su` still need the password, and root login stays off.
+- The keys can also come from the secrets repository instead of the configuration: set `secrets.sudoKeys = true` and put the keys, one per line, in `sudo_keys` in the account's file for the host (`fleet secrets user-keys admin host --sudo-keys FILE`). sudo reads them at each use from `/run/secrets/users/<user>/sudo_keys`, which is root's, mode 0400, so a change needs no rebuild and the account itself cannot add a key. Both sources are read together; this works the same way as `sudoSshKeys` otherwise, and is an error on an unprivileged account.
 - Other users on the machine cannot use your agent. Root can, and so can any program running as you. While you are connected, they can use it to run sudo, or to log in to other machines with your key. Forward your agent only to machines you trust.
 
 To limit that, add the key to your agent with a confirmation, a time limit, or both:
@@ -1050,7 +1059,8 @@ default `""`); no module reads them yet.
 | `fleet.signing.allowedSignersFile` | nullOr path | `null` | SSH allowed-signers file. The newest commit of every fetch must be signed by a key in it, for the configuration and for the secrets repository. Required when `repo.url` is set |
 | `fleet.support.enable` | nullOr bool | `null` | Create an account for the maintainer to reach the host with. `null` means on when `conf.secrets.repo.url` is set. NixOS only; macOS hosts get no support account yet. Sets `sharing.ssh.enable` |
 | `fleet.support.user` | str | `"support"` | Name of the support account |
-| `fleet.support.sshKeys` | listOf str | `[]` | The maintainer's public keys, ideally hardware-backed `sk-ssh-ed25519`. Required when the account is enabled. The account is privileged with a sudo rule without a password, since its password is locked and the key is the factor |
+| `fleet.support.sshKeys` | listOf str | `[]` | The maintainer's public keys, ideally hardware-backed `sk-ssh-ed25519`. Required when the account is enabled, unless `keysFromSecrets` is on. The account is privileged with a sudo rule without a password, since its password is locked and the key is the factor |
+| `fleet.support.keysFromSecrets` | bool | `false` | Also accept the keys in the support account's file on the host's branch (`users/support/<host>.yaml`, `authorized_keys`), so they change without a rebuild; `sshKeys` may then be empty. Both sources are read together. Requires `conf.secrets.repo.url`. Set them with `fleet secrets user-keys support <host> --authorized-keys FILE`, or let `fleet support-key rotate` do it |
 | `fleet.support.consolePassword` | bool | `false` | Also take a password hash for the account from `hosts/<host>.yaml` (`support_password`), for console login without a network |
 | `fleet.autoUpdate.enable` | nullOr bool | `null` | Periodic sync and rebuild. `null` means on when `repo.url` is set |
 | `fleet.autoUpdate.dates` | str | `"04:00"` | systemd `OnCalendar` expression |
@@ -1109,8 +1119,12 @@ readable by exactly one host plus the maintainer's recovery key. The recovery
 recipient is read from `recovery.pub` in the `fleet` folder of
 `$XDG_STATE_HOME` (`~/.local/state` when it is unset), which `fleet setup`
 writes once, asking for the recovery identity's passphrase. A user file holds
-`password` (a `mkpasswd -m yescrypt` hash) and, when `secrets.sshKey` is on,
-`ssh_key` and `ssh_key_pub`. A host file holds whatever that machine needs;
+`password` (a `mkpasswd -m yescrypt` hash), when `secrets.sshKey` is on,
+`ssh_key` and `ssh_key_pub`, and when `secrets.authorizedKeys` or
+`secrets.sudoKeys` is on, `authorized_keys` or `sudo_keys`: public keys, one per
+line, that may log in as the user or unlock their sudo. The support account's
+file is the same, with `authorized_keys` when `fleet.support.keysFromSecrets` is
+on. A host file holds whatever that machine needs;
 `support_password` is a reserved name. No key of the host's own is stored
 here: the host makes its keys itself, and they never leave it.
 
@@ -1145,6 +1159,8 @@ needs a secret the snapshot lacks.
 | `/run/secrets-for-users/password/alice` | root, 0400 | Account creation (`hashedPasswordFile`), available before accounts exist |
 | `/run/secrets/users/alice/ssh_key` | alice, 0400 | Her SSH client and git signing; only if `secrets.sshKey` is on |
 | `/run/secrets/users/alice/ssh_key.pub` | alice, 0400 | For reference |
+| `/run/secrets/users/alice/authorized_keys` | alice, 0400 | sshd, as an `AuthorizedKeysFile` with `%u`, so a file admits only its own account; only if `secrets.authorizedKeys` is on (or for support, `fleet.support.keysFromSecrets`). sshd opens it as the account, which is why the file is hers |
+| `/run/secrets/users/admin/sudo_keys` | root, 0400 | sudo's SSH-agent check, for that account only; only if `secrets.sudoKeys` is on. Root's, so the account cannot add a key |
 | `/run/secrets/<host secret>` | per module | Whichever module declared it |
 
 A user's secrets are that user's alone. Every secret read from a file under
@@ -1201,6 +1217,28 @@ secrets repository and the configuration upstream; see `tests/secrets/README.md`
   `fleet-secrets user-key bob laptop1`, register the printed public key where
   bob needs access, push the host's branch and this repository. Order does not
   matter; the sync refuses until both exist.
+- **Keys for login or sudo from the secrets.** Set
+  `accounts.bob.secrets.authorizedKeys = true` (and `secrets.sudoKeys = true` for
+  a privileged account), put the public keys in files, one per line, and run
+  `fleet secrets user-keys bob laptop1 --authorized-keys bob.keys --sudo-keys
+  bob-sudo.keys`. Every line is checked with `ssh-keygen` first, so a typo cannot
+  lock anyone out; the keys are stored in `users/bob/laptop1.yaml` (the file is made
+  if it is not there), and the branch is committed and pushed. A host picks them
+  up at its next sync with no rebuild. A file replaces the keys stored before,
+  so list every key that should stay; to change the list instead, use
+  `--add-authorized-keys FILE` and `--remove-authorized-keys FILE` (and
+  `--add-sudo-keys`, `--remove-sudo-keys`), which read the stored keys, add the
+  keys not there yet or remove the ones given, matching on key type and key
+  material (options such as `from=` and the comment do not matter), and keep the
+  other lines. A removal that would leave no key is refused, and a change that
+  changes nothing makes no commit. Keys in the configuration (`sshKeys`,
+  `sudoSshKeys`, `fleet.support.sshKeys`) are read together with these, so a
+  move can be done in two steps: add the keys here and turn the flag on, then
+  remove them from the configuration. Support's keys are set the same way:
+  `fleet secrets user-keys support laptop1 --authorized-keys support.keys`, with
+  `fleet.support.keysFromSecrets = true`. If the file or the key is missing, the
+  sync refuses the configuration, and `fleet host enroll` stops before the switch
+  with the command that adds it.
 - **Rotate a password or key.** Run `user-password` or `user-key` again and
   push the host's branch. For a key, register the new public key and revoke the
   old one on the forge. Users cannot change their own passwords on a fleet host.
@@ -1310,9 +1348,12 @@ turn the implied option off.
 | `conf.sharing.rdp.enable` | • With `sharing.enable`: GNOME Remote Desktop |
 | `conf.users.accounts.<name>.privileged` | • `wheel` (sudo), plus `networkmanager` or `wpa_supplicant`, by backend, `ssh-users`, `docker`, `podman` and `libvirtd` for whichever of those services the host enables. Only `wheel`, `docker`, `podman`, `libvirtd`, `networkmanager` and `wpa_supplicant` are rejected in `groups`; `ssh-users` is not, so others opt in through `groups` |
 | `conf.users.accounts.<name>.sudoSshKeys` | • `/etc/ssh/sudo_keys.d/<name>` (root's, mode 0444) with those keys<br>• `security.pam.sshAgentAuth` reading only those files, for sudo<br>• `Defaults noninteractive_auth`, so `sudo -n` can use the key<br>• Listing keys on an unprivileged account is a build error |
+| `conf.users.accounts.<name>.secrets.authorizedKeys` | • `users/<name>/authorized_keys` as a secret (the account's, mode 0400) and `/run/secrets/users/%u/authorized_keys` in sshd's `AuthorizedKeysFile`, read at each login<br>• An administrator with these keys only does not trip NixOS's check that someone can log in (`users.allowNoPasswordLogin`, as a default) |
+| `conf.users.accounts.<name>.secrets.sudoKeys` | • `users/<name>/sudo_keys` as a secret (root's, mode 0400), `/run/secrets/users/%u/sudo_keys` among the files `security.pam.sshAgentAuth` reads, and the same sudo by key as `sudoSshKeys` gives<br>• On an unprivileged account it is a build error |
 | `conf.fleet.localPath`<br>*(every NixOS host)* | • Trusted in `/etc/gitconfig` (`safe.directory`), so every account can use the root-owned checkout |
 | `conf.fleet.repo.url` | • `fleet.autoUpdate.enable` on, `users.mutableUsers = false`<br>• On NixOS: requires `fleet.signing.allowedSignersFile`; plain `http://` is rejected<br>• On NixOS: `networking.firewall.enable = false` is rejected; sshd password authentication gives a warning<br>• An SSH address requires `secrets.repo.url`, whose identity holds the key that fetches it |
 | `conf.secrets.repo.url` | • `fleet.support.enable` on, which requires `fleet.support.sshKeys` and sets `sharing.ssh.enable = true` (sshd still needs `networking.enable`)<br>• sops-nix reads `<statePath>/secrets`; every account with `secrets.password` (the default) takes its hash from the secrets repository, so `initialHashedPassword` is an error<br>• Requires `fleet.repo.url` (`fleet-bootstrap` and `config-auto-update` refresh the secrets) and `fleet.signing.allowedSignersFile` (every fetched commit is verified against it); an HTTP(S) URL is rejected<br>• Accounts with `secrets.sshKey`: Home Manager points SSH and git signing at `/run/secrets/users/<name>/ssh_key` |
+| `conf.fleet.support.keysFromSecrets` | • The `support` account gets `secrets.authorizedKeys`, so its keys are read from its file on the host's branch as well; `fleet.support.sshKeys` may be empty<br>• Requires `conf.secrets.repo.url` |
 | `conf.fleet.support.enable` | • A privileged `support` account with `fleet.support.sshKeys`, a locked password and passwordless sudo<br>• `sharing.ssh.enable = true` (a plain value, so it beats role defaults) |
 | `conf.hardware.boot.mode = "bios"` | • `hardware.boot.loader` defaults to `"grub"`; GRUB without `grubPasswordHash` gives a warning |
 | `conf.hardware.boot.loader = "uboot"` | • `boot.loader.generic-extlinux-compatible`, with GRUB off and at most 10 generations in the menu<br>• With `hardware.disk.enable`: `/boot` is marked legacy BIOS bootable, where U-Boot looks<br>• `mode = "bios"` or `efiVariables` is a build error<br>• With the splash on there is no menu; the newest generation boots |
