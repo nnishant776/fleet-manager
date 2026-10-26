@@ -14,10 +14,17 @@ in
   config = lib.mkIf (enabled && config.conf.platform == "nixos") {
     assertions = [
       {
-        assertion = cfg.sshKeys != [ ];
+        assertion = cfg.sshKeys != [ ] || cfg.keysFromSecrets;
         message =
-          "conf.fleet.support is enabled but conf.fleet.support.sshKeys is empty:"
-          + " the account's password is locked, so without a key nobody can use it.";
+          "conf.fleet.support is enabled but conf.fleet.support.sshKeys is empty and"
+          + " keysFromSecrets is off: the account's password is locked, so without a"
+          + " key nobody can use it.";
+      }
+      {
+        assertion = !cfg.keysFromSecrets || config.conf.secrets.repo.url != null;
+        message =
+          "conf.fleet.support.keysFromSecrets is set but conf.secrets.repo.url is"
+          + " null; the keys have to come from the host's branch of the secrets repository.";
       }
       {
         assertion = !cfg.consolePassword || config.conf.secrets.repo.url != null;
@@ -27,8 +34,9 @@ in
       }
     ];
 
-    # Privileged, so wheel and ssh-users follow from host/privilege.nix. It
-    # owns no secrets of its own: the key is the authentication factor.
+    # Privileged, so wheel and ssh-users follow from host/privilege.nix. Its
+    # only secrets are its keys, when they come from its file on the host's
+    # branch (keysFromSecrets): the key is the authentication factor.
     conf.users.accounts.${cfg.user} = {
       fullName = "Fleet support";
       privileged = true;
@@ -36,6 +44,7 @@ in
       secrets = {
         password = false;
         sshKey = false;
+        authorizedKeys = cfg.keysFromSecrets;
       };
     };
 

@@ -2,6 +2,8 @@
 let
   cfg = config.conf.sharing;
   enabled = config.conf.networking.enable && cfg.ssh.enable;
+  fromSecrets = config.conf.secrets.repo.url != null
+    && lib.any (a: a.secrets.authorizedKeys) (lib.attrValues config.conf.users.accounts);
 in {
   config = lib.mkIf enabled {
     services.openssh = lib.mkMerge [
@@ -21,6 +23,13 @@ in {
           ClientAliveInterval = lib.mkDefault 300;
           ClientAliveCountMax = lib.mkDefault 2;
         };
+      })
+      # Keys from the secrets repository (`secrets.authorizedKeys`): a 0400
+      # file per account, the account's own since sshd opens it as the
+      # account, read at each login. Always with %u, so a file only ever
+      # admits its own account.
+      (lib.mkIf fromSecrets {
+        authorizedKeysFiles = [ "/run/secrets/users/%u/authorized_keys" ];
       })
       (if cfg.ssh.config != {} then cfg.ssh.config else {})
     ];

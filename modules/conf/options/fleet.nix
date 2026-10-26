@@ -93,6 +93,18 @@
           its password is locked and the key is the authentication factor.
         '';
       };
+      keysFromSecrets = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          Also accept the keys in the support account's file on this host's
+          branch of the secrets repository (`users/<user>/<host>.yaml`,
+          `authorized_keys`), the same way `conf.users.accounts.<name>.secrets.authorizedKeys`
+          does, so the keys can change without a rebuild. They are read
+          together with `sshKeys`, and `sshKeys` may be empty when this is on.
+          Requires `conf.secrets.repo.url`.
+        '';
+      };
       consolePassword = lib.mkOption {
         type = lib.types.bool;
         default = false;

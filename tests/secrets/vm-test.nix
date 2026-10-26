@@ -6,6 +6,9 @@
 # the maintainer), and fetch its configuration from a private repository with
 # its own configuration key (an SSH conf.fleet.repo.url), refusing what is not
 # signed, and activate the running system again when only the secrets changed.
+# Keys come from the secrets too: alice logs in with a key that is in no
+# configuration, support (keysFromSecrets) with its key in its file on the
+# host's branch, and ops unlocks sudo with a key in its file.
 # No network and no hosting service are involved. Run it with
 # `nix build .#checks.x86_64-linux.secrets-sync` (see README.md).
 { pkgs, inputs, self }:
@@ -38,8 +41,15 @@ let
     ssh-keygen -q -t ed25519 -N "" -C "fleet-config@${hostName}" -f "$keys/config_ed25519"
     ssh-keygen -q -t ed25519 -N "" -C "maintainer@test" -f "$keys/signing_ed25519"
     ssh-keygen -q -t ed25519 -N "" -C "support@test" -f "$keys/support_ed25519"
+    # Keys that are in no configuration, only in the users' files on the
+    # host's branch: alice's login key, and ops' sudo key besides one that
+    # is only ops' login key.
+    for k in alice_login ops_sudo ops_login; do
+      ssh-keygen -q -t ed25519 -N "" -C "$k@test" -f "$keys/$k"
+    done
     echo "maintainer@test $(cut -d' ' -f1,2 "$keys/signing_ed25519.pub")" > "$out/allowed_signers"
     cp "$keys/support_ed25519" "$keys/support_ed25519.pub" "$keys/deploy_ed25519.pub" "$keys/config_ed25519.pub" "$out/"
+    cp "$keys/alice_login" "$keys/alice_login.pub" "$keys/ops_sudo" "$keys/ops_sudo.pub" "$keys/ops_login" "$out/"
     # The maintainer's keys, for the forge to play the maintainer with fleet.
     cp "$keys/recovery.key" "$keys/signing_ed25519" "$out/"
 
@@ -87,7 +97,7 @@ let
       signed_git commit -q -S -m "Scratch secrets repository"
       git push -q origin main
       git switch -q --orphan host/${hostName}
-      mkdir -p hosts users/alice
+      mkdir -p hosts users/alice users/support users/ops
       printf 'support_password: "%s"\n' "$(mkpasswd -m yescrypt -s <<<support)" > hosts/${hostName}.yaml
       ssh-keygen -q -t ed25519 -N "" -C "alice@${hostName}" -f "$keys/alice_ed25519"
       {
@@ -95,9 +105,16 @@ let
         echo "ssh_key: |"
         sed 's/^/  /' "$keys/alice_ed25519"
         printf 'ssh_key_pub: "%s"\n' "$(cat "$keys/alice_ed25519.pub")"
+        echo "authorized_keys: |"
+        sed 's/^/  /' "$keys/alice_login.pub"
       } > users/alice/${hostName}.yaml
+      # Support's keys and ops' sudo keys, one per line.
+      { echo "authorized_keys: |"; sed 's/^/  /' "$keys/support_ed25519.pub"; } > users/support/${hostName}.yaml
+      { echo "sudo_keys: |"; sed 's/^/  /' "$keys/ops_sudo.pub"; } > users/ops/${hostName}.yaml
       sops --encrypt --in-place --age "$recipient,$recovery" hosts/${hostName}.yaml
-      sops --encrypt --in-place --age "$recipient,$recovery" users/alice/${hostName}.yaml
+      for f in users/alice users/support users/ops; do
+        sops --encrypt --in-place --age "$recipient,$recovery" $f/${hostName}.yaml
+      done
       git add -A
       signed_git commit -q -S -m "Initial scratch secrets"
       git push -q origin host/${hostName}
@@ -161,6 +178,21 @@ let
     exit 0
   '';
 
+  # Runs a command as the given user with an agent that holds one key, as
+  # ssh -A would provide it (tests/users/ssh-key-sudo.nix does the same).
+  withAgent = pkgs.writeShellScript "with-agent" ''
+    user=$1 key=$2; shift 2
+    install -m 0600 -o "$user" "${fixtures}/$key" "/tmp/$user-$key"
+    exec runuser -u "$user" -- sh -c '
+      eval "$(ssh-agent -s)" >/dev/null
+      ssh-add -q "$0"
+      "$@"
+      status=$?
+      ssh-agent -k >/dev/null
+      exit $status
+    ' "/tmp/$user-$key" "$@"
+  '';
+
   secretsUrl = "ssh://git@forge/var/lib/forge/secrets.git";
   # A private configuration repository, as a fleet's inventory is: its own account
   # on the forge, which takes the host's configuration key and no other.
@@ -212,6 +244,10 @@ pkgs.testers.runNixOSTest {
       source = "${fixtures}/support_ed25519";
       mode = "0600";
     };
+    environment.etc."test-keys/alice_login" = {
+      source = "${fixtures}/alice_login";
+      mode = "0600";
+    };
 
     # The forge also plays the maintainer's machine, running fleet with the
     # maintainer's recovery and signing keys.
@@ -251,9 +287,22 @@ pkgs.testers.runNixOSTest {
         # Syncs run when a subtest starts one.
         systemd.timers.config-auto-update.enable = false;
         conf.fleet.signing.allowedSignersFile = lib.mkForce "${fixtures}/allowed_signers";
-        conf.fleet.support.sshKeys = lib.mkForce [
-          (lib.removeSuffix "\n" (builtins.readFile "${fixtures}/support_ed25519.pub"))
-        ];
+        # Support's key is in its file on the host's branch, and nowhere in
+        # the configuration; alice's login key too. Alice is no administrator,
+        # so she is let in to sshd by her group; ops is one, whose sudo key is
+        # in its file as well.
+        conf.fleet.support.sshKeys = lib.mkForce [ ];
+        conf.fleet.support.keysFromSecrets = true;
+        conf.users.accounts.alice = {
+          groups = [ "ssh-users" ];
+          secrets.authorizedKeys = true;
+        };
+        conf.users.accounts.ops = {
+          fullName = "Ops";
+          privileged = true;
+          secrets.password = false;
+          secrets.sudoKeys = true;
+        };
       }
     ];
 
@@ -262,7 +311,7 @@ pkgs.testers.runNixOSTest {
     # (its repo.url is an SSH address), each as the tools set it, or not at all.
     # sops, to read back what fleet host secret stored, with the host's own key;
     # fleet-clone-flake, the clone os-install makes of a private flake.
-    environment.systemPackages = [ pkgs.sops (import ../../lib/clone-flake.nix { inherit pkgs; }) ];
+    environment.systemPackages = [ pkgs.sops pkgs.openssh (import ../../lib/clone-flake.nix { inherit pkgs; }) ];
 
     # Stands in for os-install's identity step: the keys of the fixtures
     # are put in place before fleet-bootstrap's own `init`, which then finds
@@ -336,6 +385,44 @@ pkgs.testers.runNixOSTest {
             " -o UserKnownHostsFile=/dev/null support@fleet sudo -n id -u"
         ).strip()
         assert out == "0", f"sudo id -u printed '{out}', expected '0'"
+        # Its key is in no configuration: the account's keys are the file
+        # sshd reads, which came from the host's branch.
+        fleet.succeed("grep -q support /run/secrets/users/support/authorized_keys")
+        fleet.fail("grep -rq support@test /etc/ssh/authorized_keys.d")
+
+    ssh_login = (
+        "ssh -i /etc/test-keys/{key} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no"
+        " -o UserKnownHostsFile=/dev/null -o BatchMode=yes {user}@fleet {command}"
+    )
+
+    with subtest("5b: alice logs in with a key that comes only from her file in the secrets"):
+        # Not in the configuration: the rendered sshd configuration has the
+        # per-user path, and alice's keys file in /etc has no such key.
+        fleet.succeed("grep -E '^AuthorizedKeysFile .*/run/secrets/users/%u/authorized_keys' /etc/ssh/sshd_config")
+        fleet.fail("grep -q alice_login /etc/ssh/authorized_keys.d/alice")
+        out = forge.succeed(ssh_login.format(key="alice_login", user="alice", command="id -un")).strip()
+        assert out == "alice", f"logged in as '{out}'"
+        # root's and 0400: only sshd, as root, reads it.
+        out = fleet.succeed("stat -c '%U %a' /run/secrets/users/alice/authorized_keys").strip()
+        assert out == "root 400", f"authorized_keys is '{out}', expected 'root 400'"
+        # A key in alice's file does not open another account.
+        status, _ = forge.execute(ssh_login.format(key="alice_login", user="support", command="true"))
+        assert status != 0, "alice's key from the secrets logged in as support"
+
+    with subtest("5c: sudo by a key from the secrets, for an account that lists it there"):
+        assert fleet.succeed("stat -c '%U %a' /run/secrets/users/ops/sudo_keys").strip() == "root 400"
+        # No configuration lists a sudo key for ops, so no file in /etc either.
+        fleet.fail("test -e /etc/ssh/sudo_keys.d/ops")
+        fleet.succeed("${withAgent} ops ops_sudo sudo -n true")
+        out = fleet.succeed("${withAgent} ops ops_sudo sudo -n id -u").strip()
+        assert out == "0", f"sudo id -u printed '{out}'"
+        # Another key, or no agent, does not unlock it, and a key in alice's
+        # login file does not unlock anyone's sudo.
+        fleet.succeed("runuser -u ops -- sudo -K")
+        fleet.fail("${withAgent} ops ops_login sudo -n true")
+        fleet.succeed("runuser -u ops -- sudo -K")
+        fleet.fail("runuser -u ops -- sudo -n true")
+        fleet.fail("${withAgent} alice alice_login sudo -n true")
 
     with subtest("6: a second sync succeeds and names the snapshot's commit"):
         current = fleet.succeed("basename $(readlink /var/lib/fleet/secrets)").strip()
@@ -424,6 +511,44 @@ pkgs.testers.runNixOSTest {
         )
         assert status != 0 and "group holds secrets of its own (first, second)" in out, out
         assert host_value("group/first") == "first value"
+
+    def user_keys(args):
+        # fleet secrets user-keys, in the same clone and with the same keys.
+        return forge.execute(
+            "cd /home/git/w && su git -c 'SOPS_AGE_KEY_FILE=/home/git/recovery.key"
+            f" fleet secrets user-keys {args} --recovery \"\" --yes' 2>&1"
+        )
+
+    with subtest("10b: fleet secrets user-keys stores checked keys on the host's branch and pushes"):
+        forge.succeed(
+            "su git -c 'ssh-keygen -q -t ed25519 -N \"\" -C alice-second@test -f /home/git/alice_second'",
+            "su git -c 'cat /home/git/alice_second.pub ${fixtures}/alice_login.pub > /home/git/alice.keys'",
+            "su git -c 'printf \"# a comment\\nssh-ed25519 AAAA-typo\\n\" > /home/git/typo.keys'",
+        )
+        # A line that is not a key stops it before anything is written.
+        before = forge.succeed("su git -c 'git -C /var/lib/forge/secrets.git rev-parse host/${hostName}'")
+        status, out = user_keys("alice ${hostName} --authorized-keys /home/git/typo.keys")
+        assert status != 0 and "line 2 is not an SSH public key" in out, f"{status}: {out}"
+        assert forge.succeed("su git -c 'git -C /var/lib/forge/secrets.git rev-parse host/${hostName}'") == before
+        status, out = user_keys("alice ${hostName} --authorized-keys /home/git/alice.keys")
+        assert status == 0 and "committed: user-keys: alice on ${hostName}" in out, f"{status}: {out}"
+        assert forge.succeed("su git -c 'git -C /var/lib/forge/secrets.git rev-parse host/${hostName}'") != before
+        # The host takes it from the branch as a snapshot, and reads back both keys.
+        fleet.succeed(sync_cmd)
+        got = fleet.succeed(
+            "SOPS_AGE_KEY_FILE=/var/lib/fleet/age.key sops -d --extract '[\"authorized_keys\"]'"
+            " /var/lib/fleet/secrets/users/alice/${hostName}.yaml"
+        )
+        want = forge.succeed("cat /home/git/alice.keys")
+        assert got.strip() == want.strip(), f"the host decrypted '{got}', expected '{want}'"
+        # A file made for a user that had none is encrypted to the host as well.
+        status, out = user_keys("carol ${hostName} --sudo-keys ${fixtures}/ops_sudo.pub")
+        assert status == 0, out
+        fleet.succeed(sync_cmd)
+        fleet.succeed(
+            "SOPS_AGE_KEY_FILE=/var/lib/fleet/age.key sops -d --extract '[\"sudo_keys\"]'"
+            " /var/lib/fleet/secrets/users/carol/${hostName}.yaml | grep -q ops_sudo@test"
+        )
 
     with subtest("11: an older signed commit served again is refused, unless the record goes"):
         fleet.succeed(sync_cmd)
@@ -560,6 +685,40 @@ pkgs.testers.runNixOSTest {
         status, out = fleet.execute(check_cmd + "bad 2>&1")
         assert status == 12, f"check exited {status}: {out}"
         assert "missing key hotspot/nope" in out, out
+
+    with subtest("15d: check refuses keys from a file that lacks them"):
+        # A configuration whose account takes its login keys from the secrets
+        # (the secret users/<name>/authorized_keys) while the account's file
+        # on the branch holds a password only; support's file has its keys.
+        fleet.succeed(
+            "install -d -m 700 /tmp/check-state/secrets/users /tmp/check-state/secrets/users/carol /tmp/check-state/secrets/users/support",
+            "install -d /tmp/check-keys-flake",
+            "printf 'password: ENC[x]\nsops:\n  mac: ENC[z]\n' > /tmp/check-state/secrets/users/carol/h.yaml",
+            "printf 'authorized_keys: ENC[x]\nsops:\n  mac: ENC[z]\n' > /tmp/check-state/secrets/users/support/h.yaml",
+            "cp ${pkgs.writeText "check-keys-flake.nix" ''
+              {
+                outputs = _:
+                  let
+                    keys = user: { sopsFile = "/x/secrets/users/''${user}/h.yaml"; key = "authorized_keys"; };
+                    host = secrets: { config.sops.secrets = secrets; };
+                  in {
+                    nixosConfigurations.keys = host { "users/support/authorized_keys" = keys "support"; };
+                    nixosConfigurations.nokeys = host {
+                      "users/support/authorized_keys" = keys "support";
+                      "users/carol/authorized_keys" = keys "carol";
+                    };
+                  };
+              }
+            ''} /tmp/check-keys-flake/flake.nix",
+        )
+        keys_check = (
+            "NIX_CONFIG='extra-experimental-features = nix-command flakes'"
+            " fleet-secrets-sync check --state /tmp/check-state --config path:/tmp/check-keys-flake --host "
+        )
+        fleet.succeed(keys_check + "keys")
+        status, out = fleet.execute(keys_check + "nokeys 2>&1")
+        assert status == 12, f"check exited {status}: {out}"
+        assert "missing key authorized_keys in" in out and "users/carol/h.yaml" in out, out
 
     with subtest("16: a forge answering for github.com without GitHub's host key is refused"):
         # github.com resolves to the forge here, as for a machine in the

@@ -78,6 +78,16 @@ let
           default = false;
           description = "Deploy a per-host SSH key from users/<name>/<host>.yaml to /run/secrets/users/<name>/ssh_key. Can be turned on any time after the account exists. Ignored on a host without `conf.secrets.repo.url`.";
         };
+        authorizedKeys = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Accept the SSH public keys in users/<name>/<host>.yaml (`authorized_keys`, one per line) for this account's login, besides `sshKeys`. They are read from /run/secrets/users/<name>/authorized_keys at each login, so a change needs no rebuild. Ignored on a host without `conf.secrets.repo.url`.";
+        };
+        sudoKeys = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Accept the SSH public keys in users/<name>/<host>.yaml (`sudo_keys`, one per line) for this privileged account's sudo, besides `sudoSshKeys`, as `sudoSshKeys` does. Ignored on a host without `conf.secrets.repo.url`.";
+        };
       };
       manageAccount = lib.mkOption {
         type = lib.types.nullOr lib.types.bool;

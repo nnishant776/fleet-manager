@@ -12,6 +12,8 @@ let
   accounts = config.conf.users.accounts;
   withPassword = lib.filterAttrs (_: a: a.secrets.password) accounts;
   withSshKey = lib.filterAttrs (_: a: a.secrets.sshKey) accounts;
+  withAuthorizedKeys = lib.filterAttrs (_: a: a.secrets.authorizedKeys) accounts;
+  withSudoKeys = lib.filterAttrs (_: a: a.secrets.sudoKeys) accounts;
   userFile = name: "${cfg.statePath}/secrets/users/${name}/${host}.yaml";
 
   # A user's secrets are that user's alone: every secret read from a file
@@ -40,6 +42,12 @@ in {
       message = "conf.users.accounts.${name}: `secrets.password` and `initialHashedPassword` are both set; on a host with conf.secrets.repo.url the password comes from the secrets repository, so remove `initialHashedPassword` or set `secrets.password = false`.";
     }) withPassword ++ ownerOnly ++ noClash;
 
+    # NixOS refuses a configuration in which no administrator can log in, by
+    # looking for a password or a key in the configuration. Keys from the
+    # secrets arrive at runtime, out of its sight; the sync's check refuses a
+    # snapshot that lacks them.
+    users.allowNoPasswordLogin = lib.mkIf (lib.any (a: a.privileged) (lib.attrValues withAuthorizedKeys)) (lib.mkDefault true);
+
     sops.secrets =
       lib.mapAttrs' (name: _: lib.nameValuePair "password/${name}" {
         sopsFile = userFile name;
@@ -59,7 +67,22 @@ in {
           owner = name;
           mode = "0400";
         };
-      }) withSshKey;
+      }) withSshKey
+      # sshd opens the login keys as the account, so the file is the account's,
+      # 0400. The sudo keys are root's alone: a key the account could add to
+      # would not be a second factor for sudo.
+      // lib.mapAttrs' (name: _: lib.nameValuePair "users/${name}/authorized_keys" {
+        sopsFile = userFile name;
+        key = "authorized_keys";
+        owner = name;
+        mode = "0400";
+      }) withAuthorizedKeys
+      // lib.mapAttrs' (name: _: lib.nameValuePair "users/${name}/sudo_keys" {
+        sopsFile = userFile name;
+        key = "sudo_keys";
+        owner = "root";
+        mode = "0400";
+      }) withSudoKeys;
 
     users.users = lib.mapAttrs (name: _: {
       hashedPasswordFile = config.sops.secrets."password/${name}".path;

@@ -17,7 +17,14 @@ let
     && net.wireless.enable && net.wireless.wifi.enable;
 
   # Accounts whose sudo also takes an SSH key.
-  sudoKeyUsers = lib.filterAttrs (_: u: u.privileged && u.sudoSshKeys != [ ]) users;
+  # Keys in the configuration (`sudoSshKeys`) or in the secrets repository
+  # (`secrets.sudoKeys`, on a host that has one); both are read together.
+  secretsHost = config.conf.secrets.repo.url != null;
+  hasSudoKeys = u: u.sudoSshKeys != [ ] || (secretsHost && u.secrets.sudoKeys);
+  sudoKeyUsers = lib.filterAttrs (_: u: u.privileged && hasSudoKeys u) users;
+  # Only the accounts that list keys in the configuration get a file in /etc.
+  sudoKeyFileUsers = lib.filterAttrs (_: u: u.sudoSshKeys != [ ]) sudoKeyUsers;
+  fromSecrets = lib.any (u: secretsHost && u.secrets.sudoKeys) (lib.attrValues users);
 
   # Deliberately NOT in the list above: `kvm`. /dev/kvm is world-accessible by
   # default udev rule, so the group grants nothing and is given to every user,
@@ -99,10 +106,13 @@ in
         # A copy owned by root, not a link into the store, which the module
         # would refuse: the store's directory is writable by the build users.
         mode = "0444";
-      }) sudoKeyUsers;
+      }) sudoKeyFileUsers;
+    # Keys from the secrets repository (`secrets.sudoKeys`) are in root's
+    # 0400 file under /run/secrets, read at each sudo.
     security.pam.sshAgentAuth = lib.mkIf (sudoKeyUsers != { }) {
       enable = true;
-      authorizedKeysFiles = [ "/etc/ssh/sudo_keys.d/%u" ];
+      authorizedKeysFiles = [ "/etc/ssh/sudo_keys.d/%u" ]
+        ++ lib.optional fromSecrets "/run/secrets/users/%u/sudo_keys";
     };
     security.pam.services.sudo.sshAgentAuth = lib.mkIf (sudoKeyUsers != { }) true;
     # `sudo -n` (never prompt), as scripts and remote deploys use it, skips
@@ -131,6 +141,12 @@ in
       (lib.mapAttrsToList (username: user: {
         assertion = user.sudoSshKeys == [ ] || user.privileged;
         message = "conf.users.accounts.${username} lists sudoSshKeys but is not privileged;"
+          + " only privileged accounts can use sudo.";
+      }) users)
+      ++
+      (lib.mapAttrsToList (username: user: {
+        assertion = !user.secrets.sudoKeys || user.privileged;
+        message = "conf.users.accounts.${username} sets secrets.sudoKeys but is not privileged;"
           + " only privileged accounts can use sudo.";
       }) users)
       ++
