@@ -6,6 +6,10 @@
 # persistent notification in a graphical session, shown again whenever the
 # sync writes it, and as a few lines at every shell login, which also covers
 # SSH and headless machines. `fleet-sync-status` prints it on demand.
+#
+# A second, smaller notice names users whose own secrets could not be updated
+# (/var/lib/fleet-sync/user-problems, a copy of the sync's list of them): the
+# machine updates, and those users keep the file they had.
 { config, lib, pkgs, ... }:
 let
   cfg = config.conf.fleet;
@@ -14,21 +18,40 @@ let
   enabled = if au.enable != null then au.enable else cfg.repo.url != null;
 
   status = "/var/lib/fleet-sync/status";
+  userProblems = "/var/lib/fleet-sync/user-problems";
 
   # The status, for people: what happened, what to do, and since when.
   describe = pkgs.writeShellApplication {
     name = "fleet-sync-status";
     runtimeInputs = [ pkgs.coreutils pkgs.gnused ];
     text = ''
-      [ -r ${status} ] || { echo "Configuration updates are working."; exit 0; }
-      field() { sed -n "s/^$1=//p" ${status}; }
-      since="$(field since)"
-      commit="$(field commit)"
-      field message
-      echo
-      echo "Please report this to your administrator."
-      if [ -n "$since" ]; then
-        printf 'Since %s%s.\n' "$(date -d "$since" '+%-d %b %Y, %H:%M')" "''${commit:+, commit ''${commit:0:12}}"
+      if [ ! -r ${status} ] && [ ! -r ${userProblems} ]; then
+        echo "Configuration updates are working."
+        exit 0
+      fi
+      if [ -r ${status} ]; then
+        field() { sed -n "s/^$1=//p" ${status}; }
+        since="$(field since)"
+        commit="$(field commit)"
+        field message
+        echo
+        echo "Please report this to your administrator."
+        if [ -n "$since" ]; then
+          printf 'Since %s%s.\n' "$(date -d "$since" '+%-d %b %Y, %H:%M')" "''${commit:+, commit ''${commit:0:12}}"
+        fi
+      fi
+      if [ -r ${userProblems} ]; then
+        if [ -r ${status} ]; then
+          echo
+        fi
+        echo "The secrets of these users could not be updated; each keeps what it had:"
+        while read -r user reason; do
+          printf '  %s: %s\n' "$user" "$reason"
+        done < ${userProblems}
+        if [ ! -r ${status} ]; then
+          echo
+          echo "Please report this to your administrator."
+        fi
       fi
     '';
   };
@@ -40,7 +63,7 @@ let
       idFile="''${XDG_RUNTIME_DIR:-/tmp}/fleet-sync-notify.id"
 
       # Nothing wrong, and nothing on screen to take down.
-      if [ ! -r ${status} ] && [ ! -s "$idFile" ]; then
+      if [ ! -r ${status} ] && [ ! -r ${userProblems} ] && [ ! -s "$idFile" ]; then
         exit 0
       fi
 
@@ -55,7 +78,7 @@ let
         exit 0
       fi
 
-      if [ ! -r ${status} ]; then
+      if [ ! -r ${status} ] && [ ! -r ${userProblems} ]; then
         # Fixed: take down the notice this session showed.
         busctl --user call org.freedesktop.Notifications /org/freedesktop/Notifications \
           org.freedesktop.Notifications CloseNotification u "$(cat "$idFile")" || true
@@ -67,6 +90,10 @@ let
       # expiry, critical urgency and the resident hint. Each showing replaces
       # the last one by id rather than stacking a second copy.
       replaceId="$(cat "$idFile" 2>/dev/null || echo 0)"
+      title="Configuration updates on this machine have stopped"
+      if [ ! -r ${status} ]; then
+        title="Some users' secrets on this machine have not updated"
+      fi
       notify-send \
         --app-name="Fleet configuration" \
         --urgency=critical \
@@ -75,7 +102,7 @@ let
         --icon=dialog-warning \
         --replace-id="$replaceId" \
         --print-id \
-        "Configuration updates on this machine have stopped" \
+        "$title" \
         "$(fleet-sync-status)" > "$idFile"
     '';
   };
@@ -87,6 +114,10 @@ in {
       environment.loginShellInit = ''
         if [ -r ${status} ]; then
           printf '\n*** Configuration updates on this machine have stopped ***\n\n'
+          ${lib.getExe describe}
+          echo
+        elif [ -r ${userProblems} ]; then
+          printf "\n*** Some users' secrets on this machine have not updated ***\n\n"
           ${lib.getExe describe}
           echo
         fi
@@ -111,7 +142,7 @@ in {
         description = "Watch this machine's configuration update status";
         wantedBy = [ "graphical-session.target" ];
         partOf = [ "graphical-session.target" ];
-        pathConfig.PathChanged = status;
+        pathConfig.PathChanged = [ status userProblems ];
       };
 
       # As in fleet/home-drift.nix: wantedBy only takes effect at the next

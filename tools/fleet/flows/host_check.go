@@ -114,15 +114,54 @@ var HostCheck = &engine.Flow{
 			Do: engine.Checks(
 				engine.Probe{
 					What: "secrets snapshot",
-					Cmd:  fleet.OnHost(`sudo -n test -d /var/lib/fleet || { echo none; exit 0; }; sudo -n readlink /var/lib/fleet/secrets || echo missing`),
+					Cmd:  fleet.OnHost(`sudo -n test -d /var/lib/fleet || { echo none; exit 0; }; if sudo -n readlink /var/lib/fleet/secrets; then sudo -n cat /var/lib/fleet/secrets/manifest 2>/dev/null || true; else echo missing; fi`),
 					Expect: func(out string) (string, error) {
-						switch out = strings.TrimSpace(out); {
-						case out == "none":
+						lines := strings.Split(strings.TrimSpace(out), "\n")
+						switch name := strings.TrimSpace(lines[0]); {
+						case name == "none":
 							return "none (this host takes no secrets)", nil
-						case out == "missing":
+						case name == "missing":
 							return "", errors.New("an identity but no snapshot yet: not enrolled, or its deploy key is not registered")
 						}
-						return "commit " + short(strings.TrimPrefix(out, "snapshots/")), nil
+						// The snapshot is named by the hash of its manifest, which
+						// says which commits it was made from; one from before the
+						// manifest is named by its commit.
+						commit := strings.TrimPrefix(strings.TrimSpace(lines[0]), "snapshots/")
+						var users []string
+						for _, l := range lines[1:] {
+							f := strings.Fields(l)
+							switch {
+							case len(f) == 2 && f[0] == "host":
+								commit = f[1]
+							case len(f) == 3 && f[0] == "user" && f[2] == "host-branch":
+								users = append(users, f[1]+" (host branch)")
+							case len(f) == 3 && f[0] == "user":
+								users = append(users, f[1]+" (own branch, "+short(f[2])+")")
+							case len(f) == 4 && f[0] == "user" && f[2] == "kept":
+								users = append(users, f[1]+" (kept the file from "+short(f[3])+")")
+							}
+						}
+						detail := "commit " + short(commit)
+						if len(users) > 0 {
+							detail += "; users: " + strings.Join(users, ", ")
+						}
+						return detail, nil
+					},
+				},
+				engine.Probe{
+					What: "users' own secrets",
+					Cmd:  fleet.OnHost(`cat /var/lib/fleet-sync/user-problems 2>/dev/null || true`),
+					Expect: func(out string) (string, error) {
+						var lines []string
+						for _, l := range strings.Split(out, "\n") {
+							if user, reason, ok := strings.Cut(strings.TrimSpace(l), " "); ok {
+								lines = append(lines, "\n        "+user+": "+reason)
+							}
+						}
+						if len(lines) == 0 {
+							return "all up to date", nil
+						}
+						return "", fmt.Errorf("%d could not be updated and keep the file they had:%s", len(lines), strings.Join(lines, ""))
 					},
 				},
 				engine.Probe{

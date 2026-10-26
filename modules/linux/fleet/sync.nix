@@ -82,6 +82,17 @@ let
           --repo ${lib.escapeShellArg config.conf.secrets.repo.url} \
           --ref ${lib.escapeShellArg config.conf.secrets.repo.ref} \
           --signers ${signers} || rc=$?
+        # The users whose own branch the sync could not take a file from. The
+        # state directory is root-only, so the notice every account gets
+        # (fleet/sync-status.nix) reads a copy here.
+        userProblems=/var/lib/fleet-sync/user-problems
+        if [ -s ${lib.escapeShellArg config.conf.secrets.statePath}/user-problems ]; then
+          install -d -m 0755 /var/lib/fleet-sync
+          install -m 0644 ${lib.escapeShellArg config.conf.secrets.statePath}/user-problems "$userProblems.tmp" \
+            && mv -f "$userProblems.tmp" "$userProblems"
+        else
+          rm -f "$userProblems"
+        fi
         if [ "$rc" -ne 0 ]; then
           log "secrets sync failed with code $rc"
           case "$rc" in

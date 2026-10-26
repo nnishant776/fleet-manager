@@ -31,6 +31,7 @@ func healthyPi() hostAnswers {
 		"status --porcelain":              "0\n",
 		"systemctl show -p LoadState":     "loaded\nsuccess\nSun 2026-10-18 18:21:40 IST\n",
 		"fleet-sync/status":               "",
+		"fleet-sync/user-problems":        "",
 		"readlink /var/lib/fleet/secrets": "snapshots/a32bf3e3cc506d937af8934906ba14e80762d028\n",
 		"find -H /run/secrets":            "hotspot/wls2ccf67579ff5\nwifi_psk\n",
 		"is-system-running":               "running\n",
@@ -65,6 +66,7 @@ func TestHostCheckOnAHealthyHost(t *testing.T) {
 		"✓ last sync: succeeded, at Sun 2026-10-18 18:21:40 IST",
 		"✓ problems recorded for everyone: none",
 		"✓ secrets snapshot: commit a32bf3e3cc50",
+		"✓ users' own secrets: all up to date",
 		"✓ decrypted secrets: hotspot/wls2ccf67579ff5, wifi_psk",
 		"✓ system state: running, no failed units",
 	} {
@@ -102,8 +104,45 @@ func TestHostCheckReportsEveryProblem(t *testing.T) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}
 	}
-	if len(fake.Ran) != 8 {
-		t.Errorf("ran %d probes, want all 8", len(fake.Ran))
+	if len(fake.Ran) != 9 {
+		t.Errorf("ran %d probes, want all 9", len(fake.Ran))
+	}
+}
+
+func TestHostCheckNamesTheCommitsAndUsersOfASnapshot(t *testing.T) {
+	answers := healthyPi()
+	answers["readlink /var/lib/fleet/secrets"] = "snapshots/45808d850822096c81400ce04f9226fe4d8ecb358f368368fae0517f57fee5fa\n" +
+		"host 8ed78592e8c0437e04fad0d13f1e5d4bd03e4fd4\n" +
+		"user alice host-branch\n" +
+		"user dave dac85d32ccc25060bc8857e2d722f0a7a06e89d2\n" +
+		"user erin kept 2d4edd5074de7b742e9d97d50abd667b8f7fad15\n"
+	err, _, out := runHostCheck(t, answers)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	want := "✓ secrets snapshot: commit 8ed78592e8c0; users: alice (host branch), dave (own branch, dac85d32ccc2), erin (kept the file from 2d4edd5074de)"
+	if !strings.Contains(out, want) {
+		t.Errorf("output lacks %q:\n%s", want, out)
+	}
+}
+
+func TestHostCheckReportsEachUserWhoseSecretsCouldNotBeUpdated(t *testing.T) {
+	answers := healthyPi()
+	answers["fleet-sync/user-problems"] = "dave commit abc on user/dave is not signed by the user's key or an allowed signer\nerin has no branch user/erin\n"
+	err, _, out := runHostCheck(t, answers)
+	if err == nil || !strings.Contains(err.Error(), "1 of 5 steps") {
+		t.Fatalf("got %v\n%s", err, out)
+	}
+	for _, want := range []string{
+		"✗ users' own secrets: 2 could not be updated and keep the file they had:",
+		"dave: commit abc on user/dave is not signed by the user's key or an allowed signer",
+		"erin: has no branch user/erin",
+		"✓ secrets snapshot",
+		"✓ system state",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
+		}
 	}
 }
 

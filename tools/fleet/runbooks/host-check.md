@@ -54,7 +54,8 @@ if any found a problem.
 4. **Secrets.** The snapshot names the secrets commit the host last accepted; /run/secrets holds what activation decrypted.
 
    ```
-   $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'sudo -n test -d /var/lib/fleet || { echo none; exit 0; }; sudo -n readlink /var/lib/fleet/secrets || echo missing'
+   $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'sudo -n test -d /var/lib/fleet || { echo none; exit 0; }; if sudo -n readlink /var/lib/fleet/secrets; then sudo -n cat /var/lib/fleet/secrets/manifest 2>/dev/null || true; else echo missing; fi'
+   $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'cat /var/lib/fleet-sync/user-problems 2>/dev/null || true'
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'sudo -n find -H /run/secrets /run/secrets-for-users -mindepth 1 ! -type d -printf '\''%P\n'\'' 2>/dev/null | sort -u'
    ```
 

@@ -6,6 +6,9 @@
 #   /var/lib/fleet-sync/status, readable by everyone, with the commit;
 # - an unprivileged user sees the notice at login, and `fleet-sync-status`
 #   prints it;
+# - users named in /var/lib/fleet-sync/user-problems (whose own secrets the
+#   sync could not take) are shown at login and by `fleet-sync-status`, with
+#   or without a stopped sync;
 # - the same problem on the next run keeps its first time;
 # - a different problem (a signed commit that does not build) replaces it;
 # - a signed commit that builds is applied, and recorded, readable by
@@ -126,6 +129,33 @@ pkgs.testers.runNixOSTest {
         checkout.fail("test -e /var/lib/fleet-sync/status")
         out = checkout.succeed("su -l bob -c true 2>&1")
         assert "have stopped" not in out, out
+
+    with subtest("users whose own secrets could not be updated are named, without stopping updates"):
+        # As the sync leaves them: one line per user, a user name and a reason.
+        checkout.succeed(
+            "install -d -m 755 /var/lib/fleet-sync",
+            "printf 'dave commit abc is not signed\\nerin has no branch user/erin\\n' > /var/lib/fleet-sync/user-problems",
+            "chmod 644 /var/lib/fleet-sync/user-problems",
+        )
+        out = checkout.succeed("su -l bob -c true 2>&1")
+        assert "Some users' secrets on this machine have not updated" in out, out
+        assert "dave: commit abc is not signed" in out, out
+        assert "erin: has no branch user/erin" in out, out
+        assert "Please report this to your administrator." in out, out
+        assert "have stopped" not in out, out
+        out = checkout.succeed("runuser -u bob -- fleet-sync-status")
+        assert "dave: commit abc is not signed" in out, out
+        # Alongside a stopped sync, both are told.
+        checkout.succeed(
+            "printf 'kind=build\\ncommit=\\nsince=2026-01-01T00:00:00+00:00\\nmessage=It does not build.\\n' > /var/lib/fleet-sync/status",
+        )
+        out = checkout.succeed("runuser -u bob -- fleet-sync-status")
+        assert "It does not build." in out and "dave: commit abc is not signed" in out, out
+        out = checkout.succeed("su -l bob -c true 2>&1")
+        assert "Configuration updates on this machine have stopped" in out, out
+        checkout.succeed("rm /var/lib/fleet-sync/status /var/lib/fleet-sync/user-problems")
+        out = checkout.succeed("runuser -u bob -- fleet-sync-status")
+        assert "Configuration updates are working." in out, out
 
     with subtest("an unsigned commit stops the sync and is recorded for everyone"):
         checkout.succeed(
