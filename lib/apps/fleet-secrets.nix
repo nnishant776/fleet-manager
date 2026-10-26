@@ -209,8 +209,11 @@ pkgs.writeShellApplication {
     }
 
     # The index holds exactly this command's change, since the worktree is new.
+    # Once it holds the commit, a branch made from origin's stays: it is what
+    # gets pushed.
     commit() {  # commit MESSAGE
       git commit -q -m "$1"
+      made_branch=""
     }
 
     # Reads an enrollment file (as written by fleet-secrets-sync init) and

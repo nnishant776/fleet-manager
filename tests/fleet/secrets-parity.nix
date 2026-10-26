@@ -271,6 +271,25 @@ pkgs.runCommand "fleet-secrets-parity" {
   grep -q "host 'gamma' is not enrolled" go.err
   compare "the refused commands"
 
+  # A host branch only origin has, as in a fresh clone: the command makes the
+  # local branch from it and commits there, and the branch, with the commit,
+  # is still there afterwards to be pushed.
+  for repo in sh go; do
+    git clone -q --bare $repo $repo-origin.git
+    git -C $repo remote add origin "$PWD/$repo-origin.git"
+    git -C $repo fetch -q origin
+    git -C $repo branch -q -D host/alpha
+  done
+  printf 'pw-alice\npw-alice\n' | sh_tool user-password alice alpha
+  printf 'pw-alice' | go_tool user-password alice alpha --password-stdin
+  for repo in sh go; do
+    git -C $repo rev-parse -q --verify refs/heads/host/alpha > /dev/null \
+      || { echo "$repo: the branch made from origin's, and its commit, are gone"; exit 1; }
+    [ "$(git -C $repo rev-parse host/alpha~1)" = "$(git -C $repo rev-parse origin/host/alpha)" ] \
+      || { echo "$repo: the commit is not on the branch made from origin's"; exit 1; }
+  done
+  compare "user-password alice alpha, on a branch only origin had"
+
   echo "parity: the shell tool and the port agree on every command"
   touch $out
 ''
