@@ -48,7 +48,21 @@ and `ops`, a privileged account, unlocks sudo with a key from `sudo_keys` throug
 forwarded agent, as `tests/users/ssh-key-sudo.nix` does for `sudoSshKeys`. A check
 with a file that lacks `authorized_keys` is refused, and `fleet secrets user-keys`
 is run on the forge: a line that is not a key stops it, and keys it stores reach
-the host's snapshot. The forge also plays the
+the host's snapshot.
+
+A user the host's file lists under `users` (dave, with a signing key and an age
+recipient) has a branch of his own, `user/dave`, with `users/dave/<host>.yaml`
+encrypted to him, the host and the recovery key. The test has the forge list him
+and commit as him, and checks that the host takes his file from his branch (the
+snapshot's `manifest` says which commit), that a file for him on the host's
+branch is ignored, that a commit signed by an unknown key, a file without his
+recipient, a password that is not a hash and a branch forced back to an older
+commit each keep his previous file and are named in `user-problems` (and in the
+notice every account gets), while the host's own updates and alice, who is not
+listed, go on; that a good commit clears the problem; and that a sync with
+nothing new makes no new snapshot.
+
+The forge also plays the
 maintainer: `fleet host secret` works in a worktree of `host/scratch-secrets` in
 a clone that stays on `main`, with the recovery recipient cached the way
 `fleet setup` leaves it. It needs KVM and takes a few minutes; the CI

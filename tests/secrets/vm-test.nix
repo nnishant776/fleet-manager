@@ -9,6 +9,11 @@
 # Keys come from the secrets too: alice logs in with a key that is in no
 # configuration, support (keysFromSecrets) with its key in its file on the
 # host's branch, and ops unlocks sudo with a key in its file.
+# A user the host's file lists (dave) has a branch of his own: the host takes
+# his file from it when his key signed the tip, a signer it does not know, the
+# wrong recipients, a rollback and a malformed password each keep the previous
+# file and are named in user-problems, and a sync with nothing new makes no
+# new snapshot.
 # No network and no hosting service are involved. Run it with
 # `nix build .#checks.x86_64-linux.secrets-sync` (see README.md).
 { pkgs, inputs, self }:
@@ -52,6 +57,14 @@ let
     cp "$keys/alice_login" "$keys/alice_login.pub" "$keys/ops_sudo" "$keys/ops_sudo.pub" "$keys/ops_login" "$out/"
     # The maintainer's keys, for the forge to play the maintainer with fleet.
     cp "$keys/recovery.key" "$keys/signing_ed25519" "$out/"
+    # Dave, a user with a branch of his own: his signing key and age identity,
+    # a key no one trusts, and the host's recipient for his file.
+    ssh-keygen -q -t ed25519 -N "" -C "dave@test" -f "$keys/dave_sig"
+    ssh-keygen -q -t ed25519 -N "" -C "evil@test" -f "$keys/evil_sig"
+    age-keygen -o "$keys/dave.key" 2>/dev/null
+    age-keygen -y "$keys/dave.key" > "$out/dave.pub"
+    echo "$recipient" > "$out/host.pub"
+    cp "$keys/dave_sig" "$keys/dave_sig.pub" "$keys/evil_sig" "$keys/dave.key" "$out/"
 
     # The identity document that `os-install --identity` reads, for the host
     # key and both deploy keys.
@@ -193,6 +206,64 @@ let
     ' "/tmp/$user-$key" "$@"
   '';
 
+  # Run on the forge as the git account, which plays the maintainer and, with
+  # keys of their own, dave. The maintainer lists dave in the host's file, or
+  # puts a file of his on the host's branch.
+  listDave = pkgs.writeShellScript "list-dave" ''
+    set -eu
+    export SOPS_AGE_KEY_FILE=/home/git/recovery.key
+    git -C /home/git/w worktree add -q /home/git/hw host/${hostName}
+    cd /home/git/hw
+    sops set hosts/${hostName}.yaml '["users"]["dave"]' \
+      "{\"signing_key\": \"$(cut -d' ' -f1,2 ${fixtures}/dave_sig.pub)\", \"age_recipient\": \"$(cat ${fixtures}/dave.pub)\"}"
+    git add -A
+    git commit -q -m "list dave"
+    git push -q origin host/${hostName}
+    cd /
+    git -C /home/git/w worktree remove --force /home/git/hw
+  '';
+  decoyDave = pkgs.writeShellScript "decoy-dave" ''
+    set -eu
+    git -C /home/git/w worktree add -q /home/git/hw host/${hostName}
+    cd /home/git/hw
+    mkdir -p users/dave
+    printf 'password: "%s"\n' '$y$j9T$salt$hashdecoy' > users/dave/${hostName}.yaml
+    sops --encrypt --in-place --age "$(cat ${fixtures}/host.pub),$(cat ${fixtures}/recovery.pub)" users/dave/${hostName}.yaml
+    git add -A
+    git commit -q -m "a file for dave on the host's branch"
+    git push -q origin host/${hostName}
+    cd /
+    git -C /home/git/w worktree remove --force /home/git/hw
+  '';
+  # Dave's side: a commit on his branch, signed by SIGNER (dave_sig or
+  # evil_sig), his file encrypted to RECIPIENTS (all, or nouser: only the host
+  # and the recovery key), with the password named PW (one, two, ...; bad is
+  # not a hash).
+  daveCommit = pkgs.writeShellScript "dave-commit" ''
+    set -eu
+    signer=$1 recipients=$2 pw=$3
+    if [ ! -d /home/git/d ]; then
+      git init -q -b user/dave /home/git/d
+      git -C /home/git/d remote add origin /var/lib/forge/secrets.git
+    fi
+    cd /home/git/d
+    mkdir -p users/dave
+    case "$pw" in
+      bad) hash=plain ;;
+      *)   hash='$y$j9T$salt$hash'"$pw" ;;
+    esac
+    printf 'password: "%s"\n' "$hash" > users/dave/${hostName}.yaml
+    age="$(cat ${fixtures}/host.pub),$(cat ${fixtures}/recovery.pub)"
+    if [ "$recipients" = all ]; then
+      age="$age,$(cat ${fixtures}/dave.pub)"
+    fi
+    sops --encrypt --in-place --age "$age" users/dave/${hostName}.yaml
+    git add -A
+    git -c gpg.format=ssh -c "user.signingkey=/home/git/keys/$signer" -c commit.gpgsign=true \
+      -c "user.name=$signer" -c "user.email=$signer@test" commit -q -m "$signer: $pw"
+    git push -q origin HEAD:refs/heads/user/dave
+  '';
+
   secretsUrl = "ssh://git@forge/var/lib/forge/secrets.git";
   # A private configuration repository, as a fleet's inventory is: its own account
   # on the forge, which takes the host's configuration key and no other.
@@ -223,7 +294,7 @@ pkgs.testers.runNixOSTest {
 
     # sshd runs git-upload-pack through the user's login PATH; fleet is the
     # maintainer's tool.
-    environment.systemPackages = [ pkgs.git self.packages.${pkgs.stdenv.hostPlatform.system}.fleet ];
+    environment.systemPackages = [ pkgs.git pkgs.sops pkgs.age self.packages.${pkgs.stdenv.hostPlatform.system}.fleet ];
 
     systemd.services.forge-repos = {
       description = "Put the fixture repositories where the git user serves them";
@@ -454,6 +525,8 @@ pkgs.testers.runNixOSTest {
         "install -d -o git -m 700 /home/git/.ssh",
         "install -o git -m 600 /etc/test-keys/recovery.key /etc/test-keys/signing_ed25519 /home/git/",
         "install -o git -m 600 /etc/test-keys/support_ed25519 /home/git/.ssh/id_ed25519",
+        "install -d -o git -m 700 /home/git/keys",
+        "install -o git -m 600 ${fixtures}/dave_sig ${fixtures}/evil_sig /home/git/keys/",
         "ssh-keyscan -t ed25519 fleet > /home/git/.ssh/known_hosts 2>/dev/null",
         "chown git /home/git/.ssh/known_hosts",
         "su git -c 'mkdir -p ~/.local/state/fleet && cp ${fixtures}/recovery.pub ~/.local/state/fleet/recovery.pub'",
@@ -909,5 +982,163 @@ pkgs.testers.runNixOSTest {
         assert calls() == ["switch", "test", "test", "test"], calls()
         assert applied() == link() != second, (applied(), link())
         fleet.fail("test -e /var/lib/fleet-sync/status")
+
+    # Dave has a branch of his own. As the forge: the maintainer lists him in
+    # the host's file, and he, with his own keys, commits to user/dave.
+    def as_git(command):
+        return forge.succeed(f"su git -c '{command}'")
+
+    def dave(signer, recipients, pw):
+        as_git(f"${daveCommit} {signer} {recipients} {pw}")
+        return as_git("git -C /home/git/d rev-parse HEAD").strip()
+
+    def force_dave(rev):
+        as_git(f"git -C /home/git/d push -q --force origin {rev}:refs/heads/user/dave")
+
+    def sync_ok():
+        status, out = fleet.execute(sync_cmd + " 2>/dev/null")
+        assert status == 0, f"sync exited {status}: {out}"
+        return out.strip()
+
+    def manifest():
+        return fleet.succeed("cat /var/lib/fleet/secrets/manifest")
+
+    def user_problems():
+        return fleet.succeed("cat /var/lib/fleet/user-problems")
+
+    def dave_password():
+        return fleet.succeed(
+            "SOPS_AGE_KEY_FILE=/var/lib/fleet/age.key sops -d --extract '[\"password\"]'"
+            " /var/lib/fleet/secrets/users/dave/${hostName}.yaml"
+        )
+
+    def password_hash(pw):
+        return "$y$j9T$salt$hash" + pw
+
+    def accepted_dave():
+        return fleet.succeed("cat /var/lib/fleet/accepted/user-dave").strip()
+
+    with subtest("20: a user the host's file lists, with no branch yet, is named and the host carries on"):
+        first = link()
+        as_git("${listDave}")
+        sync_ok()
+        assert link() != first, "listing dave left the snapshot as it was"
+        assert "dave has no branch user/dave" in user_problems(), user_problems()
+        fleet.succeed("test \"$(stat -c %a /var/lib/fleet/user-problems)\" = 644")
+        fleet.fail("test -e /var/lib/fleet/secrets/users/dave")
+        # The host's own file decrypts, and alice still comes from the host's branch.
+        assert host_value("test_secret") == "s3cret value"
+        assert "user alice host-branch" in manifest(), manifest()
+        fleet.succeed("test -f /var/lib/fleet/secrets/users/alice/${hostName}.yaml")
+
+    with subtest("21: with his branch the sync takes dave's file from it, and the manifest says so"):
+        tip = dave("dave_sig", "all", "one")
+        sync_ok()
+        fleet.fail("test -e /var/lib/fleet/user-problems")
+        assert f"user dave {tip}\n" in manifest(), manifest()
+        assert "user alice host-branch\n" in manifest(), manifest()
+        assert "host-branch" not in [l for l in manifest().split("\n") if l.startswith("user dave")][0]
+        assert dave_password() == password_hash("one"), dave_password()
+        assert accepted_dave() == tip
+        # The snapshot is named by the hash of its manifest.
+        name = fleet.succeed("basename $(readlink /var/lib/fleet/secrets)").strip()
+        assert name == fleet.succeed("sha256sum < /var/lib/fleet/secrets/manifest | cut -d' ' -f1").strip(), name
+
+    with subtest("22: a file for a listed user on the host's branch is ignored"):
+        as_git("${decoyDave}")
+        sync_ok()
+        assert dave_password() == password_hash("one"), dave_password()
+        assert "user dave host-branch" not in manifest(), manifest()
+        assert f"user dave {tip}\n" in manifest(), manifest()
+
+    with subtest("23: a commit signed by dave reaches the snapshot"):
+        before = link()
+        tip = dave("dave_sig", "all", "two")
+        sync_ok()
+        assert link() != before
+        assert f"user dave {tip}\n" in manifest(), manifest()
+        assert dave_password() == password_hash("two"), dave_password()
+        assert accepted_dave() == tip
+
+    with subtest("24: a sync with nothing new makes no new snapshot"):
+        before = link()
+        out = sync_ok()
+        assert link() == before, (before, link())
+        assert out == fleet.succeed("basename $(readlink /var/lib/fleet/secrets)").strip(), out
+        assert fleet.succeed("ls /var/lib/fleet/snapshots").split() == [out], out
+        fleet.fail("test -e /var/lib/fleet/user-problems")
+
+    with subtest("25: a commit signed by an unknown key keeps the file, and the host and alice go on"):
+        good = tip
+        dave("evil_sig", "all", "three")
+        out = maintainer("${hostName} second_secret --value-stdin", stdin="another value")
+        assert "✓ committed" in out, out
+        assert host_value("second_secret") == "another value"
+        assert dave_password() == password_hash("two"), dave_password()
+        problem = user_problems()
+        assert problem.startswith("dave ") and "not signed" in problem, problem
+        assert f"user dave kept {good}\n" in manifest(), manifest()
+        assert "user alice host-branch\n" in manifest(), manifest()
+        assert accepted_dave() == good
+
+    with subtest("26: the notice every account gets names dave, and goes when the problem does"):
+        status, out = run_sync()
+        assert status == 0, out
+        fleet.succeed("test \"$(stat -c %a /var/lib/fleet-sync/user-problems)\" = 644")
+        out = fleet.succeed("runuser -u alice -- fleet-sync-status")
+        assert "dave:" in out and "not signed" in out, out
+        out = fleet.succeed("su -l alice -c true 2>&1")
+        assert "Some users' secrets on this machine have not updated" in out, out
+        fleet.fail("test -e /var/lib/fleet-sync/status")
+
+    with subtest("27: dave's next good commit, on top of the bad one, restores his file"):
+        tip = dave("dave_sig", "all", "three")
+        sync_ok()
+        fleet.fail("test -e /var/lib/fleet/user-problems")
+        assert dave_password() == password_hash("three"), dave_password()
+        assert f"user dave {tip}\n" in manifest(), manifest()
+        status, out = run_sync()
+        assert status == 0, out
+        fleet.fail("test -e /var/lib/fleet-sync/user-problems")
+        assert "working" in fleet.succeed("runuser -u alice -- fleet-sync-status")
+
+    with subtest("28: a file not encrypted to dave, this host and the recovery key is kept out"):
+        good = tip
+        dave("dave_sig", "nouser", "four")
+        sync_ok()
+        assert dave_password() == password_hash("three"), dave_password()
+        assert "not encrypted to exactly" in user_problems(), user_problems()
+        assert f"user dave kept {good}\n" in manifest(), manifest()
+        tip = dave("dave_sig", "all", "four")
+        sync_ok()
+        fleet.fail("test -e /var/lib/fleet/user-problems")
+        assert dave_password() == password_hash("four"), dave_password()
+
+    with subtest("29: a password that is not a hash is kept out"):
+        good = tip
+        dave("dave_sig", "all", "bad")
+        sync_ok()
+        assert dave_password() == password_hash("four"), dave_password()
+        assert "not a password hash" in user_problems(), user_problems()
+        assert f"user dave kept {good}\n" in manifest(), manifest()
+        tip = dave("dave_sig", "all", "five")
+        sync_ok()
+        fleet.fail("test -e /var/lib/fleet/user-problems")
+        assert dave_password() == password_hash("five"), dave_password()
+
+    with subtest("30: dave's branch forced back to an older commit is a rollback; restoring it clears the problem"):
+        older = as_git("git -C /home/git/d rev-parse HEAD~1").strip()
+        force_dave(older)
+        sync_ok()
+        assert dave_password() == password_hash("five"), dave_password()
+        assert "does not follow" in user_problems(), user_problems()
+        assert f"user dave kept {tip}\n" in manifest(), manifest()
+        assert accepted_dave() == tip
+        assert host_value("second_secret") == "another value"
+        force_dave(tip)
+        sync_ok()
+        fleet.fail("test -e /var/lib/fleet/user-problems")
+        assert f"user dave {tip}\n" in manifest(), manifest()
+        assert dave_password() == password_hash("five"), dave_password()
   '';
 }
