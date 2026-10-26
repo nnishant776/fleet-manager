@@ -9,7 +9,7 @@ in
   sync = pkgs.writeShellApplication {
     name = "fleet-secrets-sync";
     runtimeInputs = with pkgs; [
-      git openssh age sops yq-go coreutils util-linux findutils gnugrep nix
+      git openssh age sops yq-go coreutils util-linux findutils gnugrep gawk nix
     ];
     text = ''
       usage() {
@@ -207,97 +207,342 @@ in
 
           export GIT_SSH_COMMAND="ssh -i $state/secrets_deploy_key -o IdentitiesOnly=yes ${pins.options} -o UserKnownHostsFile=$state/known_hosts -o StrictHostKeyChecking=accept-new"
 
-          # Partial and sparse where the forge allows it; some servers refuse
-          # the filter outright, and a plain shallow clone then does the job.
-          clone_once() {
-            rm -rf "$tmp/clone"
-            if git clone --filter=blob:none --no-checkout --depth 1 --branch "$ref" "$repo" "$tmp/clone" 2>"$tmp/err"; then
+          # One bare repository for the whole run, a ref per branch. Nothing is
+          # checked out: the files are read with git show.
+          g() { git --git-dir="$tmp/repo" "$@"; }
+          init_repo() {
+            rm -rf "$tmp/repo"
+            git init -q --bare "$tmp/repo"
+            g remote add origin "$repo"
+          }
+          init_repo
+          fetched=0
+          # Partial where the forge allows it; some servers refuse the filter
+          # outright, and a plain shallow fetch then does the job.
+          filter=(--filter=blob:none)
+          fetch_once() {
+            if g fetch --quiet "''${filter[@]}" "$@" 2>"$tmp/err"; then
               return 0
             fi
-            if grep -qiE 'filter.*(not supported|unsupported|not recognized)|(not supported|unsupported).*filter' "$tmp/err"; then
-              rm -rf "$tmp/clone"
-              git clone --depth 1 --branch "$ref" "$repo" "$tmp/clone" 2>"$tmp/err"
+            if [ "''${#filter[@]}" -gt 0 ] && grep -qiE 'filter.*(not supported|unsupported|not recognized)|(not supported|unsupported).*filter' "$tmp/err"; then
+              filter=()
+              # The refused filter may have left its marks in the repository.
+              if [ "$fetched" -eq 0 ]; then
+                init_repo
+              fi
+              g fetch --quiet "$@" 2>"$tmp/err"
               return
             fi
             return 1
           }
-
-          attempt=0
-          until clone_once; do
-            attempt=$((attempt + 1))
-            cat "$tmp/err" >&2
-            # Trying again does not change the key the forge shows.
-            if grep -q 'Host key verification failed' "$tmp/err"; then
-              fail 10 "the forge at $repo did not show the host key this host knows for it, so nothing was fetched; a machine in the middle would look like this"
-            fi
-            if [ "$attempt" -ge 5 ]; then
-              if grep -q 'Permission denied (publickey)' "$tmp/err"; then
-                echo "fleet-secrets-sync: the forge rejected this host's deploy key; it has to be enrolled:" >&2
-                echo "fleet-secrets-sync: show it with 'fleet-identity' and run 'fleet-secrets host-enroll $host --from FILE' on the maintainer's machine" >&2
+          fetch_retry() {  # fetch_retry WHAT ARGS...: git fetch, with retries
+            local what="$1" attempt=0
+            shift
+            until fetch_once "$@"; do
+              attempt=$((attempt + 1))
+              cat "$tmp/err" >&2
+              # Trying again does not change the key the forge shows.
+              if grep -q 'Host key verification failed' "$tmp/err"; then
+                fail 10 "the forge at $repo did not show the host key this host knows for it, so nothing was fetched; a machine in the middle would look like this"
               fi
-              fail 10 "fetch of $ref from $repo failed after $attempt attempts"
-            fi
-            sleep $((attempt * 15))
-          done
+              if [ "$attempt" -ge 5 ]; then
+                if grep -q 'Permission denied (publickey)' "$tmp/err"; then
+                  echo "fleet-secrets-sync: the forge rejected this host's deploy key; it has to be enrolled:" >&2
+                  echo "fleet-secrets-sync: show it with 'fleet-identity' and run 'fleet-secrets host-enroll $host --from FILE' on the maintainer's machine" >&2
+                fi
+                fail 10 "fetch of $what from $repo failed after $attempt attempts"
+              fi
+              sleep $((attempt * 15))
+            done
+            fetched=1
+          }
 
-          commit="$(git -C "$tmp/clone" rev-parse HEAD)"
-          if ! git -C "$tmp/clone" -c "gpg.ssh.allowedSignersFile=$signers" verify-commit "$commit" >/dev/null 2>&1; then
+          fetch_retry "$ref" --depth 1 origin "+refs/heads/$ref:refs/fleet/host"
+
+          commit="$(g rev-parse refs/fleet/host)"
+          if ! g -c "gpg.ssh.allowedSignersFile=$signers" verify-commit "$commit" >/dev/null 2>&1; then
             fail 11 "commit $commit on $ref is not signed by an allowed signer"
           fi
 
+          # The rollback records, one per branch, in $state/accepted. They were
+          # one file, the host's; it moves to accepted/host once.
+          if [ ! -e accepted ] && [ -d accepted.new ]; then
+            mv -T accepted.new accepted
+          fi
+          if [ -f accepted ]; then
+            rm -rf accepted.new
+            mkdir accepted.new
+            mv accepted accepted.new/host
+            mv -T accepted.new accepted
+          fi
+          mkdir -p accepted
+
           # A signature does not stop an old signed commit from being served
           # again, which would bring back secrets that have since been
-          # replaced. The commit accepted last, kept in $state/accepted, must
-          # be this one or an ancestor of it. The clone holds the tip only, so
-          # when the tip has moved its history is fetched first: commits and
-          # trees, not the files. Removing the record accepts whatever comes
-          # next, for a history rewritten on purpose.
-          if [ -s accepted ]; then
-            last="$(cat accepted)"
+          # replaced. The commit accepted last, kept in $state/accepted/host,
+          # must be this one or an ancestor of it. The repository holds the tip
+          # only, so when the tip has moved its history is fetched first:
+          # commits and trees, not the files. Removing the record accepts
+          # whatever comes next, for a history rewritten on purpose.
+          if [ -s accepted/host ]; then
+            last="$(cat accepted/host)"
             if [ "$last" != "$commit" ]; then
-              if ! git -C "$tmp/clone" fetch --quiet --unshallow origin "$ref" 2>"$tmp/err"; then
+              if ! g fetch --quiet "''${filter[@]}" --depth 2147483647 origin "+refs/heads/$ref:refs/fleet/host" 2>"$tmp/err"; then
                 cat "$tmp/err" >&2
                 fail 10 "fetch of the history of $ref from $repo failed"
               fi
-              if ! git -C "$tmp/clone" merge-base --is-ancestor "$last" "$commit" 2>/dev/null; then
-                fail 16 "commit $commit on $ref does not follow $last, the last commit this host accepted; to accept it on purpose, remove $state/accepted"
+              if [ "$(g rev-parse refs/fleet/host)" != "$commit" ]; then
+                fail 10 "$ref on $repo moved while its history was fetched; the next run starts again"
+              fi
+              if ! g merge-base --is-ancestor "$last" "$commit" 2>/dev/null; then
+                fail 16 "commit $commit on $ref does not follow $last, the last commit this host accepted; to accept it on purpose, remove $state/accepted/host"
               fi
             fi
           fi
 
-          git -C "$tmp/clone" sparse-checkout set --no-cone "hosts/$host.yaml" "users/*/$host.yaml"
-          git -C "$tmp/clone" checkout --quiet
-
-          mkdir -p snapshots
-          new="snapshots/.$commit.new"
-          rm -rf "$new" "snapshots/$commit"
-          mkdir -p "$new"
-          if [ -f "$tmp/clone/hosts/$host.yaml" ]; then
-            mkdir "$new/hosts"
-            cp -p "$tmp/clone/hosts/$host.yaml" "$new/hosts/$host.yaml"
+          # The host's file, and from it the users this host serves from
+          # their own branches. The key is encrypted; nothing else of the
+          # file is read here. No such key: no such users.
+          hostfile="$tmp/host.yaml"
+          have_host_file=0
+          if [ -n "$(g ls-tree --name-only "$commit" -- "hosts/$host.yaml")" ]; then
+            g show "$commit:hosts/$host.yaml" > "$hostfile"
+            have_host_file=1
           fi
-          for f in "$tmp"/clone/users/*/"$host.yaml"; do
-            [ -f "$f" ] || continue
-            u="$(basename "$(dirname "$f")")"
-            mkdir -p "$new/users/$u"
-            cp -p "$f" "$new/users/$u/$host.yaml"
-          done
-          find "$new" -type d -exec chmod 700 {} +
-          find "$new" -type f -exec chmod 600 {} +
-          mv -T "$new" "snapshots/$commit"
-
-          ln -sfn "snapshots/$commit" secrets.tmp && mv -T secrets.tmp secrets
-          printf '%s\n' "$commit" > accepted.tmp && mv -f accepted.tmp accepted
-          find snapshots -mindepth 1 -maxdepth 1 ! -name "$commit" -exec rm -rf {} +
-
-          if [ -f "snapshots/$commit/hosts/$host.yaml" ]; then
-            if ! SOPS_AGE_KEY_FILE="$state/age.key" sops -d --output /dev/null "snapshots/$commit/hosts/$host.yaml" 2>"$tmp/sops-err"; then
+          own="$(age-keygen -y "$state/age.key")" || fail 14 "cannot read the recipient of $state/age.key"
+          listed=()
+          if [ "$have_host_file" -eq 1 ] && [ "$(yq '.users != null' "$hostfile")" = true ]; then
+            if SOPS_AGE_KEY_FILE="$state/age.key" sops -d --extract '["users"]' "$hostfile" > "$tmp/users.yaml" 2>"$tmp/sops-err" \
+               && mapfile -t listed < <(yq 'keys | .[]' "$tmp/users.yaml"); then
+              :
+            else
+              # The check at the end says so with its own message and code.
               cat "$tmp/sops-err" >&2
-              fail 15 "$state/snapshots/$commit/hosts/$host.yaml does not decrypt with this host's key: enrollment incomplete or re-key pending"
+              echo "fleet-secrets-sync: the users of $host cannot be read; none is taken from its own branch this time" >&2
+              listed=()
             fi
           fi
 
-          echo "$commit"
+          # The recovery recipient is the other one in the host's file.
+          recovery=""
+          if [ "$have_host_file" -eq 1 ]; then
+            recovery="$(yq '(.sops.age // [])[].recipient' "$hostfile" | grep -vxF "$own" || true)"
+          fi
+          recovery_problem=""
+          if [ -z "$recovery" ]; then
+            recovery_problem="hosts/$host.yaml has no recipient besides this host's own, so a user's file cannot be checked"
+          elif [ "$(printf '%s\n' "$recovery" | grep -c .)" -ne 1 ]; then
+            recovery_problem="hosts/$host.yaml has more than one recipient besides this host's own, so a user's file cannot be checked"
+          fi
+
+          problems="$tmp/problems"
+          : > "$problems"
+          problem() {  # problem USER REASON
+            printf '%s %s\n' "$1" "$2" >> "$problems"
+            echo "fleet-secrets-sync: user $1: $2" >&2
+          }
+
+          # Which of the listed users have a branch, and a fetch of those.
+          declare -A listed_set=() has_branch=()
+          valid=()
+          for u in "''${listed[@]}"; do
+            if [[ ! "$u" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+              problem "$(printf '%s' "$u" | tr -c 'a-z0-9-' '?')" "is not a valid user name"
+              continue
+            fi
+            listed_set[$u]=1
+            valid+=("$u")
+          done
+          if [ "''${#valid[@]}" -gt 0 ]; then
+            if ! heads="$(g ls-remote origin 'refs/heads/user/*' 2>"$tmp/err")"; then
+              cat "$tmp/err" >&2
+              fail 10 "listing the user branches of $repo failed"
+            fi
+            refspecs=()
+            for u in "''${valid[@]}"; do
+              if printf '%s\n' "$heads" | cut -f2 | grep -qxF "refs/heads/user/$u"; then
+                has_branch[$u]=1
+                refspecs+=("+refs/heads/user/$u:refs/fleet/user/$u")
+              fi
+            done
+            if [ "''${#refspecs[@]}" -gt 0 ]; then
+              fetch_retry "the user branches" --depth 1 origin "''${refspecs[@]}"
+            fi
+          fi
+
+          # What a user's file has to be before the host takes it: the tip of
+          # the user's branch signed by the user's key or an allowed signer, not
+          # older than the one accepted last, the file encrypted to exactly the
+          # user, this host and the recovery key, and a password that is a
+          # hash. Prints why not, in one line, when it is not.
+          pw_re='^(\$[0-9a-z]+\$[^[:space:]]+|![^[:space:]]*)$'
+          check_user() {  # check_user USER
+            local u="$1" key recipient tip last allowed file have want pw
+            if [ -z "''${has_branch[$u]:-}" ]; then
+              echo "has no branch user/$u"
+              return 1
+            fi
+            key="$(U="$u" yq '.[strenv(U)].signing_key // ""' "$tmp/users.yaml" | head -n 1 | cut -d' ' -f1,2)"
+            recipient="$(U="$u" yq '.[strenv(U)].age_recipient // ""' "$tmp/users.yaml" | head -n 1)"
+            if [[ ! "$key" =~ ^[a-z0-9@.-]+\ [A-Za-z0-9+/=]+$ ]]; then
+              echo "is listed without a signing key this host can use"
+              return 1
+            fi
+            if [[ ! "$recipient" =~ ^age1[a-z0-9]+$ ]]; then
+              echo "is listed without an age recipient"
+              return 1
+            fi
+            if [ -n "$recovery_problem" ]; then
+              echo "$recovery_problem"
+              return 1
+            fi
+
+            tip="$(g rev-parse "refs/fleet/user/$u")"
+            allowed="$tmp/allowed-$u"
+            { cat "$signers"; printf '\nuser-%s namespaces="git" %s\n' "$u" "$key"; } > "$allowed"
+            if ! g -c "gpg.ssh.allowedSignersFile=$allowed" verify-commit "$tip" >/dev/null 2>&1; then
+              echo "commit $tip on user/$u is not signed by the user's key or an allowed signer"
+              return 1
+            fi
+
+            if [ -s "accepted/user-$u" ]; then
+              last="$(cat "accepted/user-$u")"
+              if [ "$last" != "$tip" ]; then
+                if ! g fetch --quiet "''${filter[@]}" --depth 2147483647 origin "+refs/heads/user/$u:refs/fleet/user/$u" 2>"$tmp/err"; then
+                  echo "the history of user/$u could not be fetched"
+                  return 1
+                fi
+                if [ "$(g rev-parse "refs/fleet/user/$u")" != "$tip" ]; then
+                  echo "user/$u moved while its history was fetched"
+                  return 1
+                fi
+                if ! g merge-base --is-ancestor "$last" "$tip" 2>/dev/null; then
+                  echo "commit $tip on user/$u does not follow $last, the last commit accepted from it; to accept it on purpose, remove $state/accepted/user-$u"
+                  return 1
+                fi
+              fi
+            fi
+
+            file="users/$u/$host.yaml"
+            if [ -z "$(g ls-tree --name-only "$tip" -- "$file")" ] || ! g show "$tip:$file" > "$tmp/user-$u.yaml" 2>/dev/null; then
+              echo "user/$u holds no $file"
+              return 1
+            fi
+            have="$(yq '(.sops.age // [])[].recipient' "$tmp/user-$u.yaml" | LC_ALL=C sort -u)"
+            want="$(printf '%s\n' "$recipient" "$own" "$recovery" | LC_ALL=C sort -u)"
+            if [ "$have" != "$want" ] \
+               || [ "$(yq '[.sops.pgp, .sops.kms, .sops.gcp_kms, .sops.azure_kv, .sops.hc_vault] | map(select(. != null and length > 0)) | length' "$tmp/user-$u.yaml")" != 0 ]; then
+              echo "$file is not encrypted to exactly the user, this host and the recovery key"
+              return 1
+            fi
+            if [ "$(yq '.password != null' "$tmp/user-$u.yaml")" = true ]; then
+              if ! pw="$(SOPS_AGE_KEY_FILE="$state/age.key" sops -d --extract '["password"]' "$tmp/user-$u.yaml" 2>/dev/null)"; then
+                echo "the password in $file does not decrypt with this host's key"
+                return 1
+              fi
+              if [[ ! "$pw" =~ $pw_re ]]; then
+                echo "the password in $file is not a password hash"
+                return 1
+              fi
+            fi
+            printf '%s\n' "$tip" > "$tmp/user-$u.commit"
+          }
+
+          # What the snapshot in use records for a user whose file is kept.
+          kept_line() {  # kept_line USER
+            local rest=""
+            if [ -f secrets/manifest ]; then
+              # shellcheck disable=SC2016 # $1 and $2 are awk's fields, not the shell's
+              rest="$(awk -v u="$1" '$1 == "user" && $2 == u { $1 = ""; $2 = ""; sub(/^ +/, ""); print }' secrets/manifest)"
+            fi
+            case "$rest" in
+              "")      rest="kept unknown" ;;
+              kept\ *) ;;
+              *)       rest="kept $rest" ;;
+            esac
+            echo "user $1 $rest"
+          }
+
+          mkdir -p snapshots
+          stage=snapshots/.new
+          rm -rf "$stage"
+          mkdir -p "$stage"
+          lines="$tmp/user-lines"
+          : > "$lines"
+          if [ "$have_host_file" -eq 1 ]; then
+            mkdir "$stage/hosts"
+            cp "$hostfile" "$stage/hosts/$host.yaml"
+          fi
+
+          take() {  # take USER FILE: the file goes into the snapshot being made
+            mkdir -p "$stage/users/$1"
+            cp "$2" "$stage/users/$1/$host.yaml"
+          }
+
+          taken=()
+          for u in "''${valid[@]}"; do
+            if reason="$(check_user "$u")"; then
+              take "$u" "$tmp/user-$u.yaml"
+              echo "user $u $(cat "$tmp/user-$u.commit")" >> "$lines"
+              taken+=("$u")
+            else
+              problem "$u" "$reason"
+              # Whatever the snapshot in use holds for it stays.
+              if [ -f "secrets/users/$u/$host.yaml" ]; then
+                take "$u" "secrets/users/$u/$host.yaml"
+                kept_line "$u" >> "$lines"
+              fi
+            fi
+          done
+
+          # The users who are not listed have their files on the host's branch.
+          # A listed user's file there, if any, is not read.
+          while IFS= read -r path; do
+            [[ "$path" =~ ^users/([^/]+)/([^/]+)$ ]] || continue
+            [ "''${BASH_REMATCH[2]}" = "$host.yaml" ] || continue
+            u="''${BASH_REMATCH[1]}"
+            [ -z "''${listed_set[$u]:-}" ] || continue
+            if [[ "$u" =~ ^(\.|\.\.)$ ]]; then continue; fi
+            g show "$commit:$path" > "$tmp/branch-user.yaml"
+            take "$u" "$tmp/branch-user.yaml"
+            echo "user $u host-branch" >> "$lines"
+          done < <(g ls-tree -r --name-only "$commit" -- users)
+
+          # The manifest names what the snapshot was made from, and its hash
+          # names the snapshot: a run that changes nothing makes no new one.
+          { echo "host $commit"; LC_ALL=C sort "$lines"; } > "$stage/manifest"
+          find "$stage" -type d -exec chmod 700 {} +
+          find "$stage" -type f -exec chmod 600 {} +
+          name="$(sha256sum "$stage/manifest" | cut -d' ' -f1)"
+          if [ -d "snapshots/$name" ]; then
+            rm -rf "$stage"
+          else
+            mv -T "$stage" "snapshots/$name"
+          fi
+
+          if [ "$(readlink secrets 2>/dev/null || true)" != "snapshots/$name" ]; then
+            ln -sfn "snapshots/$name" secrets.tmp && mv -T secrets.tmp secrets
+          fi
+          printf '%s\n' "$commit" > accepted/host.tmp && mv -f accepted/host.tmp accepted/host
+          for u in "''${taken[@]}"; do
+            printf '%s\n' "$(cat "$tmp/user-$u.commit")" > "accepted/user-$u.tmp" && mv -f "accepted/user-$u.tmp" "accepted/user-$u"
+          done
+          # Rewritten every run; the notice at the machine reads it.
+          if [ -s "$problems" ]; then
+            install -m 0644 "$problems" user-problems.tmp && mv -f user-problems.tmp user-problems
+          else
+            rm -f user-problems
+          fi
+          find snapshots -mindepth 1 -maxdepth 1 ! -name "$name" -exec rm -rf {} +
+
+          if [ -f "snapshots/$name/hosts/$host.yaml" ]; then
+            if ! SOPS_AGE_KEY_FILE="$state/age.key" sops -d --output /dev/null "snapshots/$name/hosts/$host.yaml" 2>"$tmp/sops-err"; then
+              cat "$tmp/sops-err" >&2
+              fail 15 "$state/snapshots/$name/hosts/$host.yaml does not decrypt with this host's key: enrollment incomplete or re-key pending"
+            fi
+          fi
+
+          echo "$name"
           ;;
 
         check)

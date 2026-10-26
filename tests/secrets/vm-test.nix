@@ -611,20 +611,22 @@ pkgs.testers.runNixOSTest {
     with subtest("11: an older signed commit served again is refused, unless the record goes"):
         fleet.succeed(sync_cmd)
         current = fleet.succeed("basename $(readlink /var/lib/fleet/secrets)").strip()
-        accepted = fleet.succeed("cat /var/lib/fleet/accepted").strip()
-        assert accepted == current, f"accepted {accepted}, but the snapshot is {current}"
+        accepted = fleet.succeed("cat /var/lib/fleet/accepted/host").strip()
+        manifest_host = "sed -n 's/^host //p' /var/lib/fleet/secrets/manifest"
+        assert fleet.succeed(manifest_host).strip() == accepted, f"accepted {accepted}, but the snapshot is made from another commit"
         # Someone who can push, with only old signed commits, rewinds the branch.
         older = forge.succeed("su git -c 'git -C /home/git/w rev-parse host/${hostName}~1'").strip()
         forge.succeed(f"su git -c 'git -C /home/git/w push -q --force origin {older}:host/${hostName}'")
         status, out = fleet.execute(sync_cmd)
         assert status == 16, f"sync after a rollback exited {status}, expected 16: {out}"
         assert fleet.succeed("basename $(readlink /var/lib/fleet/secrets)").strip() == current
-        assert fleet.succeed("cat /var/lib/fleet/accepted").strip() == accepted
+        assert fleet.succeed("cat /var/lib/fleet/accepted/host").strip() == accepted
         # Removing the record accepts it, for a history rewritten on purpose.
-        fleet.succeed("rm /var/lib/fleet/accepted")
+        fleet.succeed("rm /var/lib/fleet/accepted/host")
         out = fleet.succeed(sync_cmd + " 2>/dev/null").strip()
-        assert out == older, f"sync printed {out}, expected {older}"
-        assert fleet.succeed("cat /var/lib/fleet/accepted").strip() == older
+        assert out == fleet.succeed("basename $(readlink /var/lib/fleet/secrets)").strip(), f"sync printed {out}"
+        assert fleet.succeed(manifest_host).strip() == older
+        assert fleet.succeed("cat /var/lib/fleet/accepted/host").strip() == older
 
     def unsigned_config_commit():
         # As anyone with write access to the repository, without the signing key.

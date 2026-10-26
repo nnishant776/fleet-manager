@@ -87,7 +87,7 @@ let
           case "$rc" in
             10) exit 1 ;;  # the fetch failed; the next run retries
             11) stop secrets-signature "The latest change to this machine's secrets is not signed by a trusted key, so the machine is not updating. It keeps running its current configuration." ;;
-            16) stop secrets-rollback "The latest change to this machine's secrets does not follow the one it last accepted, so it is not updating; it could be an attempt to bring back old secrets. It keeps running its current configuration. If the history was rewritten on purpose, remove /var/lib/fleet/accepted on this machine to accept it." ;;
+            16) stop secrets-rollback "The latest change to this machine's secrets does not follow the one it last accepted, so it is not updating; it could be an attempt to bring back old secrets. It keeps running its current configuration. If the history was rewritten on purpose, remove /var/lib/fleet/accepted/host on this machine to accept it." ;;
             *)  stop secrets "This machine could not refresh or verify its secrets, so it is not updating. It keeps running its current configuration." ;;
           esac
         fi
