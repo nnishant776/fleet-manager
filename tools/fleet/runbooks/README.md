@@ -21,6 +21,7 @@ no arguments offers these as a menu.
 | [`fleet doctor`](doctor.md) | Check this machine has the tools fleet uses |
 | [`fleet secrets user-password`](secrets-user-password.md) | Set the user's password on that host |
 | [`fleet secrets user-key`](secrets-user-key.md) | Generate the user's SSH key on that host |
+| [`fleet secrets user-keys`](secrets-user-keys.md) | Set the SSH keys that may log in as the user, or unlock their sudo, on that host |
 | [`fleet secrets host-enroll`](secrets-host-enroll.md) | Admit a new host from its enrollment file |
 | [`fleet secrets host-rekey`](secrets-host-rekey.md) | Point a known host at a new identity |
 | [`fleet secrets host-retire`](secrets-host-retire.md) | Remove a host and its files |

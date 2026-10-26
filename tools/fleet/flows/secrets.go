@@ -1,6 +1,7 @@
 package flows
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -205,18 +206,7 @@ var SecretsUserPassword = &engine.Flow{
 				StdinFrom("password").StdinNote("the password").CaptureSecret("hash").OK("hashed"),
 		},
 		secrets.OpenWork(),
-		{
-			Title: "Create " + userFile(),
-			Why:   "It does not exist yet; it is created empty and encrypted to {{.host}} and your recovery recipient.",
-			When: func(x *engine.Ctx) (bool, string) {
-				p, _ := x.Expand(userFile())
-				if _, err := os.Stat(filepath.Join(x.Value("work"), p)); err == nil {
-					return false, "it exists already"
-				}
-				return true, ""
-			},
-			Do: secrets.CreateEmpty("", userFile(), "host_recipient").Do,
-		},
+		createUserFile(),
 		{
 			Title: "Store the hash in " + userFile(),
 			Why:   "As the key password, which hosts read when accounts.<user>.secrets.password is on.",
@@ -332,4 +322,118 @@ func shred(dir string) {
 		_ = os.Remove(p)
 	}
 	_ = os.Remove(dir)
+}
+
+// SecretsUserKeys sets a user's login and sudo keys on a host.
+var SecretsUserKeys = &engine.Flow{
+	Path:  []string{"secrets", "user-keys"},
+	Title: "Set a user's login and sudo keys on a host",
+	Short: "Set the SSH keys that may log in as the user, or unlock their sudo, on that host",
+	Long: "Stores the public keys in a file, one per line, as authorized_keys and sudo_keys in\n" +
+		"users/<user>/<host>.yaml on the host's branch, host/<host>, encrypted to that host and your\n" +
+		"recovery recipient (the file is created if it is not there yet), then commits and pushes the branch.\n" +
+		"Each line is checked with ssh-keygen first, so that a typo cannot lock anyone out. Hosts read them\n" +
+		"when accounts.<user>.secrets.authorizedKeys or secrets.sudoKeys is on, at each login, with no\n" +
+		"rebuild. A key file replaces the keys that were stored, so list every key that should stay.",
+	Example: "  fleet secrets user-keys alice laptop1 --authorized-keys alice.keys\n  fleet secrets user-keys admin laptop1 --authorized-keys admin.keys --sudo-keys admin-sudo.keys",
+	Args:    []string{"user", "host"},
+	Inputs: []engine.Input{secrets.RepoInput, secrets.RecoveryInput, secrets.UserName(), knownHost(),
+		{Name: "authorized-keys", Prompt: "File of login keys", Help: "SSH public keys that may log in as the user, one per line; empty to leave them as they are",
+			Optional: true, Default: func(*engine.Ctx) (string, error) { return "", nil }},
+		{Name: "sudo-keys", Prompt: "File of sudo keys", Help: "SSH public keys that unlock the user's sudo, one per line; empty to leave them as they are",
+			Optional: true, Default: func(*engine.Ctx) (string, error) { return "", nil }}},
+	Needs: []string{"git", "yq", "sops", "age", "ssh-keygen"},
+	Steps: []engine.Step{
+		{
+			Title: "Check the keys",
+			Why:   "A line that is not a public key would be stored as it is and lock out whoever relies on it; each non-empty line must be one for ssh-keygen.",
+			Do:    engine.Func(checkKeyFiles),
+		},
+		secrets.Open(true),
+		secrets.ExistingBranch("host '{{.host}}' is not enrolled; use host-enroll first", true),
+		secrets.Unlock(),
+		secrets.OpenWork(),
+		createUserFile(),
+		{
+			Title: "Store the login keys in " + userFile(),
+			Why:   "As the key authorized_keys, which hosts read when accounts.<user>.secrets.authorizedKeys is on.",
+			When:  keysGiven("authorized-keys"),
+			Do:    secrets.Set(userFile(), "authorized_keys", "authorized_json", "the login keys"),
+		},
+		{
+			Title: "Store the sudo keys in " + userFile(),
+			Why:   "As the key sudo_keys, which hosts read when accounts.<user>.secrets.sudoKeys is on.",
+			When:  keysGiven("sudo-keys"),
+			Do:    secrets.Set(userFile(), "sudo_keys", "sudo_json", "the sudo keys"),
+		},
+		secrets.Commit("user-keys: {{.user}} on {{.host}}", userFile()),
+		secrets.CloseWork(),
+		{
+			Title: "Push host/{{.host}}",
+			Why:   "{{.host}} fetches its branch from the forge; it accepts the commit only if it is signed by an allowed key.",
+			Do:    secrets.PushBranch(),
+		},
+	},
+}
+
+func keysGiven(input string) func(*engine.Ctx) (bool, string) {
+	return func(x *engine.Ctx) (bool, string) {
+		if x.Value(input) == "" {
+			return false, "no --" + input + " file given"
+		}
+		return true, ""
+	}
+}
+
+// checkKeyFiles reads the key files given, checks each non-empty line that is
+// not a comment with ssh-keygen, and keeps their contents as JSON strings for
+// sops set: authorized_json and sudo_json.
+func checkKeyFiles(x *engine.Ctx) error {
+	if x.Value("authorized-keys") == "" && x.Value("sudo-keys") == "" {
+		return errors.New("give --authorized-keys, --sudo-keys or both")
+	}
+	for _, f := range []struct{ input, value string }{{"authorized-keys", "authorized_json"}, {"sudo-keys", "sudo_json"}} {
+		path := x.Value(f.input)
+		if path == "" {
+			continue
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("--%s: %w", f.input, err)
+		}
+		n := 0
+		for i, line := range strings.Split(strings.ReplaceAll(string(b), "\r", ""), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			if _, err := engine.Cmd("ssh-keygen", "-l", "-f", "/dev/stdin").Stdin(line).StdinNote("the key").RunQuiet(x); err != nil {
+				return fmt.Errorf("%s line %d is not an SSH public key: %s", path, i+1, line)
+			}
+			n++
+		}
+		if n == 0 {
+			return fmt.Errorf("%s holds no keys; storing an empty list would lock out everyone who relies on it", path)
+		}
+		x.Values[f.value] = secrets.JSON(string(b))
+		x.UI.OK(fmt.Sprintf("%s: %d keys", path, n))
+	}
+	return nil
+}
+
+// createUserFile creates users/<user>/<host>.yaml in the worktree unless the
+// branch has it, empty and encrypted to the host and the recovery recipient.
+func createUserFile() engine.Step {
+	return engine.Step{
+		Title: "Create " + userFile(),
+		Why:   "It does not exist yet; it is created empty and encrypted to {{.host}} and your recovery recipient.",
+		When: func(x *engine.Ctx) (bool, string) {
+			p, _ := x.Expand(userFile())
+			if _, err := os.Stat(filepath.Join(x.Value("work"), p)); err == nil {
+				return false, "it exists already"
+			}
+			return true, ""
+		},
+		Do: secrets.CreateEmpty("", userFile(), "host_recipient").Do,
+	}
 }
