@@ -12,9 +12,14 @@ branches, and names the clone. After that --flake NAME and --repo NAME mean the 
 which every command fetches first, taking main's newest commit only if a key you trust
 signed it and it follows the commit you trusted last.
 
+Without an address it takes the next of your repositories that is not added yet, and
+says which: fleet-manager, whose address it knows, then your inventory, then your
+secrets repository, whose commits are checked against your inventory's keys.
+
 ```
 fleet repo add [URL] [flags]
 
+fleet repo add        (three times: fleet-manager, your inventory, your secrets repository)
 fleet repo add git@github.com:example-org/fleet-manager.git
 fleet repo add git@github.com:example-org/inventory.git
 fleet repo add git@github.com:example-org/secrets.git --signers-from inventory
@@ -24,9 +29,9 @@ fleet repo add git@github.com:example-org/secrets.git --signers-from inventory
 
 | Flag | |
 |---|---|
-| `--url` | Your repositories are added one at a time: fleet-manager, your inventory, then your secrets repository. Give the address git clones it from, SSH or https (a local one needs file://); fleet repo list shows the ones added already |
+| `--url` | The address git clones it from: SSH or https (a local one needs file://) |
 | `--name` | What --flake and --repo take for it; the last part of its address by default |
-| `--signers-from` | For a repository without fleet/allowed_signers, such as the secrets repository: the name of the repository whose keys sign its commits |
+| `--signers-from` | For a repository without fleet/allowed_signers, such as the secrets repository: the name of the repository whose keys sign its commits; your inventory's when the secrets repository is the one asked for |
 | `--signing-key` | The SSH private key that signs commits made in the clone; made by fleet setup |
 
 Every command also takes `--dry-run` (show every step and command; look, but

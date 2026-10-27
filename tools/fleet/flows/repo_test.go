@@ -315,3 +315,70 @@ func TestRepoListShowsNamesRecordsAndRepositoriesWithoutAName(t *testing.T) {
 		}
 	}
 }
+
+// Without an address, fleet repo add takes the next of your repositories that
+// is not added yet, and says which: fleet-manager, whose address it knows, then
+// the inventory, then the secrets repository, whose keys are the inventory's.
+func TestRepoAddWithoutAnAddressTakesTheNextRepositoryAndSaysWhich(t *testing.T) {
+	w := newRepoWorld(t)
+	signersFrom := func(x *engine.Ctx) string {
+		for _, in := range RepoAdd.Inputs {
+			if in.Name == "signers-from" {
+				v, err := in.Default(x)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return v
+			}
+		}
+		t.Fatal("no signers-from input")
+		return ""
+	}
+
+	x := w.ctx(engine.Options{})
+	if url, err := nextRepo(x); err != nil || url != fleet.UpstreamURL || !strings.Contains(w.out.String(), "Adding fleet-manager first") {
+		t.Fatalf("with nothing added: %q, %v\n%s", url, err, w.out)
+	}
+
+	upstream, _ := fleet.RepoID(fleet.UpstreamURL)
+	if err := fleet.SetName("fleet-manager", upstream); err != nil {
+		t.Fatal(err)
+	}
+	x = w.ctx(engine.Options{})
+	url, err := nextRepo(x)
+	if err != nil || url != "" || x.Values["repo_kind"] != "your inventory repository" ||
+		!strings.Contains(w.out.String(), "Added already: fleet-manager (fleet-manager).") || !strings.Contains(w.out.String(), "Next is your inventory") {
+		t.Fatalf("with fleet-manager added: %q, %v, %v\n%s", url, err, x.Values, w.out)
+	}
+	if v := signersFrom(x); v != "" {
+		t.Errorf("signers-from for the inventory = %q", v)
+	}
+	// Without a terminal it cannot ask, and says what it wanted.
+	err = engine.RunWith(w.ctx(engine.Options{Yes: true}), RepoAdd, map[string]string{"signing-key": w.key})
+	if err == nil || !strings.Contains(w.out.String(), "Next is your inventory") || !strings.Contains(err.Error(), "--url") {
+		t.Fatalf("without a terminal: %v\n%s", err, w.out)
+	}
+
+	inv, _ := w.origin("inventory", true)
+	if err := w.add(inv, nil); err != nil {
+		t.Fatalf("%v\n%s", err, w.out)
+	}
+	x = w.ctx(engine.Options{})
+	url, err = nextRepo(x)
+	if err != nil || url != "" || x.Values["repo_kind"] != "your secrets repository" ||
+		!strings.Contains(w.out.String(), "inventory (your") || !strings.Contains(w.out.String(), "Next is your secrets repository") {
+		t.Fatalf("with the inventory added: %q, %v, %v\n%s", url, err, x.Values, w.out)
+	}
+	if v := signersFrom(x); v != "inventory" {
+		t.Errorf("signers-from for the secrets repository = %q, want the inventory's name", v)
+	}
+
+	sec, _ := w.origin("secrets", false)
+	if err := w.add(sec, map[string]string{"signers-from": "inventory"}); err != nil {
+		t.Fatalf("%v\n%s", err, w.out)
+	}
+	x = w.ctx(engine.Options{})
+	if _, err := nextRepo(x); err != nil || x.Values["repo_kind"] != "another repository to add" || !strings.Contains(w.out.String(), "secrets (keys from") {
+		t.Fatalf("with all three added: %v, %v\n%s", err, x.Values, w.out)
+	}
+}

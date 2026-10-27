@@ -54,6 +54,76 @@ func nameFromAddress(x *engine.Ctx) (string, error) {
 	return strings.ToLower(id[strings.LastIndex(id, "/")+1:]), nil
 }
 
+// addedRepos sorts the named repositories: fleet-manager's name, the ones
+// with a fleet/allowed_signers of their own (inventories), and the others,
+// which borrow another's keys (the secrets repository).
+func addedRepos(names map[string]string) (fm string, inventories, others []string) {
+	upstream, _ := fleet.RepoID(fleet.UpstreamURL)
+	var all []string
+	for n := range names {
+		all = append(all, n)
+	}
+	sort.Strings(all)
+	for _, n := range all {
+		clone, err := fleet.ClonePathOfID(names[n])
+		switch {
+		case names[n] == upstream:
+			fm = n
+		case err == nil && fileExists(filepath.Join(clone, "fleet", "allowed_signers")):
+			inventories = append(inventories, n)
+		default:
+			others = append(others, n)
+		}
+	}
+	return fm, inventories, others
+}
+
+// nextRepo is the address when none is given: the next of your
+// repositories that is not added yet, which it says, and sets repo_kind for
+// the question. fleet-manager's address it knows; the others it asks for.
+func nextRepo(x *engine.Ctx) (string, error) {
+	names, err := fleet.ReadNames()
+	if err != nil {
+		return "", err
+	}
+	fm, inventories, others := addedRepos(names)
+	var added []string
+	if fm != "" {
+		added = append(added, fm+" (fleet-manager)")
+	}
+	for _, n := range inventories {
+		added = append(added, n+" (your inventory)")
+	}
+	for _, n := range others {
+		added = append(added, n+" (keys from another repository: your secrets repository)")
+	}
+	if len(added) > 0 {
+		x.UI.Note("Added already: " + strings.Join(added, ", ") + ".")
+	}
+	x.Values["repo_kind"] = "the repository to add"
+	switch {
+	case fm == "":
+		x.Values["repo_role"] = "fleet-manager"
+		x.UI.Note("Adding fleet-manager first, from " + fleet.UpstreamURL + ". Run fleet repo add again afterwards for your inventory, " +
+			"and once more for your secrets repository.")
+		return fleet.UpstreamURL, nil
+	case len(inventories) == 0:
+		x.Values["repo_role"] = "inventory"
+		x.Values["repo_kind"] = "your inventory repository"
+		x.UI.Note("Next is your inventory: the private repository your hosts build from, with fleet/allowed_signers and config/hosts.")
+	case len(others) == 0:
+		x.Values["repo_role"] = "secrets"
+		x.Values["repo_kind"] = "your secrets repository"
+		x.Values["inventory_name"] = inventories[0]
+		x.UI.Note("Next is your secrets repository. Its commits are checked against the keys of " + inventories[0] +
+			", your inventory, as the hosts check them.")
+	default:
+		x.Values["repo_kind"] = "another repository to add"
+		x.UI.Note("fleet-manager, your inventory and your secrets repository are added; fleet repo sync keeps them up to date.")
+	}
+	return "", nil
+}
+
 // RepoAdd makes the tools' clone of a repository and names it.
 var RepoAdd = &engine.Flow{
 	Path:  []string{"repo", "add"},
@@ -65,20 +135,32 @@ var RepoAdd = &engine.Flow{
 		"the repository named by --signers-from, for one without), checks main and the hosts'\n" +
 		"branches, and names the clone. After that --flake NAME and --repo NAME mean the clone,\n" +
 		"which every command fetches first, taking main's newest commit only if a key you trust\n" +
-		"signed it and it follows the commit you trusted last.",
-	Example: "  fleet repo add git@github.com:example-org/fleet-manager.git\n" +
+		"signed it and it follows the commit you trusted last.\n" +
+		"\n" +
+		"Without an address it takes the next of your repositories that is not added yet, and\n" +
+		"says which: fleet-manager, whose address it knows, then your inventory, then your\n" +
+		"secrets repository, whose commits are checked against your inventory's keys.",
+	Example: "  fleet repo add        (three times: fleet-manager, your inventory, your secrets repository)\n" +
+		"  fleet repo add git@github.com:example-org/fleet-manager.git\n" +
 		"  fleet repo add git@github.com:example-org/inventory.git\n" +
 		"  fleet repo add git@github.com:example-org/secrets.git --signers-from inventory",
 	Args: []string{"url"},
 	Inputs: []engine.Input{
-		{Name: "url", Prompt: "Address of the repository to add",
-			Help: "Your repositories are added one at a time: fleet-manager, your inventory, then your secrets repository. " +
-				"Give the address git clones it from, SSH or https (a local one needs file://); fleet repo list shows the ones added already"},
+		{Name: "url", Prompt: "Address of {{.repo_kind}}",
+			Help:    "The address git clones it from: SSH or https (a local one needs file://)",
+			Default: nextRepo},
 		{Name: "name", Prompt: "Name for it", Help: "What --flake and --repo take for it; the last part of its address by default",
 			Optional: true, Pattern: fleet.NamePattern, Default: nameFromAddress},
 		{Name: "signers-from", Prompt: "Repository whose keys sign it",
-			Help:     "For a repository without fleet/allowed_signers, such as the secrets repository: the name of the repository whose keys sign its commits",
-			Optional: true},
+			Help: "For a repository without fleet/allowed_signers, such as the secrets repository: the name of the repository whose keys sign its commits; " +
+				"your inventory's when the secrets repository is the one asked for",
+			Optional: true,
+			Default: func(x *engine.Ctx) (string, error) {
+				if x.Value("repo_role") == "secrets" {
+					return x.Value("inventory_name"), nil
+				}
+				return "", nil
+			}},
 		{Name: "signing-key", Prompt: "Signing key", Help: "The SSH private key that signs commits made in the clone; made by fleet setup",
 			Default: func(*engine.Ctx) (string, error) {
 				home, err := os.UserHomeDir()

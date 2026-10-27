@@ -468,8 +468,12 @@ default), and gives it a name. You never edit it by hand. `--flake <name>` and `
 fetches it, takes `main`'s newest commit only if a key you trust signed it and
 it follows the commit you trusted last, and leaves the clone there. A path
 still works as before, and is not fetched. `fleet repo list` shows the names,
-and the commits you trust. Set up the three repositories in this order, each
-with its own address:
+and the commits you trust.
+
+Run `fleet repo add` three times. Each time it says which repository it adds
+next: fleet-manager first, whose address it knows, then your inventory, then
+your secrets repository, and asks for the address of the one it needs. You can
+also give each address yourself, in the same order:
 
 ```
 fleet repo add git@github.com:example-org/fleet-manager.git
@@ -478,11 +482,12 @@ fleet repo add git@github.com:example-org/secrets.git --signers-from inventory
 ```
 
 Each clone is named after the last part of its address, unless you give
-`--name`. The secrets repository has no `fleet/allowed_signers`, so
-`--signers-from` gives the name of the repository whose keys sign it: your
-inventory, whose keys the hosts check the secrets against (fleet-manager, if
-its own hosts use the secrets). `fleet repo list` shows the names, and on a
-terminal you are asked if you leave `--signers-from` out. Edit in a checkout of your own, as
+`--name`. The secrets repository has no `fleet/allowed_signers`, so its
+commits are checked against your inventory's keys, as the hosts check them.
+When `fleet repo add` asks for the secrets repository itself, it takes the
+inventory's name. With an address you give, `--signers-from` names the
+inventory (or fleet-manager, if its own hosts use the secrets), and on a
+terminal you are asked if you leave it out. Edit in a checkout of your own, as
 before. In the clone only the tools work: they fetch it, and the secrets
 commands commit there and push from there, as they do in a checkout. A commit
 a command does not push stays in the clone, and the command says how to push
