@@ -24,7 +24,7 @@ fleet inventory publish nas1 --flake ~/Projects/inventory
 
 | Flag | |
 |---|---|
-| `--flake` | A checkout or a flake reference; defaults to this directory's flake, then /etc/nixos |
+| `--flake` | A checkout or a flake reference, or the name of a repository (fleet repo list), which means the tool's own clone of it; defaults to this directory's flake, then /etc/nixos |
 | `--host` | A host to publish; give --host more than once for several; all of them by default; may be given more than once |
 | `--no-check` | Do not evaluate each branch before publishing it; for tests without Nix |
 
@@ -34,12 +34,14 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 ## Steps
 
-1. **Compare the checkout's keys with the ones you trust.** Commits are checked against your own copy of each repository's keys, not against the checkout's fleet/allowed_signers. A difference means the keys changed since you trusted them: expected if you changed them, worth a look if not.
+1. **Bring the tool's clone up to date.** You named a repository, so the command works in the tool's own clone of it. It is fetched, and main's newest commit is taken only if it is signed by a key you trust and follows the commit you trusted last; the clone then stands there.
 
-2. **Check main's newest commit.** Every branch is cut from it, so it must be signed by a key you trust and pushed, and the checkout clean.
+2. **Compare the checkout's keys with the ones you trust.** Commits are checked against your own copy of each repository's keys, not against the checkout's fleet/allowed_signers. A difference means the keys changed since you trusted them: expected if you changed them, worth a look if not.
 
-3. **Cut each host's branch.** With the host's own files only. A branch whose files did not change gets no commit.
+3. **Check main's newest commit.** Every branch is cut from it, so it must be signed by a key you trust and pushed, and the checkout clean.
 
-4. **Push the branches.** Hosts fetch their branch on their next sync. A push that is not a fast-forward is refused: then someone else changed the branch.
+4. **Cut each host's branch.** With the host's own files only. A branch whose files did not change gets no commit.
+
+5. **Push the branches.** Hosts fetch their branch on their next sync. A push that is not a fast-forward is refused: then someone else changed the branch.
 
 It needs `git`, `nix`, `tar` on the PATH; `fleet doctor` says where to get them.

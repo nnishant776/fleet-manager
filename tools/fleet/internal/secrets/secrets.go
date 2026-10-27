@@ -35,7 +35,9 @@ const NamePattern = `^[a-z0-9][a-z0-9-]*$`
 var RepoInput = engine.Input{
 	Name:   "repo",
 	Prompt: "Secrets repository checkout",
-	Help:   "Your clone of the secrets repository, left on main; defaults to FLEET_SECRETS_REPO, then this directory",
+	Help: "Your clone of the secrets repository, left on main, or the name of a repository (fleet repo list), which means the tool's own clone of it; " +
+		"defaults to FLEET_SECRETS_REPO, then this directory",
+	Resolve: func(x *engine.Ctx, v string) (string, error) { return fleet.ResolveName(x, "repo", v) },
 	Default: func(*engine.Ctx) (string, error) {
 		if v := os.Getenv("FLEET_SECRETS_REPO"); v != "" {
 			return v, nil

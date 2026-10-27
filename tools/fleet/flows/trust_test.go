@@ -173,14 +173,23 @@ func TestCommandsWarnWhenTheCheckoutsKeysDiffer(t *testing.T) {
 	}
 }
 
-// Every command that takes --flake starts with that comparison.
+// Every command that takes --flake starts with the tool's clone brought up to
+// date (when it was given a name), then that comparison; one that takes only
+// --repo has the clone step first.
 func TestEveryCommandWithAFlakeComparesKeysFirst(t *testing.T) {
 	for _, f := range All() {
+		name := strings.Join(f.Path, " ")
+		if !hasInput(f, "flake") && !hasInput(f, "repo") {
+			continue
+		}
+		if f.Steps[0].Title != cloneSync.Title {
+			t.Errorf("fleet %s starts with %q", name, f.Steps[0].Title)
+		}
 		if f == TrustSigners || !hasInput(f, "flake") {
 			continue
 		}
-		if f.Steps[0].Title != signersCheck.Title {
-			t.Errorf("fleet %s starts with %q", strings.Join(f.Path, " "), f.Steps[0].Title)
+		if f.Steps[1].Title != signersCheck.Title {
+			t.Errorf("fleet %s then has %q", name, f.Steps[1].Title)
 		}
 	}
 }

@@ -26,9 +26,9 @@ fleet support-key rotate neerajpinew --old-key ~/.ssh/home_network_ssh_key --new
 
 | Flag | |
 |---|---|
-| `--flake` | A checkout or a flake reference; defaults to this directory's flake, then /etc/nixos |
+| `--flake` | A checkout or a flake reference, or the name of a repository (fleet repo list), which means the tool's own clone of it; defaults to this directory's flake, then /etc/nixos |
 | `--host` | A host of the configuration (hosts/\<name>) |
-| `--repo` | Your clone of the secrets repository, left on main; defaults to FLEET_SECRETS_REPO, then this directory |
+| `--repo` | Your clone of the secrets repository, left on main, or the name of a repository (fleet repo list), which means the tool's own clone of it; defaults to FLEET_SECRETS_REPO, then this directory |
 | `--recovery` | Your passphrase-encrypted age identity (age -p). Empty: sops uses SOPS_AGE_KEY_FILE or SOPS_AGE_KEY |
 | `--address` | A name or IP address for SSH; defaults to the host's name |
 | `--old-key` | Its private key file |
@@ -42,32 +42,34 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 ## Steps
 
-1. **Compare the checkout's keys with the ones you trust.** Commits are checked against your own copy of each repository's keys, not against the checkout's fleet/allowed_signers. A difference means the keys changed since you trusted them: expected if you changed them, worth a look if not.
+1. **Bring the tool's clone up to date.** You named a repository, so the command works in the tool's own clone of it. It is fetched, and main's newest commit is taken only if it is signed by a key you trust and follows the commit you trusted last; the clone then stands there.
 
-2. **Make the new key.** A hardware key keeps the private half on the device: every login needs a touch, and its PIN. A software key gets a passphrase.
+2. **Compare the checkout's keys with the ones you trust.** Commits are checked against your own copy of each repository's keys, not against the checkout's fleet/allowed_signers. A difference means the keys changed since you trusted them: expected if you changed them, worth a look if not.
 
-3. **Add the new key next to the old one.** Both are accepted for now, so the host can be reached whichever way the next steps go.
+3. **Make the new key.** A hardware key keeps the private half on the device: every login needs a touch, and its PIN. A software key gets a passphrase.
 
-4. **Sync HOST with the old key.** It picks up the configuration that accepts both keys.
+4. **Add the new key next to the old one.** Both are accepted for now, so the host can be reached whichever way the next steps go.
+
+5. **Sync HOST with the old key.** It picks up the configuration that accepts both keys.
 
    ```
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 -o IdentitiesOnly=yes -o IdentityAgent=none -i OLD-KEY support@ADDRESS 'sudo -n systemctl start config-auto-update'
    ```
 
-5. **Test the new key.** With the new key only and nothing else offered: it must log in, and sudo must work.
+6. **Test the new key.** With the new key only and nothing else offered: it must log in, and sudo must work.
 
    ```
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 -o IdentitiesOnly=yes -o IdentityAgent=none -i NEW-KEY support@ADDRESS 'sudo -n id -u'
    ```
 
-6. **Remove the old key.** Until it is gone, whoever holds it is still root on HOST.
+7. **Remove the old key.** Until it is gone, whoever holds it is still root on HOST.
 
-7. **Sync HOST with the new key.** It picks up the configuration without the old key.
+8. **Sync HOST with the new key.** It picks up the configuration without the old key.
 
    ```
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 -o IdentitiesOnly=yes -o IdentityAgent=none -i NEW-KEY support@ADDRESS 'sudo -n systemctl start config-auto-update'
    ```
 
-8. **Check the old key is refused.** The rotation is done only when the old key no longer opens support.
+9. **Check the old key is refused.** The rotation is done only when the old key no longer opens support.
 
 It needs `ssh`, `ssh-keygen` on the PATH; `fleet doctor` says where to get them.

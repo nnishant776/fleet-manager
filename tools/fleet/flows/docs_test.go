@@ -22,7 +22,7 @@ func TestRunbookShowsFlagsStepsAndCommands(t *testing.T) {
 		"# fleet support-key rotate\n",
 		"fleet support-key rotate [HOST] [flags]",
 		"| `--old-key` | Its private key file |",
-		"4. **Sync HOST with the old key.**",
+		"5. **Sync HOST with the old key.**",
 		"   $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 -o IdentitiesOnly=yes -o IdentityAgent=none -i OLD-KEY support@ADDRESS 'sudo -n systemctl start config-auto-update'",
 		"whoever holds it is still root on HOST.",
 	} {

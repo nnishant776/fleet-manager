@@ -27,13 +27,18 @@ var Menu = []engine.Section{
 	{Name: "Your own account", Flows: []*engine.Flow{UserInit, UserPassword, UserKeys, UserSecretSet, UserSecretUnset}},
 }
 
-// Every command that reads a checkout starts by comparing its keys with the
-// ones you trust (signersCheck, trust.go); fleet trust signers is that
-// comparison itself.
+// Every command that takes a checkout or a repository starts by bringing the
+// tool's clone up to date when it was given a name (cloneSync, repo.go), and
+// every command that reads a checkout then compares its keys with the ones
+// you trust (signersCheck, trust.go); fleet trust signers is that comparison
+// itself.
 func init() {
 	for _, f := range All() {
 		if f != TrustSigners && hasInput(f, "flake") {
 			f.Steps = append([]engine.Step{signersCheck}, f.Steps...)
+		}
+		if hasInput(f, "flake") || hasInput(f, "repo") {
+			f.Steps = append([]engine.Step{cloneSync}, f.Steps...)
 		}
 	}
 }

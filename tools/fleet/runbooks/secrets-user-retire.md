@@ -19,7 +19,7 @@ fleet secrets user-retire alice
 
 | Flag | |
 |---|---|
-| `--repo` | Your clone of the secrets repository, left on main; defaults to FLEET_SECRETS_REPO, then this directory |
+| `--repo` | Your clone of the secrets repository, left on main, or the name of a repository (fleet repo list), which means the tool's own clone of it; defaults to FLEET_SECRETS_REPO, then this directory |
 | `--recovery` | Your passphrase-encrypted age identity (age -p). Empty: sops uses SOPS_AGE_KEY_FILE or SOPS_AGE_KEY |
 | `--user` | The user's name: lowercase letters, digits and '-' |
 
@@ -29,7 +29,9 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 ## Steps
 
-1. **Open the secrets repository.** The change builds on the host's branch and encrypts for the recipients that branch names, so git must check its signatures against keys a pushed commit cannot change.
+1. **Bring the tool's clone up to date.** You named a repository, so the command works in the tool's own clone of it. It is fetched, and main's newest commit is taken only if it is signed by a key you trust and follows the commit you trusted last; the clone then stands there.
+
+2. **Open the secrets repository.** The change builds on the host's branch and encrypts for the recipients that branch names, so git must check its signatures against keys a pushed commit cannot change.
 
    ```
    $ cd REPO && git rev-parse --git-dir
@@ -40,33 +42,33 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
    $ cd REPO && git config --local --default '' --get core.hooksPath
    ```
 
-2. **Unlock your recovery identity.** Decrypted into this run's memory only, for the sops commands below. age asks for its passphrase.
+3. **Unlock your recovery identity.** Decrypted into this run's memory only, for the sops commands below. age asks for its passphrase.
 
    ```
    $ age -d RECOVERY
    ```
 
-3. **Find the hosts that list USER.** The hosts whose file has users.\<user>. The keys of an encrypted file are in clear, so the list is read as it is in git.
+4. **Find the hosts that list USER.** The hosts whose file has users.\<user>. The keys of an encrypted file are in clear, so the list is read as it is in git.
 
-4. **Remove USER from their files.** In a temporary worktree of each host's branch: users.\<user> removed from hosts/\<host>.yaml, which sops does with your recovery identity. One commit per host. From the next sync on the host takes the user's files from its own branch again, if it has any.
+5. **Remove USER from their files.** In a temporary worktree of each host's branch: users.\<user> removed from hosts/\<host>.yaml, which sops does with your recovery identity. One commit per host. From the next sync on the host takes the user's files from its own branch again, if it has any.
 
-5. **Push the hosts' branches.** A host stops reading the user's branch on its next sync, which checks the commit is signed by an allowed key.
+6. **Push the hosts' branches.** A host stops reading the user's branch on its next sync, which checks the commit is signed by an allowed key.
 
-6. **Show what user/USER held.** The files that go with the branch.
+7. **Show what user/USER held.** The files that go with the branch.
 
    ```
    $ cd REPO && git ls-tree -r --name-only USER_REF
    ```
 
-7. **Delete the local branch user/USER.** With it go the user's files on it.
+8. **Delete the local branch user/USER.** With it go the user's files on it.
 
    ```
    $ cd REPO && git branch -D -q user/USER
    ```
 
-8. **Forget the commit you trusted on user/USER.** The branch is going away, so the record of its last trusted commit (a file in your fleet state folder) goes too; if the user is enrolled again, their branch is trusted afresh.
+9. **Forget the commit you trusted on user/USER.** The branch is going away, so the record of its last trusted commit (a file in your fleet state folder) goes too; if the user is enrolled again, their branch is trusted afresh.
 
-9. **Still to do.** The branch is gone from your clone only.
+10. **Still to do.** The branch is gone from your clone only.
 
    > USER is retired. Still to do:
    > 1. Delete the branch on the forge, which takes the user's files away from the hosts:

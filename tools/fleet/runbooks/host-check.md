@@ -20,7 +20,7 @@ fleet host check pi-gw --address 192.168.0.9
 
 | Flag | |
 |---|---|
-| `--flake` | A checkout or a flake reference; defaults to this directory's flake, then /etc/nixos |
+| `--flake` | A checkout or a flake reference, or the name of a repository (fleet repo list), which means the tool's own clone of it; defaults to this directory's flake, then /etc/nixos |
 | `--host` | A host of the configuration (hosts/\<name>) |
 | `--address` | A name or IP address for SSH; defaults to the host's name |
 | `--user` | The account to log in as; support by default, which has sudo without a password, so nothing needs forwarding |
@@ -34,15 +34,17 @@ A value that is neither given nor has a default is asked for on a terminal.
 Every step runs, whatever an earlier one found; the command fails at the end
 if any found a problem.
 
-1. **Compare the checkout's keys with the ones you trust.** Commits are checked against your own copy of each repository's keys, not against the checkout's fleet/allowed_signers. A difference means the keys changed since you trusted them: expected if you changed them, worth a look if not.
+1. **Bring the tool's clone up to date.** You named a repository, so the command works in the tool's own clone of it. It is fetched, and main's newest commit is taken only if it is signed by a key you trust and follows the commit you trusted last; the clone then stands there.
 
-2. **Reach HOST.** As USER, with no agent forwarded, and only to a host whose key this machine already knows.
+2. **Compare the checkout's keys with the ones you trust.** Commits are checked against your own copy of each repository's keys, not against the checkout's fleet/allowed_signers. A difference means the keys changed since you trusted them: expected if you changed them, worth a look if not.
+
+3. **Reach HOST.** As USER, with no agent forwarded, and only to a host whose key this machine already knows.
 
    ```
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'id -un; hostname'
    ```
 
-3. **Configuration and sync.** The running system should be the revision its checkout holds, and the last sync should have succeeded.
+4. **Configuration and sync.** The running system should be the revision its checkout holds, and the last sync should have succeeded.
 
    ```
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'r=$(cat /etc/org/revision); h=$(git -C /etc/nixos rev-parse HEAD 2>/dev/null || echo none); echo "$r $h"'
@@ -51,7 +53,7 @@ if any found a problem.
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'cat /var/lib/fleet-sync/status 2>/dev/null || true'
    ```
 
-4. **Secrets.** The snapshot names the secrets commit the host last accepted; /run/secrets holds what activation decrypted.
+5. **Secrets.** The snapshot names the secrets commit the host last accepted; /run/secrets holds what activation decrypted.
 
    ```
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'sudo -n test -d /var/lib/fleet || { echo none; exit 0; }; if sudo -n readlink /var/lib/fleet/secrets; then sudo -n cat /var/lib/fleet/secrets/manifest 2>/dev/null || true; else echo missing; fi'
@@ -59,7 +61,7 @@ if any found a problem.
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'sudo -n find -H /run/secrets /run/secrets-for-users -mindepth 1 ! -type d -printf '\''%P\n'\'' 2>/dev/null | sort -u'
    ```
 
-5. **Health.** A failed unit is worth knowing about before changing anything else.
+6. **Health.** A failed unit is worth knowing about before changing anything else.
 
    ```
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'systemctl is-system-running || true; systemctl --failed --no-legend --plain | cut -d'\'' '\'' -f1'

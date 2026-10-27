@@ -31,7 +31,9 @@ const UpstreamRaw = "https://raw.githubusercontent.com/nnishant776/fleet-manager
 var FlakeInput = engine.Input{
 	Name:   "flake",
 	Prompt: "Configuration flake",
-	Help:   "A checkout or a flake reference; defaults to this directory's flake, then /etc/nixos",
+	Help: "A checkout or a flake reference, or the name of a repository (fleet repo list), which means the tool's own clone of it; " +
+		"defaults to this directory's flake, then /etc/nixos",
+	Resolve: func(x *engine.Ctx, v string) (string, error) { return ResolveName(x, "flake", v) },
 	Default: func(*engine.Ctx) (string, error) {
 		if v := os.Getenv("FLEET_FLAKE"); v != "" {
 			return v, nil
