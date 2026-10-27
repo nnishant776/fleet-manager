@@ -48,7 +48,7 @@ func Mount(root *cobra.Command, flows []*Flow, groups Groups, menu []Section) {
 		var listed []*Flow
 		for _, s := range menu {
 			for i, f := range s.Flows {
-				row := ui.MenuRow{Label: f.Title, Detail: f.Short + "."}
+				row := ui.MenuRow{Label: f.Title, Path: strings.Join(f.Path, " "), Guide: guideOf(f)}
 				if i == 0 {
 					row.Section = s.Name
 				}
@@ -56,7 +56,7 @@ func Mount(root *cobra.Command, flows []*Flow, groups Groups, menu []Section) {
 				listed = append(listed, f)
 			}
 		}
-		choice, err := u.Menu("What do you want to do?", rows)
+		choice, err := u.Menu("What do you want to do?", rows, 0)
 		if errors.Is(err, ui.ErrCancelled) {
 			return nil
 		}

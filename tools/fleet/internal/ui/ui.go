@@ -248,40 +248,6 @@ func (u *UI) Choose(title, help string, options []string) (string, error) {
 	return value, u.run(field)
 }
 
-// MenuRow is one choice of a Menu.
-type MenuRow struct {
-	Section string // shown beside the first row of its section
-	Label   string
-	Path    string // the command, such as "host check"; the filter matches it too
-	Guide   Guide  // shown beside the list while the row is highlighted
-	Detail  string // shown above the list while the row is highlighted
-}
-
-// Menu offers rows in sections as one list, and returns the index of the
-// chosen one. The keys are listed under it.
-func (u *UI) Menu(title string, rows []MenuRow) (int, error) {
-	if !u.tty {
-		return 0, ErrNoTerminal
-	}
-	width := 0
-	for _, r := range rows {
-		width = max(width, len([]rune(r.Section)))
-	}
-	labels := make([]string, len(rows))
-	for i, r := range rows {
-		labels[i] = r.Section + strings.Repeat(" ", width-len([]rune(r.Section))) + "   " + r.Label
-	}
-	options := make([]huh.Option[int], len(rows))
-	for i, l := range padded(labels) {
-		options[i] = huh.NewOption(l, i)
-	}
-	var chosen int
-	field := huh.NewSelect[int]().Title(title).
-		DescriptionFunc(func() string { return rows[chosen].Detail }, &chosen).
-		Options(options...).Value(&chosen)
-	return chosen, u.form(field, true)
-}
-
 func (u *UI) run(field huh.Field) error { return u.form(field, false) }
 
 func (u *UI) form(field huh.Field, help bool) error {
