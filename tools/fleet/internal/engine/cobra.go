@@ -56,14 +56,29 @@ func Mount(root *cobra.Command, flows []*Flow, groups Groups, menu []Section) {
 				listed = append(listed, f)
 			}
 		}
-		choice, err := u.Menu("What do you want to do?", rows, 0)
-		if errors.Is(err, ui.ErrCancelled) {
-			return nil
+		// Choose, run, and come back to the menu, until the person quits.
+		choice := 0
+		for {
+			var err error
+			choice, err = u.Menu("What do you want to do?", rows, choice)
+			if errors.Is(err, ui.ErrCancelled) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			err = runFlow(cmd.Context(), listed[choice], *opts, map[string]string{})
+			if cmd.Context().Err() != nil {
+				return err
+			}
+			if err != nil {
+				u.Fail(err.Error())
+			}
+			back, perr := u.Pause("Enter: back to the menu · q: quit")
+			if perr != nil || !back {
+				return nil
+			}
 		}
-		if err != nil {
-			return err
-		}
-		return runFlow(cmd.Context(), listed[choice], *opts, map[string]string{})
 	}
 }
 
