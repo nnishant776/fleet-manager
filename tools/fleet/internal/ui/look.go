@@ -85,6 +85,6 @@ func (l Look) Highlight(dark bool) lipgloss.Style {
 	case dark:
 		return s.Background(lipgloss.Color("238")).Foreground(lipgloss.Color("231"))
 	default:
-		return s.Background(lipgloss.Color("253")).Foreground(lipgloss.Color("16"))
+		return s.Background(lipgloss.Color("252")).Foreground(lipgloss.Color("16"))
 	}
 }

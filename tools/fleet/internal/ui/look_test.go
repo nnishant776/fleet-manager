@@ -51,7 +51,7 @@ func TestTheHighlightedRowHasABar(t *testing.T) {
 	u.look = Look{}
 	light := u.theme(false).Focused.SelectedOption.Render("Check a host")
 	dark := u.theme(true).Focused.SelectedOption.Render("Check a host")
-	if !strings.Contains(light, "48;5;253") {
+	if !strings.Contains(light, "48;5;252") {
 		t.Errorf("light: no light grey background in %q", light)
 	}
 	if !strings.Contains(dark, "48;5;238") {
@@ -69,7 +69,7 @@ func TestTheHighlightedRowHasABar(t *testing.T) {
 		t.Errorf("console selector %q", got)
 	}
 	u.look = Look{Theme: "light"}
-	if forced := u.theme(true).Focused.SelectedOption.Render("x"); !strings.Contains(forced, "48;5;253") {
+	if forced := u.theme(true).Focused.SelectedOption.Render("x"); !strings.Contains(forced, "48;5;252") {
 		t.Errorf("FLEET_THEME=light on a terminal that says dark: %q", forced)
 	}
 }
