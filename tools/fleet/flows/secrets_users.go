@@ -543,7 +543,7 @@ var SecretsUserRetire = &engine.Flow{
 			Why:   "The branch is gone from your clone only.",
 			Do: engine.Show("{{.user}} is retired. Still to do:\n" +
 				"  1. Delete the branch on the forge, which takes the user's files away from the hosts:\n" +
-				"       git push origin --delete user/{{.user}}\n" +
+				"       git -C {{.repo}} push origin --delete user/{{.user}}\n" +
 				"  2. Rotate what the user could decrypt: their password and SSH keys on the hosts they were listed on,\n" +
 				"     and revoke their public keys on the forge now."),
 		},

@@ -59,7 +59,7 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
 
    > HOST is retired. Still to do:
    > 1. Delete the branch on the forge, which takes it away from the host:
-   > git push origin --delete host/HOST
+   > git -C REPO push origin --delete host/HOST
    > 2. Delete the host's deploy key on the forge; that takes effect at once.
    > 3. Rotate what the host could decrypt, which is only its own files:
    > its users' passwords and SSH keys on HOST (revoke their public keys

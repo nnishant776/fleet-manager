@@ -72,7 +72,7 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
 
    > USER is retired. Still to do:
    > 1. Delete the branch on the forge, which takes the user's files away from the hosts:
-   > git push origin --delete user/USER
+   > git -C REPO push origin --delete user/USER
    > 2. Rotate what the user could decrypt: their password and SSH keys on the hosts they were listed on,
    > and revoke their public keys on the forge now.
 

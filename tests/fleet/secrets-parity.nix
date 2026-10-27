@@ -464,7 +464,7 @@ pkgs.runCommand "fleet-secrets-parity" {
 
   # user-retire takes dave off the host and deletes his local branch.
   for repo in sh go; do ${fleet}/bin/fleet secrets user-retire dave --repo $repo --yes | tee $repo.out; done
-  grep -q "git push origin --delete user/dave" go.out
+  grep -q "push origin --delete user/dave" go.out
   compare "user-retire dave"
   for repo in sh go; do
     if git -C $repo rev-parse --verify -q refs/heads/user/dave >/dev/null; then echo "$repo: user/dave is still there"; exit 1; fi

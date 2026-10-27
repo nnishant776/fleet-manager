@@ -170,7 +170,7 @@ var SecretsHostRetire = &engine.Flow{
 			Why:   "The branch is gone from your clone only; the host's access ends when its deploy key goes.",
 			Do: engine.Show("{{.host}} is retired. Still to do:\n" +
 				"  1. Delete the branch on the forge, which takes it away from the host:\n" +
-				"       git push origin --delete host/{{.host}}\n" +
+				"       git -C {{.repo}} push origin --delete host/{{.host}}\n" +
 				"  2. Delete the host's deploy key on the forge; that takes effect at once.\n" +
 				"  3. Rotate what the host could decrypt, which is only its own files:\n" +
 				"     its users' passwords and SSH keys on {{.host}} (revoke their public keys\n" +

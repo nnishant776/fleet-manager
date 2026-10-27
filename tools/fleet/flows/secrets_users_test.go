@@ -312,7 +312,7 @@ func TestUserRetireTakesTheUserOffTheHostsThatListThemAndDeletesTheBranch(t *tes
 	if strings.Contains(cmds, "hosts/pi.yaml '[") || strings.Contains(cmds, "push origin host/pi") {
 		t.Errorf("touched pi, which does not list her:\n%s", cmds)
 	}
-	if !strings.Contains(out, "git push origin --delete user/alice") {
+	if !strings.Contains(out, "push origin --delete user/alice") {
 		t.Errorf("did not say how to delete it on the forge:\n%s", out)
 	}
 }
