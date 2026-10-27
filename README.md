@@ -456,6 +456,28 @@ line, a full commit hash, and is readable by you only.
   cannot tell whether a tip follows the record, and says so: fetch the rest
   with `git fetch --unshallow`.
 
+**The tools' own clones.** Checking a checkout you work in is not the same as
+checking what the tools read, because you may have edited it. `fleet repo add
+<address>` keeps a clone of a repository just for the tools, under
+`$XDG_DATA_HOME/fleet/repos/<host>/<owner>/<repo>` (`~/.local/share` by
+default), and gives it a name. Nobody edits it. `--flake <name>` and `--repo
+<name>` then mean that clone, and every command that is given a name first
+fetches it, takes `main`'s newest commit only if a key you trust signed it and
+it follows the commit you trusted last, and leaves the clone there. A path
+still works as before, and is not fetched. `fleet repo list` shows the names,
+and the commits you trust. Set up the three repositories in this order, each
+with its own address:
+
+```
+fleet repo add git@github.com:example-org/fleet-manager.git
+fleet repo add git@github.com:example-org/inventory.git
+fleet repo add git@github.com:example-org/secrets.git --signers-from inventory
+```
+
+The secrets repository has no `fleet/allowed_signers`, so `--signers-from`
+names the repository whose keys sign it. Edit in a checkout of your own, as
+before; the tool's clone is fetched and never edited.
+
 While the key is in your agent, any program running as you can sign with it.
 `ssh-add -c` makes the agent ask you before each signature, and `ssh-add -t`
 removes the key after a set time.
