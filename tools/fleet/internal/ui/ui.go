@@ -252,6 +252,8 @@ func (u *UI) Choose(title, help string, options []string) (string, error) {
 type MenuRow struct {
 	Section string // shown beside the first row of its section
 	Label   string
+	Path    string // the command, such as "host check"; the filter matches it too
+	Guide   Guide  // shown beside the list while the row is highlighted
 	Detail  string // shown above the list while the row is highlighted
 }
 

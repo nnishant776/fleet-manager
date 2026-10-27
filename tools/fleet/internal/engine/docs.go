@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/nnishant776/fleet-manager/tools/fleet/internal/ui"
 )
 
 // The runbooks: every flow as a Markdown page, written from its definition,
@@ -130,6 +132,47 @@ func Runbook(f *Flow) string {
 		b.WriteString("It needs `" + strings.Join(f.Needs, "`, `") + "` on the PATH; `fleet doctor` says where to get them.\n")
 	}
 	return b.String()
+}
+
+// guideOf is what the menu shows of a flow beside the list, from the same
+// text as its runbook: the usage line, the examples, what it is for, the steps
+// with their reasons (not their commands: --dry-run shows those), the flags.
+// It is plain text, so no prose escaping.
+func guideOf(f *Flow) ui.Guide {
+	usage := "fleet " + strings.Join(f.Path, " ")
+	for _, a := range f.Args {
+		usage += " [" + strings.ToUpper(a) + "]"
+	}
+	if f.restArg() != "" {
+		usage += "..."
+	}
+	g := ui.Guide{Usage: usage, Needs: f.Needs}
+	if f.Example != "" {
+		g.Examples = strings.Split(f.Example, "\n")
+	}
+	g.About = append(g.About, f.Short+".")
+	if f.Long != "" {
+		g.About = append(g.About, strings.Split(f.Long, "\n\n")...)
+	}
+	for _, s := range f.Steps {
+		g.Steps = append(g.Steps, ui.GuideItem{Name: docText(s.Title), Text: docText(s.Why)})
+	}
+	for _, in := range f.Inputs {
+		flag := "--" + in.Name
+		help := flagHelp(in)
+		switch {
+		case in.Secret:
+			flag = "--" + in.Name + "-stdin"
+			help = "read the " + in.Name + " from standard input, instead of being asked. " + help
+		case in.Short != "":
+			flag = "-" + in.Short + ", " + flag
+		}
+		if in.Many {
+			help += "; may be given more than once"
+		}
+		g.Flags = append(g.Flags, ui.GuideItem{Name: flag, Text: docText(help)})
+	}
+	return g
 }
 
 // commands is what an action runs, as a person would type it, for the
