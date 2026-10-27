@@ -238,8 +238,12 @@ func checkTrusted(x *engine.Ctx, dir, address, branch, ref string, line bool) er
 		}
 	}
 	p, _ := TrustedPath(address, branch)
-	return fmt.Errorf("%s at %s does not follow %s, the commit you trusted last: it could be an old commit served again. "+
-		"If the history was rewritten on purpose and you know why, trust it afresh: rm %s, then run this again", branch, tip, rec, p)
+	why := fmt.Sprintf("%s at %s does not follow %s, the commit you trusted last: it could be an old commit served again. ", branch, tip, rec)
+	if name := NameOf(id); name != "" {
+		return fmt.Errorf("%sIf the history was rewritten on purpose and you know why, review and accept it with fleet repo sync %s --accept-rewrite %s", why, name, branch)
+	}
+	return fmt.Errorf("%sIf the history was rewritten on purpose and you know why, trust it afresh: rm %s, then run this again; "+
+		"or give the repository a name with fleet repo add and use fleet repo sync", why, p)
 }
 
 // AdvanceTrusted moves the record of a branch to what the checkout's local

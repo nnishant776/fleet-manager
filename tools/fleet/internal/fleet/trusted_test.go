@@ -162,7 +162,7 @@ func TestARolledBackTipIsRefused(t *testing.T) {
 		t.Fatal("an older commit was accepted")
 	}
 	p, _ := TrustedPath(testOrigin, "main")
-	for _, want := range []string{"main at " + c1, "does not follow " + c2, "old commit served again", "rm " + p} {
+	for _, want := range []string{"main at " + c1, "does not follow " + c2, "old commit served again", "rm " + p, "or give the repository a name with fleet repo add and use fleet repo sync"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the refusal lacks %q:\n%v", want, err)
 		}
@@ -286,5 +286,31 @@ func TestAdvanceAndForgetFollowAPush(t *testing.T) {
 	g.x.Options.DryRun = true
 	if err := AdvanceTrusted(g.x, g.dir, "host/h"); err != nil || record(t, "host/h") != "" {
 		t.Errorf("a dry run wrote a record: %v", err)
+	}
+}
+
+func TestTheRefusalOfARepositoryWithANameSaysToUseRepoSync(t *testing.T) {
+	g := newGitRepo(t)
+	c1 := g.commit("one")
+	c2 := g.commit("two")
+	if err := g.check("main", c2); err != nil {
+		t.Fatal(err)
+	}
+	id, _ := RepoID(testOrigin)
+	if err := SetName("inventory", id); err != nil {
+		t.Fatal(err)
+	}
+	err := g.check("main", c1)
+	if err == nil {
+		t.Fatal("an older commit was accepted")
+	}
+	for _, want := range []string{"does not follow " + c2 + ", the commit you trusted last",
+		"review and accept it with fleet repo sync inventory --accept-rewrite main"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal lacks %q:\n%v", want, err)
+		}
+	}
+	if strings.Contains(err.Error(), "rm ") {
+		t.Errorf("a named repository is told to remove a file:\n%v", err)
 	}
 }
