@@ -62,8 +62,8 @@ func TestTheHighlightedRowHasABar(t *testing.T) {
 	}
 	u.look = Look{Console: true}
 	console := u.theme(true).Focused.SelectedOption.Render("Check a host")
-	if !strings.Contains(console, "7") || strings.Contains(console, "48;5;") {
-		t.Errorf("console: not reverse video, or a 256-colour background: %q", console)
+	if !strings.Contains(console, "47") || !strings.Contains(console, "30") || strings.Contains(console, "48;5;") || strings.Contains(console, "\x1b[1") {
+		t.Errorf("console: not black on the basic grey, or bold, or a 256-colour background: %q", console)
 	}
 	if got := u.theme(true).Focused.SelectSelector.String(); !strings.Contains(got, "> ") {
 		t.Errorf("console selector %q", got)

@@ -73,13 +73,15 @@ func (l Look) Selector() string {
 
 // Highlight is the bar across the highlighted row of a list: a grey
 // background, light on a light terminal and dark on a dark one, with bold
-// text. The console has no grey to spare as a background, so there it is
-// reverse video, which shows on any colours.
+// text. The console has one grey among its eight backgrounds, so there it is
+// black on that grey, and not bold: the console shows bold as a brighter
+// colour, which would turn the black text grey.
 func (l Look) Highlight(dark bool) lipgloss.Style {
+	if l.Console {
+		return lipgloss.NewStyle().Background(lipgloss.White).Foreground(lipgloss.Black)
+	}
 	s := lipgloss.NewStyle().Bold(true)
 	switch {
-	case l.Console:
-		return s.Reverse(true)
 	case dark:
 		return s.Background(lipgloss.Color("238")).Foreground(lipgloss.Color("231"))
 	default:
