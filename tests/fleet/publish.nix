@@ -85,6 +85,38 @@ pkgs.runCommand "inventory-publish" {
   [ "$(rev host/alpha)" = "$a1" ] || { echo "alpha moved with beta's change"; exit 1; }
   [ "$(rev host/beta^)" = "$b1" ] || { echo "host/beta's new commit is not on its last"; exit 1; }
 
+  # The signature is not enough: an old signed main, served again, is signed
+  # too, and publish would cut every branch from it as a new commit signed by
+  # you. It stops at the commit it trusted last, naming the record; with the
+  # record removed, for a history rewritten on purpose, it goes on.
+  record() { echo "$XDG_STATE_HOME/fleet/repos/file$PWD/origin/trusted/$1"; }
+  m2=$(git -C inv rev-parse HEAD)
+  [ "$(cat "$(record main)")" = "$m2" ] || { echo "the record of main is not the commit published from"; exit 1; }
+  [ "$(cat "$(record host/beta)")" = "$(rev host/beta)" ] || { echo "the record of host/beta is not what was pushed"; exit 1; }
+  [ "$(stat -c %a "$(record main)")" = 600 ] || { echo "the record is not private"; exit 1; }
+  (cd inv && git reset -q --hard HEAD~1 && git push -q --force origin main)
+  m1=$(git -C inv rev-parse HEAD)
+  b2=$(rev host/beta)
+  if publish > out 2>&1; then echo "published from an older main served again"; exit 1; fi
+  grep -q "main at $m1 does not follow $m2, the commit you trusted last" out || { cat out; exit 1; }
+  grep -q "rm $(record main)" out || { echo "the refusal does not name the record"; cat out; exit 1; }
+  [ "$(rev host/beta)" = "$b2" ] || { echo "a branch moved though main was refused"; exit 1; }
+  rm "$(record main)"
+  publish > out 2>&1 || { cat out; exit 1; }
+  [ "$(rev host/beta)" != "$b2" ] || { echo "the older main was not published after the record went"; exit 1; }
+  (cd inv && git reset -q --hard "$m2" && git push -q origin main)
+  publish > out 2>&1 || { cat out; exit 1; }
+  # A host's branch served again at an older signed commit is not built on.
+  b3=$(rev host/beta)
+  git -C origin.git update-ref refs/heads/host/beta "$b1"
+  if publish > out 2>&1; then echo "built on a host branch served again at an older commit"; exit 1; fi
+  grep -q "host/beta at $b1 does not follow $b3, the commit you trusted last" out || { cat out; exit 1; }
+  grep -q "rm $(record host/beta)" out || { echo "the refusal does not name the record"; cat out; exit 1; }
+  [ "$(rev host/beta)" = "$b1" ] || { echo "the refused branch was pushed to"; exit 1; }
+  rm "$(record host/beta)"
+  publish > out 2>&1 || { cat out; exit 1; }
+  [ "$(rev host/beta^)" = "$b1" ] || { echo "host/beta did not get a commit on the older tip"; exit 1; }
+
   # One branch alone: none of the other host's files.
   git clone -q --single-branch --branch host/alpha "file://$PWD/origin.git" alpha-only 2>/dev/null
   for f in config/users/bob/default.nix config/hosts/beta/default.nix; do

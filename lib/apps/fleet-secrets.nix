@@ -194,7 +194,7 @@ pkgs.writeShellApplication {
       local origin id
       origin="$(git remote get-url origin 2>/dev/null)" \
         || die "$repo has no origin: trusted commits are kept per repository, named after its address"
-      id="$(repo_id "$origin")" || die "$origin is not a repository address"
+      id="$(repo_id "$origin")" || die "$origin is not a repository address: trusted commits are kept per repository, named after its address (a repository on this machine needs a file:// address, git remote set-url origin file://<path>)"
       printf '%s/fleet/repos/%s/trusted/%s' "''${XDG_STATE_HOME:-$HOME/.local/state}" "$id" "$1"
     }
 

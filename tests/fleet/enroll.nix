@@ -144,7 +144,7 @@ pkgs.testers.runNixOSTest {
         "ssh-keyscan -t ed25519 newhost >> /home/git/.ssh/known_hosts 2>/dev/null",
         "chown git /home/git/.ssh/known_hosts",
         "su git -c 'mkdir -p ~/.local/state/fleet && cp ${fixtures}/recovery.pub ~/.local/state/fleet/recovery.pub'",
-        "su git -c 'git clone -q /var/lib/forge/secrets.git /home/git/w"
+        "su git -c 'git clone -q file:///var/lib/forge/secrets.git /home/git/w"
         " && git -C /home/git/w config user.name maintainer"
         " && git -C /home/git/w config user.email maintainer@test"
         " && git -C /home/git/w config gpg.format ssh"

@@ -615,7 +615,7 @@ pkgs.testers.runNixOSTest {
         "ssh-keyscan -t ed25519 fleet > /home/git/.ssh/known_hosts 2>/dev/null",
         "chown git /home/git/.ssh/known_hosts",
         "su git -c 'mkdir -p ~/.local/state/fleet && cp ${fixtures}/recovery.pub ~/.local/state/fleet/recovery.pub'",
-        "su git -c 'git clone -q /var/lib/forge/secrets.git /home/git/w"
+        "su git -c 'git clone -q file:///var/lib/forge/secrets.git /home/git/w"
         " && git -C /home/git/w config user.name maintainer"
         " && git -C /home/git/w config user.email maintainer@test"
         " && git -C /home/git/w config gpg.format ssh"
@@ -766,7 +766,43 @@ pkgs.testers.runNixOSTest {
         assert [k.rsplit(" ", 1)[0] for k in stored("carol")] == [third]
         assert any("ops_sudo@test" in k for k in stored("carol", "sudo_keys"))
 
-    with subtest("11: an older signed commit served again is refused, unless the record goes"):
+    with subtest("10d: the maintainer's tools refuse a host branch served again at an older signed commit, unless the record goes"):
+        # The tools keep the commit they trusted last on each branch, in the
+        # state folder, named after the repository's address.
+        record = "/home/git/.local/state/fleet/repos/file/var/lib/forge/secrets/trusted/host/${hostName}"
+        saved = forge.succeed("su git -c 'git -C /var/lib/forge/secrets.git rev-parse host/${hostName}'").strip()
+        assert forge.succeed(f"cat {record}").strip() == saved, "the record is not the commit the last command pushed"
+        assert forge.succeed(f"stat -c %a {record}").strip() == "600"
+        # Someone who can push serves an older signed commit; this machine, as
+        # a fresh clone would, knows the branch only as origin has it.
+        older = forge.succeed("su git -c 'git -C /home/git/w rev-parse host/${hostName}~1'").strip()
+        forge.succeed(
+            "su git -c 'git -C /home/git/w branch -q -D host/${hostName}"
+            f" && git -C /home/git/w push -q --force origin {older}:host/${hostName}'"
+        )
+        status, out = forge.execute(
+            "cd /home/git/w && printf x | su git -c"
+            " 'SOPS_AGE_KEY_FILE=/home/git/recovery.key fleet host secret ${hostName} rewound --value-stdin --recovery \"\" --yes' 2>&1"
+        )
+        assert status != 0 and f"host/${hostName} at {older} does not follow {saved}, the commit you trusted last" in out, f"{status}: {out}"
+        assert f"rm {record}" in out, out
+        assert "committed" not in out, out
+        assert forge.succeed("su git -c 'git -C /var/lib/forge/secrets.git rev-parse host/${hostName}'").strip() == older
+        assert forge.succeed(f"cat {record}").strip() == saved, "the refusal moved the record"
+        # Removing the record accepts it, for a history rewritten on purpose.
+        forge.succeed(f"rm {record}")
+        out = maintainer("${hostName} rewound --value-stdin", stdin="x")
+        assert "✓ committed: ${hostName}: rewound" in out, out
+        pushed = forge.succeed("su git -c 'git -C /var/lib/forge/secrets.git rev-parse host/${hostName}'").strip()
+        assert pushed != older and forge.succeed(f"cat {record}").strip() == pushed
+        # Put the branch back as it was: a rewind on purpose, so the record goes too.
+        forge.succeed(
+            f"su git -c 'git -C /home/git/w branch -q -f host/${hostName} {saved}"
+            f" && git -C /home/git/w push -q --force origin {saved}:host/${hostName}'",
+            f"rm {record}",
+        )
+
+    with subtest("11:an older signed commit served again is refused, unless the record goes"):
         fleet.succeed(sync_cmd)
         current = fleet.succeed("basename $(readlink /var/lib/fleet/secrets)").strip()
         accepted = fleet.succeed("cat /var/lib/fleet/accepted/host").strip()
@@ -1281,7 +1317,7 @@ pkgs.testers.runNixOSTest {
 
     # Dave as the user, with fleet user, from his own directory and home: his
     # identity and signing key, in a clone of his own (daveFleet).
-    forge.succeed("su git -c 'git clone -q /var/lib/forge/secrets.git /home/git/dave/secrets'")
+    forge.succeed("su git -c 'git clone -q file:///var/lib/forge/secrets.git /home/git/dave/secrets'")
 
     def dave_fleet(args, stdin=""):
         return forge.succeed(f"printf %s '{stdin}' | su git -c '${daveFleet} {args}' 2>&1")

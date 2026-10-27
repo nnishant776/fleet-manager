@@ -178,7 +178,7 @@ func CheckTrustedLine(x *engine.Ctx, dir, address, branch, commit string) error 
 func checkTrusted(x *engine.Ctx, dir, address, branch, ref string, line bool) error {
 	id, err := RepoID(address)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: trusted commits are kept per repository, named after its address (a repository on this machine needs a file:// address, git remote set-url origin file://<path>)", err)
 	}
 	tip, err := commitOf(x, dir, ref)
 	if err != nil {
