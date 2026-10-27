@@ -448,8 +448,11 @@ line, a full commit hash, and is readable by you only.
   files in the secrets repository (`fleet host secret`, `fleet secrets …`) and
   `fleet user …` check and record. So does the shell `fleet-secrets`, in the
   same files. `host-retire` and `user-retire` remove the branch's record.
-- If the history was rewritten on purpose, remove the record file the message
-  names and run the command again: the tip you see is then trusted afresh.
+- If the history was rewritten on purpose, a repository that has a name
+  (`fleet repo add`) is reviewed and accepted with `fleet repo sync <name>
+  --accept-rewrite <branch>`, described below. For a checkout without a name,
+  remove the record file the message names and run the command again: the tip
+  you see is then trusted afresh.
 - The records go by the address of the clone's `origin`, so a clone of a
   repository on this machine needs a `file://` address
   (`git remote set-url origin file:///path/to/repo.git`). A shallow clone
@@ -480,6 +483,27 @@ before. In the clone only the tools work: they fetch it, and the secrets
 commands commit there and push from there, as they do in a checkout. A commit
 a command does not push stays in the clone, and the command says how to push
 it.
+
+`fleet repo sync [NAME...]` is how the commits you trust move forward. It
+fetches the clone of each repository you name (every one by default), and for
+`main`, each host's branch and each user's branch it lists the new commits
+since the ones you trusted: date, author, subject, and the key that signed
+each. A repository whose keys have their own file is looked at first, because
+the others, such as the secrets repository, are checked against its keys. You
+are asked "Accept these?", or give `--yes`; then the commits you trust and the
+clone move to what you saw, and nothing is written before that. A repository is
+refused whole, and nothing is written for it, when a branch went backwards or
+was rewritten, when the newest commit of `main` or of a host's branch is not
+signed by a key you trust, or when the list of keys changed in a commit that no
+key you already trust signed. If the history was rewritten on purpose and you
+know why, `fleet repo sync <name> --accept-rewrite <branch>` shows the commits
+that were dropped and the new ones, and takes the branch once you type its
+name; this needs a terminal, even with `--yes`. A user's branch is signed by
+the user's own key, which only the encrypted files name, so when it is not
+signed by one of your keys it is shown and left alone: the secrets commands
+check it against the user's key. Accepting a rewrite of a user's branch drops
+its record, and the next secrets command takes the branch afresh after that
+check.
 
 While the key is in your agent, any program running as you can sign with it.
 `ssh-add -c` makes the agent ask you before each signature, and `ssh-add -t`
