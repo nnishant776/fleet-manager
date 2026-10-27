@@ -40,7 +40,7 @@ func TestAdmittingAHostPutsBackWhenTheCommitFails(t *testing.T) {
 			return engine.Result{Stdout: answers[s.Args[0]] + "\n"}, nil
 		case s.Name == "sops":
 			return engine.Result{Stdout: "sops: encrypted\n"}, nil
-		case s.Name == "git" && strings.Contains(strings.Join(s.Args, " "), "rev-parse --verify"):
+		case s.Name == "git" && (strings.Contains(strings.Join(s.Args, " "), "rev-parse --verify") && !strings.HasSuffix(strings.Join(s.Args, " "), "^{commit}")):
 			return engine.Result{Code: 1}, errFailed // pi has no branch yet
 		case s.Name == "git" && s.Args[0] == "commit":
 			return engine.Result{Code: 1, Stderr: "error: no signing key"}, errFailed

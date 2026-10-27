@@ -117,7 +117,7 @@ var SecretsUserEnroll = &engine.Flow{
 			},
 			Do: engine.Cmd("git", "push", "origin", "user/{{.user}}").In("{{.repo}}").After(func(x *engine.Ctx) error {
 				x.Kept("push user/"+x.Value("user"), "")
-				return nil
+				return secrets.Pushed(x, "user/"+x.Value("user"))
 			}),
 		}),
 		secrets.Unless(engine.Step{
@@ -135,6 +135,9 @@ var SecretsUserEnroll = &engine.Flow{
 						return err
 					}
 					x.Kept("push host/"+h, "")
+					if err := secrets.Pushed(x, "host/"+h); err != nil {
+						return err
+					}
 				}
 				return nil
 			}),
@@ -495,6 +498,9 @@ var SecretsUserRetire = &engine.Flow{
 						return err
 					}
 					x.Kept("push host/"+h, "")
+					if err := secrets.Pushed(x, "host/"+h); err != nil {
+						return err
+					}
 				}
 				return nil
 			}),
@@ -520,6 +526,17 @@ var SecretsUserRetire = &engine.Flow{
 				return true, ""
 			},
 			Do: engine.Cmd("git", "branch", "-D", "-q", "user/{{.user}}").In("{{.repo}}").OK("deleted"),
+		},
+		{
+			Title: "Forget the commit you trusted on user/{{.user}}",
+			Why:   "The branch is going away, so the record of its last trusted commit (a file in your fleet state folder) goes too; if the user is enrolled again, their branch is trusted afresh.",
+			Do: engine.Func(func(x *engine.Ctx) error {
+				if err := secrets.Retired(x, "user/"+x.Value("user")); err != nil {
+					return err
+				}
+				x.UI.OK("removed")
+				return nil
+			}),
 		},
 		{
 			Title: "Still to do",

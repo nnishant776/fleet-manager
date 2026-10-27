@@ -51,7 +51,9 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
    $ cd REPO && git branch -D -q host/HOST
    ```
 
-5. **Still to do.** The branch is gone from your clone only; the host's access ends when its deploy key goes.
+5. **Forget the commit you trusted on host/HOST.** The branch is going away, so the record of its last trusted commit (a file in your fleet state folder) goes too; if the host is enrolled again, its branch is trusted afresh.
+
+6. **Still to do.** The branch is gone from your clone only; the host's access ends when its deploy key goes.
 
    > HOST is retired. Still to do:
    > 1. Delete the branch on the forge, which takes it away from the host:

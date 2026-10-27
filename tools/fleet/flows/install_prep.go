@@ -123,7 +123,18 @@ func checkConfigCommit(x *engine.Ctx) error {
 	if out, err := engine.Silently(x, nil, "nix", "eval", "--json", x.Value("flake")+"#fleetLayout"); err == nil {
 		_ = json.Unmarshal([]byte(out), &l)
 	}
-	if l.HostBranches && x.Value("config_ref") == "host/"+x.Value("host") {
+	hostBranch := l.HostBranches && x.Value("config_ref") == "host/"+x.Value("host")
+	// Signed is not enough: an old commit, served again, is signed too. The
+	// commit is on the branch the host tracks, or on main when the host has a
+	// branch of its own, which publish cut from it.
+	trustBranch := x.Value("config_ref")
+	if hostBranch {
+		trustBranch = "main"
+	}
+	if err := fleet.CheckTrusted(x, flake, x.Value("origin"), trustBranch, x.Value("inv")); err != nil {
+		return err
+	}
+	if hostBranch {
 		return checkHostBranch(x, l)
 	}
 	// Otherwise this commit, which has to be on the branch the host tracks:
@@ -160,6 +171,9 @@ func checkHostBranch(x *engine.Ctx, l layout) error {
 		if _, err := c.Run(x); err != nil {
 			return err
 		}
+	}
+	if err := fleet.CheckTrusted(x, x.Value("flake"), x.Value("origin"), x.Value("config_ref"), x.Value("branch_rev")); err != nil {
+		return err
 	}
 	if x.Options.DryRun {
 		return nil
@@ -274,6 +288,9 @@ func checkInstallerCommit(x *engine.Ctx) error {
 				return err
 			}
 		}
+		if err := checkUpstreamTrust(x, x.Value("fm_git"), x.Value("fm"), true); err != nil {
+			return err
+		}
 	}
 	res, err := engine.Cmd("git", "-C", "{{.fm_git}}", "show", "{{.fm}}:bootstrap").ReadOnly().Quiet().OK("read bootstrap at {{.fm}}").Run(x)
 	if err != nil {
@@ -289,6 +306,28 @@ func checkInstallerCommit(x *engine.Ctx) error {
 	x.Values["bootstrap_sum"] = hex.EncodeToString(sum[:])
 	x.UI.OK("bootstrap at that commit has SHA-256 " + x.Value("bootstrap_sum"))
 	return nil
+}
+
+// checkUpstreamTrust checks a fleet-manager commit, fetched alone into the
+// scratch repository gitDir, against the commit you trusted last on
+// fleet-manager's main: a pin may be that commit, before it or after it (line);
+// main's newest must follow it. When there is a record to compare with, the
+// scratch repository gets the history of main too.
+func checkUpstreamTrust(x *engine.Ctx, gitDir, rev string, line bool) error {
+	rec, err := fleet.ReadTrusted(fleet.UpstreamURL, "main")
+	if err != nil {
+		return err
+	}
+	if rec != "" && rec != rev {
+		if _, err := engine.Cmd("git", "-C", gitDir, "fetch", "-q", "--unshallow", fleet.UpstreamURL, "main").
+			ReadOnly().Quiet().OK("fetched main's history, to see where " + rev + " stands against the commit you trusted").Run(x); err != nil {
+			return err
+		}
+	}
+	if line {
+		return fleet.CheckTrustedLine(x, gitDir, fleet.UpstreamURL, "main", rev)
+	}
+	return fleet.CheckTrusted(x, gitDir, fleet.UpstreamURL, "main", rev)
 }
 
 // printInstallLine prints the line for the installer. A configuration with a

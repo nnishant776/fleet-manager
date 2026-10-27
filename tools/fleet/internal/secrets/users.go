@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/nnishant776/fleet-manager/tools/fleet/internal/engine"
+	"github.com/nnishant776/fleet-manager/tools/fleet/internal/fleet"
 )
 
 // A user listed in hosts/<host>.yaml (the reserved, encrypted key users, with
@@ -36,13 +37,16 @@ func UserBranchRef(x *engine.Ctx, user string) string {
 }
 
 // VerifyTip checks the newest commit of a ref is signed by a key in
-// gpg.ssh.allowedSignersFile, which a change builds on.
+// gpg.ssh.allowedSignersFile, which a change builds on, and that it follows
+// the commit you trusted last on that branch.
 func VerifyTip(x *engine.Ctx, ref string) error {
-	_, err := repoCmd("git", "verify-commit", ref).Explain(func(engine.Result) string {
+	if _, err := repoCmd("git", "verify-commit", ref).Explain(func(engine.Result) string {
 		return "the newest commit of " + ref + " is not signed by a key in gpg.ssh.allowedSignersFile (fleet setup sets it):" +
 			" look at it with git log --show-signature -1 " + ref + " before going on"
-	}).RunQuiet(x)
-	return err
+	}).RunQuiet(x); err != nil {
+		return err
+	}
+	return FollowsTrusted(x, ref)
 }
 
 // IsListed says whether hosts/<host>.yaml on hostRef lists the user. sops
@@ -298,8 +302,42 @@ func verifyAgainst(x *engine.Ctx, ref, user, key string, signers []byte, explain
 		return err
 	}
 	tmp.Close()
-	_, err = repoCmd("git", "-c", "gpg.ssh.allowedSignersFile="+tmp.Name(), "verify-commit", ref).Explain(func(engine.Result) string {
+	if _, err = repoCmd("git", "-c", "gpg.ssh.allowedSignersFile="+tmp.Name(), "verify-commit", ref).Explain(func(engine.Result) string {
 		return explain
-	}).RunQuiet(x)
-	return err
+	}).RunQuiet(x); err != nil {
+		return err
+	}
+	return FollowsTrusted(x, ref)
+}
+
+// BranchOf is the branch a ref holds: refs/heads/host/a and
+// refs/remotes/origin/host/a are both host/a.
+func BranchOf(ref string) string {
+	if b, ok := strings.CutPrefix(ref, "refs/heads/"); ok {
+		return b
+	}
+	return strings.TrimPrefix(ref, "refs/remotes/origin/")
+}
+
+// FollowsTrusted checks the tip of a branch ref of the clone follows the
+// commit you trusted last on that branch (fleet.CheckTrusted), after its
+// signature has been checked, and moves the record to it. The records are per
+// repository, named after the clone's origin.
+func FollowsTrusted(x *engine.Ctx, ref string) error {
+	origin, err := fleet.OriginOf(x, x.Value("repo"))
+	if err != nil {
+		return err
+	}
+	return fleet.CheckTrusted(x, x.Value("repo"), origin, BranchOf(ref), ref)
+}
+
+// Pushed moves the record of a branch to what the clone's branch holds, once
+// a push of it has succeeded.
+func Pushed(x *engine.Ctx, branch string) error {
+	return fleet.AdvanceTrusted(x, x.Value("repo"), branch)
+}
+
+// Retired drops the record of a branch the command removed.
+func Retired(x *engine.Ctx, branch string) error {
+	return fleet.ForgetTrusted(x, x.Value("repo"), branch)
 }

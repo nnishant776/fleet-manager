@@ -559,6 +559,11 @@ func signedUpstreamMain(x *engine.Ctx) (string, error) {
 	if x.Options.DryRun && rev == "" {
 		rev = "<newest commit of main>"
 	}
+	if !x.Options.DryRun || rev != "<newest commit of main>" {
+		if err := checkUpstreamTrust(x, tmp, rev, false); err != nil {
+			return "", err
+		}
+	}
 	return rev, nil
 }
 

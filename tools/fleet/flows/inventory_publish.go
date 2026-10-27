@@ -120,6 +120,10 @@ func checkPublishSource(x *engine.Ctx) error {
 			return err
 		}
 	}
+	// Signed is not enough: an old main, served again, is signed too.
+	if err := fleet.CheckTrusted(x, flake, x.Value("origin"), "main", x.Value("main_rev")); err != nil {
+		return err
+	}
 	if x.Options.DryRun {
 		return nil
 	}
@@ -252,6 +256,9 @@ func cutHostBranch(x *engine.Ctx, host, kind string, l layout, accounts []string
 			}).Run(x); err != nil {
 			return "", err
 		}
+		if err := fleet.CheckTrusted(x, x.Value("flake"), x.Value("origin"), "host/"+host, parent); err != nil {
+			return "", err
+		}
 		if t, _ := engine.Silently(x, nil, "git", "-C", x.Value("flake"), "rev-parse", parent+"^{tree}"); t == tree {
 			x.UI.Skip("host/" + host + ": unchanged")
 			return "", nil
@@ -313,5 +320,15 @@ func pushHostBranches(x *engine.Ctx) error {
 		return err
 	}
 	_, err = engine.Cmd("git", append([]string{"-C", "{{.flake}}", "push", "--atomic", "origin"}, refs...)...).OK("pushed").Run(x)
-	return err
+	if err != nil {
+		return err
+	}
+	// What was pushed is what you trust on those branches now.
+	for _, r := range refs {
+		commit, ref, _ := strings.Cut(r, ":")
+		if err := fleet.WriteTrusted(x.Value("origin"), strings.TrimPrefix(ref, "refs/heads/"), commit); err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -320,10 +320,7 @@ func ExistingBranch(otherwise string, work bool) engine.Step {
 			if !work {
 				return nil
 			}
-			if _, err := repoCmd("git", "verify-commit", "{{.ref}}").Explain(func(engine.Result) string {
-				return "the newest commit of {{.ref}} is not signed by a key in gpg.ssh.allowedSignersFile (fleet setup sets it):" +
-					" look at it with git log --show-signature -1 {{.ref}} before going on"
-			}).RunQuiet(x); err != nil {
+			if err := VerifyTip(x, ref); err != nil {
 				return err
 			}
 			x.UI.OK("its newest commit is signed by a trusted key")
@@ -611,7 +608,7 @@ func Commit(message string, paths ...string) engine.Step {
 func PushBranch() *engine.Command {
 	return repoCmd("git", "push", "origin", "host/{{.host}}").After(func(x *engine.Ctx) error {
 		x.Kept("push host/"+x.Value("host"), "")
-		return nil
+		return Pushed(x, "host/"+x.Value("host"))
 	})
 }
 
@@ -620,7 +617,7 @@ func PushBranch() *engine.Command {
 func PushWork() *engine.Command {
 	return repoCmd("git", "push", "origin", "{{.branch}}").After(func(x *engine.Ctx) error {
 		x.Kept("push "+WorkBranch(x), "")
-		return nil
+		return Pushed(x, WorkBranch(x))
 	})
 }
 

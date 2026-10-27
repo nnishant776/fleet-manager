@@ -75,11 +75,11 @@ func (r *userRepo) respond(s engine.Spec) (engine.Result, error) {
 				refs = append(refs, "refs/heads/host/"+h)
 			}
 			return engine.Result{Stdout: strings.Join(refs, "\n")}, nil
-		case strings.Contains(args, "rev-parse --verify -q refs/heads/user/"):
+		case (strings.Contains(args, "rev-parse --verify -q refs/heads/user/") && !strings.HasSuffix(args, "^{commit}")):
 			if !r.userBranch {
 				return engine.Result{Code: 1}, errors.New("exit 1")
 			}
-		case strings.Contains(args, "rev-parse --verify -q refs/remotes/origin/user/"):
+		case (strings.Contains(args, "rev-parse --verify -q refs/remotes/origin/user/") && !strings.HasSuffix(args, "^{commit}")):
 			return engine.Result{Code: 1}, errors.New("exit 1")
 		case strings.Contains(args, "cat-file -e"):
 			ref := s.Args[len(s.Args)-1]
@@ -111,6 +111,7 @@ func runUserEnroll(t *testing.T, r *userRepo, doc string, hosts ...string) (erro
 	if err := os.WriteFile(from, []byte(doc), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	forgetTrusted(t)
 	x, fake, out := newFakeCtx(r.respond)
 	args := map[string]string{"repo": t.TempDir(), "recovery": "", "user": "alice", "from": from, "host": strings.Join(hosts, "\n")}
 	err := engine.RunWith(x, SecretsUserEnroll, args)
@@ -221,6 +222,7 @@ func TestUserEnrollChecksTheEnrollmentFile(t *testing.T) {
 	}
 	// A key ssh-keygen does not parse.
 	cacheRecovery(t)
+	forgetTrusted(t)
 	x, _, out := newFakeCtx(func(s engine.Spec) (engine.Result, error) {
 		if s.Name == "ssh-keygen" {
 			return engine.Result{Code: 255}, errors.New("exit 255")
@@ -253,6 +255,7 @@ func TestUserEnrollRefusesAFileEncryptedToAStranger(t *testing.T) {
 func TestUserEnrollRemovesTheWorktreesWhenItStops(t *testing.T) {
 	r := &userRepo{hosts: []string{"nas"}, hostFile: map[string]bool{"nas": true}}
 	cacheRecovery(t)
+	forgetTrusted(t)
 	x, fake, out := newFakeCtx(func(s engine.Spec) (engine.Result, error) {
 		if s.Name == "sops" && s.Args[0] == "set" {
 			return engine.Result{Code: 1, Stderr: "boom"}, errors.New("exit 1")
@@ -286,6 +289,7 @@ func TestUserEnrollRemovesTheWorktreesWhenItStops(t *testing.T) {
 func runUserRetire(t *testing.T, r *userRepo) (error, *engine.Fake, string) {
 	t.Helper()
 	cacheRecovery(t)
+	forgetTrusted(t)
 	x, fake, out := newFakeCtx(r.respond)
 	err := engine.RunWith(x, SecretsUserRetire, map[string]string{"repo": t.TempDir(), "recovery": "", "user": "alice"})
 	return err, fake, out.String()
@@ -350,6 +354,7 @@ func listedAlice() *userRepo {
 func runUserFlow(t *testing.T, f *engine.Flow, r *userRepo, args map[string]string, extra func(engine.Spec)) (error, *engine.Fake, string) {
 	t.Helper()
 	cacheRecovery(t)
+	forgetTrusted(t)
 	x, fake, out := newFakeCtx(func(s engine.Spec) (engine.Result, error) {
 		if extra != nil {
 			extra(s)
@@ -495,6 +500,7 @@ func TestListedUsersTipMayBeSignedByTheirOwnKey(t *testing.T) {
 func TestHostRekeyRotatesTheFilesOfListedUsersOnTheirBranches(t *testing.T) {
 	r := listedAlice()
 	cacheRecovery(t)
+	forgetTrusted(t)
 	x, fake, out := newFakeCtx(func(s engine.Spec) (engine.Result, error) {
 		args := strings.Join(s.Args, " ")
 		if s.Name == "yq" && strings.HasPrefix(args, "(.users") {

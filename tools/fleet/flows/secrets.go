@@ -155,6 +155,17 @@ var SecretsHostRetire = &engine.Flow{
 			Do: engine.Cmd("git", "branch", "-D", "-q", "host/{{.host}}").In("{{.repo}}").OK("deleted"),
 		},
 		{
+			Title: "Forget the commit you trusted on host/{{.host}}",
+			Why:   "The branch is going away, so the record of its last trusted commit (a file in your fleet state folder) goes too; if the host is enrolled again, its branch is trusted afresh.",
+			Do: engine.Func(func(x *engine.Ctx) error {
+				if err := secrets.Retired(x, "host/"+x.Value("host")); err != nil {
+					return err
+				}
+				x.UI.OK("removed")
+				return nil
+			}),
+		},
+		{
 			Title: "Still to do",
 			Why:   "The branch is gone from your clone only; the host's access ends when its deploy key goes.",
 			Do: engine.Show("{{.host}} is retired. Still to do:\n" +

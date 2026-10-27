@@ -3,6 +3,8 @@ package flows
 import (
 	"bytes"
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"errors"
 	"os"
 	"os/exec"
@@ -15,16 +17,36 @@ import (
 	"github.com/nnishant776/fleet-manager/tools/fleet/internal/ui"
 )
 
-func newFakeCtx(respond func(engine.Spec) (engine.Result, error)) (*engine.Ctx, *engine.Fake, *bytes.Buffer) {
-	var out bytes.Buffer
-	fake := &engine.Fake{Respond: func(s engine.Spec) (engine.Result, error) {
+// gitFacts adds the answers every checkout would give, unless a test gave its
+// own: an origin, and for any ref the commit it names (itself when it is a
+// full hash, else a hash made from the name), which the trusted-commit check
+// asks for.
+func gitFacts(respond func(engine.Spec) (engine.Result, error)) func(engine.Spec) (engine.Result, error) {
+	return func(s engine.Spec) (engine.Result, error) {
 		res, err := respond(s)
-		// A checkout has an origin unless a test says otherwise.
-		if err == nil && res.Stdout == "" && s.Name == "git" && strings.Contains(strings.Join(s.Args, " "), "remote get-url origin") {
+		if err != nil || res.Stdout != "" || s.Name != "git" {
+			return res, err
+		}
+		args := strings.Join(s.Args, " ")
+		switch {
+		case strings.Contains(args, "remote get-url origin"):
 			res.Stdout = "git@github.com:example-org/inventory.git\n"
+		case strings.Contains(args, "rev-parse --verify -q ") && strings.HasSuffix(args, "^{commit}"):
+			ref := strings.TrimSuffix(s.Args[len(s.Args)-1], "^{commit}")
+			if fullHash.MatchString(ref) {
+				res.Stdout = ref + "\n"
+			} else {
+				sum := sha1.Sum([]byte(ref))
+				res.Stdout = hex.EncodeToString(sum[:]) + "\n"
+			}
 		}
 		return res, err
-	}}
+	}
+}
+
+func newFakeCtx(respond func(engine.Spec) (engine.Result, error)) (*engine.Ctx, *engine.Fake, *bytes.Buffer) {
+	var out bytes.Buffer
+	fake := &engine.Fake{Respond: gitFacts(respond)}
 	return &engine.Ctx{
 		Context: context.Background(), UI: ui.NewWith(&out, nil), Runner: fake,
 		Options: engine.Options{Yes: true}, Values: map[string]string{}, Stdin: strings.NewReader(""),
@@ -340,5 +362,19 @@ func TestSupportKeyRotationOnAHostWithKeysFromSecrets(t *testing.T) {
 	}
 	if strings.Contains(out.String(), "In hosts/pi/default.nix") {
 		t.Errorf("configuration lines were shown:\n%s", out)
+	}
+}
+
+// forgetTrusted drops the trusted commits an earlier test recorded in the
+// shared state folder, keeping the rest of it.
+func forgetTrusted(t *testing.T) {
+	t.Helper()
+	dir, err := fleet.StateDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found, _ := filepath.Glob(filepath.Join(dir, "repos", "*", "*", "*", "trusted"))
+	for _, d := range found {
+		_ = os.RemoveAll(d)
 	}
 }

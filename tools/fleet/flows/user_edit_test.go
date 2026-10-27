@@ -57,11 +57,11 @@ func (r *ownRepo) respond(s engine.Spec) (engine.Result, error) {
 			if r.badSignature {
 				return fail, errors.New("exit 1")
 			}
-		case strings.Contains(args, "rev-parse --verify -q refs/heads/user/"):
+		case (strings.Contains(args, "rev-parse --verify -q refs/heads/user/") && !strings.HasSuffix(args, "^{commit}")):
 			if !r.local {
 				return fail, errors.New("exit 1")
 			}
-		case strings.Contains(args, "rev-parse --verify -q refs/remotes/origin/user/"):
+		case (strings.Contains(args, "rev-parse --verify -q refs/remotes/origin/user/") && !strings.HasSuffix(args, "^{commit}")):
 			if !r.remote {
 				return fail, errors.New("exit 1")
 			}
@@ -104,6 +104,7 @@ func runOwn(t *testing.T, f *engine.Flow, r *ownRepo, flags map[string]string) (
 	if err := os.WriteFile(signers, []byte("maintainer namespaces=\"git\" "+maintainer+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	forgetTrusted(t)
 	x, fake, out := newFakeCtx(r.respond)
 	x.Stdin = strings.NewReader("the secret")
 	args := map[string]string{

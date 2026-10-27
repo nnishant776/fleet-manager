@@ -54,7 +54,7 @@ func enrollHost(identity, enrolled, tamper bool) func(engine.Spec) (engine.Resul
 			return engine.Result{Stdout: "https://github.com/nnishant776/fleet-manager.git"}, nil
 		case s.Name == "ssh" && strings.Contains(last, "pi.enroll"):
 			return engine.Result{Stdout: enrollDoc + sumLine}, nil
-		case s.Name == "git" && strings.Contains(strings.Join(s.Args, " "), "rev-parse --verify"):
+		case s.Name == "git" && (strings.Contains(strings.Join(s.Args, " "), "rev-parse --verify") && !strings.HasSuffix(strings.Join(s.Args, " "), "^{commit}")):
 			if enrolled || created {
 				return engine.Result{}, nil // host/pi exists
 			}
@@ -77,7 +77,7 @@ func enrollHost(identity, enrolled, tamper bool) func(engine.Spec) (engine.Resul
 func runEnroll(t *testing.T, respond func(engine.Spec) (engine.Result, error)) (error, *engine.Fake, string) {
 	t.Helper()
 	var out bytes.Buffer
-	fake := &engine.Fake{Respond: respond}
+	fake := &engine.Fake{Respond: gitFacts(respond)}
 	x := &engine.Ctx{
 		Context:  context.Background(),
 		UI:       ui.NewWith(&out, nil),
@@ -173,7 +173,7 @@ func runSwitchSync(t *testing.T, respond func(engine.Spec) (engine.Result, error
 	_ = os.MkdirAll(filepath.Join(flake, "fleet"), 0o755)
 	_ = os.WriteFile(filepath.Join(flake, "fleet", "allowed_signers"), []byte("me namespaces=\"git\" ssh-ed25519 AAAA\n"), 0o644)
 	var out bytes.Buffer
-	fake := &engine.Fake{Respond: respond}
+	fake := &engine.Fake{Respond: gitFacts(respond)}
 	x := &engine.Ctx{
 		Context: context.Background(), UI: ui.NewWith(&out, nil), Runner: fake,
 		Options: engine.Options{Yes: true}, Values: map[string]string{}, Stdin: strings.NewReader(""),
@@ -351,7 +351,7 @@ func TestEnrollShowsWhatTheHostListsWithoutUsingIt(t *testing.T) {
 // Declining stops the flow before the switch; the warning changed nothing.
 func TestEnrollDecliningTheWarningChangesNothing(t *testing.T) {
 	var out bytes.Buffer
-	fake := &engine.Fake{Respond: listsEtcNixos(withEtcNixos(noTooling(enrollHost(false, false, false)), "git", false, "https://example.org/mine.git"), "origin: x\n")}
+	fake := &engine.Fake{Respond: gitFacts(listsEtcNixos(withEtcNixos(noTooling(enrollHost(false, false, false)), "git", false, "https://example.org/mine.git"), "origin: x\n"))}
 	x := &engine.Ctx{
 		Context: context.Background(), UI: ui.NewWith(&out, nil), Runner: fake,
 		Values: map[string]string{"host": "pi", "etc_nixos": "git", "admin": "admin", "address": "pi", "agent": "/tmp/a.sock"}, Stdin: strings.NewReader(""),
@@ -482,7 +482,7 @@ func TestEnrollStopsOnATamperedEnrollmentFile(t *testing.T) {
 
 func TestEnrollSyncsAsSupportWithNothingForwarded(t *testing.T) {
 	var out bytes.Buffer
-	fake := &engine.Fake{Respond: enrollHost(true, true, false)}
+	fake := &engine.Fake{Respond: gitFacts(enrollHost(true, true, false))}
 	x := &engine.Ctx{
 		Context: context.Background(), UI: ui.NewWith(&out, nil), Runner: fake,
 		Options: engine.Options{Yes: true}, Values: map[string]string{}, Stdin: strings.NewReader(""),
@@ -625,7 +625,7 @@ func privateEnroll(dir string) func(engine.Spec) (engine.Result, error) {
 func TestEnrollAPrivateHostWithoutReinstalling(t *testing.T) {
 	dir := prepCheckout(t, pinnedFM)
 	var out bytes.Buffer
-	fake := &engine.Fake{Respond: privateEnroll(dir)}
+	fake := &engine.Fake{Respond: gitFacts(privateEnroll(dir))}
 	x := &engine.Ctx{
 		Context: context.Background(), UI: ui.NewWith(&out, nil), Runner: fake,
 		Options: engine.Options{Yes: true}, Values: map[string]string{}, Stdin: strings.NewReader(""),
