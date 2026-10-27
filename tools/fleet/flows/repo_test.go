@@ -152,6 +152,18 @@ func TestRepoAddClonesTrustsAndNamesARepositoryWithItsOwnSigners(t *testing.T) {
 	if !strings.Contains(w.out.String(), "cloned already") {
 		t.Errorf("again:\n%s", w.out)
 	}
+	// A clone left on a branch, as git clone leaves it when the checkout
+	// after it failed, is checked out the next time.
+	w.git(clone, "checkout", "-q", "main")
+	if err := w.add(address, nil); err != nil {
+		t.Fatalf("after a failed checkout: %v\n%s", err, w.out)
+	}
+	if !strings.Contains(w.out.String(), "but not checked out") {
+		t.Errorf("after a failed checkout:\n%s", w.out)
+	}
+	if err := exec.Command("git", "-C", clone, "symbolic-ref", "-q", "HEAD").Run(); err == nil {
+		t.Error("the clone is still on a branch")
+	}
 	// The name belongs to the one repository.
 	other, _ := w.origin("other", true)
 	err := w.add(other, map[string]string{"name": "inventory"})

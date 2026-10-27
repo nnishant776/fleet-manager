@@ -180,16 +180,22 @@ func repoClone(x *engine.Ctx) error {
 		if err != nil || have != id {
 			return fmt.Errorf("%s exists, and is a clone of %s, not of %s", path, origin, url)
 		}
-		x.UI.Skip("cloned already, in " + path)
-		return nil
-	}
-	if !x.Options.DryRun {
-		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		// A clone the tools left is detached; one still on a branch is where
+		// git clone left it, before the checkout below, which did not happen.
+		if _, err := engine.Silently(x, nil, "git", "-C", path, "symbolic-ref", "-q", "HEAD"); err != nil {
+			x.UI.Skip("cloned already, in " + path)
+			return nil
+		}
+		x.UI.OK("cloned already, in " + path + ", but not checked out")
+	} else {
+		if !x.Options.DryRun {
+			if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+				return err
+			}
+		}
+		if _, err := engine.Cmd("git", "clone", "-q", "--no-checkout", url, path).OK("cloned into " + path).Run(x); err != nil {
 			return err
 		}
-	}
-	if _, err := engine.Cmd("git", "clone", "-q", "--no-checkout", url, path).OK("cloned into " + path).Run(x); err != nil {
-		return err
 	}
 	_, err = engine.Cmd("git", "-C", path, "checkout", "-q", "--detach", "refs/remotes/origin/main").
 		OK("the clone is on origin's main").Run(x)
