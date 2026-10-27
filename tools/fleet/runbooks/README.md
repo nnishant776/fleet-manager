@@ -20,6 +20,7 @@ no arguments offers these as a menu.
 | [`fleet trust signers`](trust-signers.md) | Keep your own copy of a checkout's fleet/allowed_signers, which its commits are checked against |
 | [`fleet repo add`](repo-add.md) | Clone a repository for the tools to work in, check its keys and main, and give it a name |
 | [`fleet repo list`](repo-list.md) | List the names of the tools' clones, and the commits you trust in each |
+| [`fleet repo sync`](repo-sync.md) | Fetch the tools' clones, show the new commits and who signed them, and accept them |
 | [`fleet doctor`](doctor.md) | Check this machine has the tools fleet uses |
 | [`fleet secrets user-password`](secrets-user-password.md) | Set the user's password on that host |
 | [`fleet secrets user-key`](secrets-user-key.md) | Generate the user's SSH key on that host |
