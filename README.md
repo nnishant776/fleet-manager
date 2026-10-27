@@ -421,6 +421,41 @@ default):
   copies. The secrets tools refuse to run while git checks against a file
   inside a checkout.
 
+**Your own copy of the trusted commits.** A signed commit is not always a new
+one: someone who can push can serve an old signed commit again. `fleet inventory
+publish` would then cut every host's branch from it as a new commit signed by
+you, which the hosts accept, so your signature would hide the rollback. Hosts
+refuse an older commit with their own records; your machine keeps the same, one
+per repository and branch, next to the copy of the keys:
+`$XDG_STATE_HOME/fleet/repos/<host>/<owner>/<repo>/trusted/<branch>` (a branch
+with a `/` is a nested path, such as `trusted/host/laptop1`). The file holds one
+line, a full commit hash, and is readable by you only.
+
+- The first time a branch is checked, its tip is accepted and recorded, and the
+  tool says so. After that a tip is accepted only when it is the recorded
+  commit or follows it. Otherwise the tool stops and names the record, because
+  the branch could be an old commit served again. The signature is always
+  checked first.
+- A tip that passes moves the record to it. After a tool pushes a commit of its
+  own, the record moves to what it pushed. A commit that was not pushed moves
+  nothing.
+- A fleet-manager commit that is pinned (the one `fleet install prep` takes
+  the installer from, or in an inventory's `flake.lock`) must be on the
+  trusted line of fleet-manager's `main`: the recorded commit, one before it,
+  or one after it, which moves the record.
+- `fleet install prep`, `fleet inventory publish` (`main` and each host's
+  branch), `fleet host enroll`, the commands that change a host's or user's
+  files in the secrets repository (`fleet host secret`, `fleet secrets …`) and
+  `fleet user …` check and record. So does the shell `fleet-secrets`, in the
+  same files. `host-retire` and `user-retire` remove the branch's record.
+- If the history was rewritten on purpose, remove the record file the message
+  names and run the command again: the tip you see is then trusted afresh.
+- The records go by the address of the clone's `origin`, so a clone of a
+  repository on this machine needs a `file://` address
+  (`git remote set-url origin file:///path/to/repo.git`). A shallow clone
+  cannot tell whether a tip follows the record, and says so: fetch the rest
+  with `git fetch --unshallow`.
+
 While the key is in your agent, any program running as you can sign with it.
 `ssh-add -c` makes the agent ask you before each signature, and `ssh-add -t`
 removes the key after a set time.
@@ -514,7 +549,8 @@ and CI checks it. After pushing a change to `main`, run this on your machine:
 fleet inventory publish --flake <checkout>
 ```
 
-It checks that main's newest commit is signed by a key you trust and pushed.
+It checks that main's newest commit is signed by a key you trust, follows the
+commit you trusted last on main, and is pushed.
 It cuts each host's branch from that commit without touching the checkout, and
 checks that each host builds from its branch alone. Then it adds a signed
 commit to every branch whose files changed, and pushes them once you approve.

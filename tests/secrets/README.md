@@ -75,6 +75,15 @@ Erin is enrolled with `fleet secrets user-enroll` and retired with
 `user-retire`, and the host's sync reads what those commands leave: her file from
 her branch, signed by her own key.
 
+The maintainer's tools keep the commit they trusted last on each branch (see
+the README, Signing commits for a fleet). The test has the forge serve
+`host/scratch-secrets` again at an older signed commit, as someone who can push
+could, while the clone knows the branch only as origin has it: `fleet host
+secret` refuses, names the record, and changes and pushes nothing. With the
+record removed, it goes on; the test then puts the branch back and removes the
+record again. The forge's clones use `file://` addresses, which is what names
+the records.
+
 The forge also plays the
 maintainer: `fleet host secret` works in a worktree of `host/scratch-secrets` in
 a clone that stays on `main`, with the recovery recipient cached the way
