@@ -439,3 +439,30 @@ func TestRestArgumentTakesTheWordsThatRemain(t *testing.T) {
 		t.Error("three words were accepted for two arguments")
 	}
 }
+
+func TestResolveMapsTheCheckedValue(t *testing.T) {
+	x, fake, _ := newCtx(Options{Yes: true}, nil)
+	in := hostInput
+	in.Resolve = func(x *Ctx, v string) (string, error) {
+		if v == "bad" {
+			return "", errors.New("no such thing")
+		}
+		return "/clones/" + v, nil
+	}
+	f := &Flow{Title: "t", Inputs: []Input{in}, Steps: []Step{{Do: Cmd("ls", "{{.host}}")}}}
+	if err := RunWith(x, f, map[string]string{"host": "pi"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := fake.Commands(); len(got) != 1 || got[0] != "ls /clones/pi" {
+		t.Fatalf("ran %q", got)
+	}
+	// The pattern is checked on the value given, before it is resolved.
+	x, _, _ = newCtx(Options{Yes: true}, nil)
+	if err := RunWith(x, f, map[string]string{"host": "Bad"}); err == nil || !strings.Contains(err.Error(), "does not match") {
+		t.Fatalf("got %v", err)
+	}
+	x, _, _ = newCtx(Options{Yes: true}, nil)
+	if err := RunWith(x, f, map[string]string{"host": "bad"}); err == nil || !strings.Contains(err.Error(), "host: no such thing") {
+		t.Fatalf("got %v", err)
+	}
+}

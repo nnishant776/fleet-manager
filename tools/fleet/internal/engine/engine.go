@@ -38,6 +38,10 @@ type Input struct {
 	// Skip, if set, leaves the input out when it does not apply, such as a
 	// value that will be read from the host instead.
 	Skip func(*Ctx) bool
+	// Resolve, if set, maps the value given to the one the flow works with,
+	// such as a repository's name to the tool's clone of it. It runs after the
+	// value is checked.
+	Resolve func(*Ctx, string) (string, error)
 }
 
 // Step is one numbered step of a flow.
@@ -316,6 +320,13 @@ func resolve(c *Ctx, in Input) error {
 	}
 	if err := check(in, value); err != nil {
 		return err
+	}
+	if in.Resolve != nil {
+		v, err := in.Resolve(c, value)
+		if err != nil {
+			return fmt.Errorf("%s: %w", in.Name, err)
+		}
+		value = v
 	}
 	c.Values[in.Name] = value
 	return nil
