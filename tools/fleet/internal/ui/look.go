@@ -110,3 +110,28 @@ func (l Look) Section(dark bool) lipgloss.Style {
 	}
 	return s.Foreground(l.Accent())
 }
+
+// Glyphs are the characters the output draws with. The console's font has
+// √ × • · ─ │ ┌ ┐ └ ┘ but not ✓ ✗ … or rounded corners, so there fleet uses
+// those it has.
+type Glyphs struct {
+	Ok, Fail, Skip, Note, Gutter, Ellipsis string
+	Spinner                                []string
+	Border                                 lipgloss.Border
+}
+
+// Glyphs returns the glyphs for this terminal.
+func (l Look) Glyphs() Glyphs {
+	if l.Console {
+		return Glyphs{
+			Ok: "√", Fail: "×", Skip: "-", Note: "!", Gutter: "│", Ellipsis: "...",
+			Spinner: []string{"|", "/", "-", "\\"},
+			Border:  lipgloss.NormalBorder(),
+		}
+	}
+	return Glyphs{
+		Ok: "✓", Fail: "✗", Skip: "–", Note: "!", Gutter: "│", Ellipsis: "…",
+		Spinner: []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"},
+		Border:  lipgloss.RoundedBorder(),
+	}
+}

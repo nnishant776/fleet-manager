@@ -178,6 +178,14 @@ func Run(c *Ctx, f *Flow) (err error) {
 	if c.Values == nil {
 		c.Values = map[string]string{}
 	}
+	// The summary comes last, after the cleanup and anything put back, and
+	// only for a run that got as far as its steps.
+	began := false
+	defer func() {
+		if began {
+			c.UI.Summary(outcomeOf(err), err)
+		}
+	}()
 	if f.Cleanup != nil {
 		defer func() {
 			// After an interruption the run's context is cancelled, and a
@@ -197,20 +205,33 @@ func Run(c *Ctx, f *Flow) (err error) {
 	if err := checkTools(c.LookPath, f.Needs); err != nil {
 		return err
 	}
-	c.UI.Header(f.Title)
-	var used []string
+	var tags []string
+	if c.Options.DryRun {
+		tags = append(tags, "dry run")
+	}
+	c.UI.Header(f.Title, tags...)
+	var used [][2]string
 	for _, in := range f.Inputs {
 		if err := resolve(c, in); err != nil {
 			return err
 		}
 		if v, ok := c.Values[in.Name]; ok && !in.Secret && v != "" {
-			used = append(used, in.Name+" "+v)
+			used = append(used, [2]string{in.Name, v})
 		}
 	}
 	if len(used) > 0 {
 		c.UI.Using(used)
 	}
 	c.total = len(f.Steps)
+	began = true
+	titles := make([]string, len(f.Steps))
+	for i, s := range f.Steps {
+		titles[i] = s.Title
+		if t, err := c.Expand(s.Title); err == nil {
+			titles[i] = t
+		}
+	}
+	c.UI.Plan(titles)
 	problems := 0
 	for i, s := range f.Steps {
 		c.n = i + 1
@@ -230,6 +251,7 @@ func Run(c *Ctx, f *Flow) (err error) {
 		if s.When != nil {
 			if ok, reason := s.When(c); !ok {
 				c.UI.Skip("skipped: " + reason)
+				c.UI.StepEnd("skipped")
 				c.UI.Blank()
 				continue
 			}
@@ -240,16 +262,19 @@ func Run(c *Ctx, f *Flow) (err error) {
 				// Whatever the step says, it failed because the run was
 				// interrupted while it ran.
 				c.UI.Skip("interrupted here; nothing after this step was run")
+				c.UI.StepEnd("interrupted")
 				c.UI.Blank()
 				return &StepError{N: c.n, Title: title, Err: ErrInterrupted}
 			case errors.Is(err, ErrStopped) || errors.Is(err, ui.ErrCancelled):
 				c.UI.Skip("stopped here; nothing after this step was run")
+				c.UI.StepEnd("stopped")
 				c.UI.Blank()
 				return err
 			}
 			if !errors.As(err, new(alreadyShown)) {
 				c.UI.Fail(err.Error())
 			}
+			c.UI.StepEnd("failed")
 			if f.Report && !s.Required {
 				problems++
 				c.UI.Blank()
@@ -261,6 +286,7 @@ func Run(c *Ctx, f *Flow) (err error) {
 			c.UI.Blank()
 			return &StepError{N: c.n, Title: title, Err: err}
 		}
+		c.UI.StepEnd("ok")
 		c.UI.Blank()
 	}
 	if c.Options.DryRun {
@@ -270,6 +296,19 @@ func Run(c *Ctx, f *Flow) (err error) {
 		return fmt.Errorf("%d of %d steps found a problem", problems, c.total)
 	}
 	return nil
+}
+
+// outcomeOf names how a run ended, for the summary.
+func outcomeOf(err error) string {
+	switch {
+	case err == nil:
+		return "done"
+	case errors.Is(err, ErrInterrupted):
+		return "interrupted"
+	case errors.Is(err, ErrStopped) || errors.Is(err, ui.ErrCancelled):
+		return "stopped"
+	}
+	return "failed"
 }
 
 func resolve(c *Ctx, in Input) error {

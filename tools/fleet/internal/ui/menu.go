@@ -357,7 +357,7 @@ func (m *menuModel) cut(s string, w int) string {
 	if ansi.StringWidth(s) <= w {
 		return s
 	}
-	return ansi.Truncate(s, w, m.ascii("…", "..."))
+	return ansi.Truncate(s, w, m.look.Glyphs().Ellipsis)
 }
 
 func padRight(s string, w int) string {
@@ -434,10 +434,7 @@ func (m *menuModel) keyLine() string {
 // panel draws a box with title in its top border; body lines are cut or
 // padded to the inside.
 func (m *menuModel) panel(title string, body []string, w, h int, focused bool) []string {
-	b := lipgloss.RoundedBorder()
-	if m.look.Console {
-		b = lipgloss.NormalBorder()
-	}
+	b := m.look.Glyphs().Border
 	var colour color.Color = Dim
 	if focused {
 		colour = m.look.Accent()
