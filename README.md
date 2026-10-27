@@ -460,7 +460,7 @@ line, a full commit hash, and is readable by you only.
 checking what the tools read, because you may have edited it. `fleet repo add
 <address>` keeps a clone of a repository just for the tools, under
 `$XDG_DATA_HOME/fleet/repos/<host>/<owner>/<repo>` (`~/.local/share` by
-default), and gives it a name. Nobody edits it. `--flake <name>` and `--repo
+default), and gives it a name. You never edit it by hand. `--flake <name>` and `--repo
 <name>` then mean that clone, and every command that is given a name first
 fetches it, takes `main`'s newest commit only if a key you trust signed it and
 it follows the commit you trusted last, and leaves the clone there. A path
@@ -476,7 +476,10 @@ fleet repo add git@github.com:example-org/secrets.git --signers-from inventory
 
 The secrets repository has no `fleet/allowed_signers`, so `--signers-from`
 names the repository whose keys sign it. Edit in a checkout of your own, as
-before; the tool's clone is fetched and never edited.
+before. In the clone only the tools work: they fetch it, and the secrets
+commands commit there and push from there, as they do in a checkout. A commit
+a command does not push stays in the clone, and the command says how to push
+it.
 
 While the key is in your agent, any program running as you can sign with it.
 `ssh-add -c` makes the agent ask you before each signature, and `ssh-add -t`

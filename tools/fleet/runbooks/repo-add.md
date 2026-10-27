@@ -52,6 +52,6 @@ A value that is neither given nor has a default is asked for on a terminal.
 8. **Next.** How to use it.
 
    > Use the name wherever a command takes --flake or --repo: fleet inventory publish --flake NAME
-   > Edit in a checkout of your own; the tool's clone is fetched, never edited.
+   > Edit in a checkout of your own; never edit the tool's clone by hand.
 
 It needs `git` on the PATH; `fleet doctor` says where to get them.

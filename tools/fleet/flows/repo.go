@@ -149,7 +149,7 @@ var RepoAdd = &engine.Flow{
 			Title: "Next",
 			Why:   "How to use it.",
 			Do: engine.Show("Use the name wherever a command takes --flake or --repo: fleet inventory publish --flake {{.name}}\n" +
-				"Edit in a checkout of your own; the tool's clone is fetched, never edited."),
+				"Edit in a checkout of your own; never edit the tool's clone by hand."),
 		},
 	},
 }
