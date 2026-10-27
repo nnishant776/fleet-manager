@@ -52,7 +52,7 @@ let
       sshKeys = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [ ];
-        description = "SSH public keys accepted for this account.";
+        description = "SSH public keys accepted for this account's login, on a host without `conf.secrets.repo.url`. On a host with secrets they are a build error: the keys go in the account's file in the secrets repository (`secrets.authorizedKeys`).";
       };
       sudoSshKeys = lib.mkOption {
         type = lib.types.listOf lib.types.str;
@@ -64,7 +64,9 @@ let
           for the password as usual. Login keys (`sshKeys`) do not count unless
           listed here too, so the sudo key can be a separate, stronger one.
           Forward your agent only to machines you trust: while you are
-          connected, root there can use your agent too.
+          connected, root there can use your agent too. For a host without
+          `conf.secrets.repo.url`; on a host with secrets they are a build
+          error, and the keys go in the account's file (`secrets.sudoKeys`).
         '';
       };
       secrets = {
@@ -81,12 +83,12 @@ let
         authorizedKeys = lib.mkOption {
           type = lib.types.bool;
           default = false;
-          description = "Accept the SSH public keys in users/<name>/<host>.yaml (`authorized_keys`, one per line) for this account's login, besides `sshKeys`. They are read from /run/secrets/users/<name>/authorized_keys at each login, so a change needs no rebuild. Ignored on a host without `conf.secrets.repo.url`.";
+          description = "Accept the SSH public keys in users/<name>/<host>.yaml (`authorized_keys`, one per line) for this account's login: on a host with secrets the only login keys sshd reads, since keys in the configuration are a build error there and ~/.ssh/authorized_keys is not read. They are read from /run/secrets/users/<name>/authorized_keys at each login, so a change needs no rebuild. Ignored on a host without `conf.secrets.repo.url`.";
         };
         sudoKeys = lib.mkOption {
           type = lib.types.bool;
           default = false;
-          description = "Accept the SSH public keys in users/<name>/<host>.yaml (`sudo_keys`, one per line) for this privileged account's sudo, besides `sudoSshKeys`, as `sudoSshKeys` does. Ignored on a host without `conf.secrets.repo.url`.";
+          description = "Accept the SSH public keys in users/<name>/<host>.yaml (`sudo_keys`, one per line) for this privileged account's sudo, as `sudoSshKeys` does on a host without secrets; on a host with secrets these are the only sudo keys. Ignored on a host without `conf.secrets.repo.url`.";
         };
         own = lib.mkOption {
           type = lib.types.bool;

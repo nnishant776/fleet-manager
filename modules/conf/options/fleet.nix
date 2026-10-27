@@ -88,21 +88,25 @@
         default = [ ];
         description = ''
           The maintainer's public SSH keys, ideally a hardware-backed
-          `sk-ssh-ed25519` key. Required when the account is enabled. The
-          account is privileged and has a sudo rule without a password, since
-          its password is locked and the key is the authentication factor.
+          `sk-ssh-ed25519` key, on a host without `conf.secrets.repo.url`,
+          where the account needs them when it is enabled. On a host with
+          secrets they are a build error: support's keys go in its file there
+          (`keysFromSecrets`). The account is privileged and has a sudo rule
+          without a password, since its password is locked and the key is the
+          authentication factor.
         '';
       };
       keysFromSecrets = lib.mkOption {
         type = lib.types.bool;
         default = false;
         description = ''
-          Also accept the keys in the support account's file on this host's
-          branch of the secrets repository (`users/<user>/<host>.yaml`,
-          `authorized_keys`), the same way `conf.users.accounts.<name>.secrets.authorizedKeys`
-          does, so the keys can change without a rebuild. They are read
-          together with `sshKeys`, and `sshKeys` may be empty when this is on.
-          Requires `conf.secrets.repo.url`.
+          Take the support account's keys from its file on this host's branch
+          of the secrets repository (`users/<user>/<host>.yaml`,
+          `authorized_keys`), the same way
+          `conf.users.accounts.<name>.secrets.authorizedKeys` does, so the keys
+          can change without a rebuild. Required on a host with
+          `conf.secrets.repo.url` when support is enabled, and only possible
+          there; `sshKeys` must then be empty.
         '';
       };
       consolePassword = lib.mkOption {
