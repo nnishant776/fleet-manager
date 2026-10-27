@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"image/color"
 	"os"
 	"strings"
 
@@ -87,4 +88,25 @@ func (l Look) Highlight(dark bool) lipgloss.Style {
 	default:
 		return s.Background(lipgloss.Color("252")).Foreground(lipgloss.Color("16"))
 	}
+}
+
+// Accent is the colour of what leads the eye: the usage line, the focused
+// panel's border. The console's blue is too dark on its black, so there it
+// is cyan.
+func (l Look) Accent() color.Color {
+	if l.Console {
+		return lipgloss.Cyan
+	}
+	return Accent
+}
+
+// Section is the style of a section's name in a list: yellow on a dark
+// background, where it stands out, and the accent on a light one, where
+// yellow fades into the white.
+func (l Look) Section(dark bool) lipgloss.Style {
+	s := lipgloss.NewStyle().Bold(true)
+	if dark || l.Console {
+		return s.Foreground(Warn)
+	}
+	return s.Foreground(l.Accent())
 }

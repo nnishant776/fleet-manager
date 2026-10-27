@@ -310,7 +310,7 @@ func TestMenuHighlightBar(t *testing.T) {
 		t.Errorf("dark bar missing: %q", l)
 	}
 	m.Update(tea.BackgroundColorMsg{Color: lightColour{}})
-	if l := bar(m); !strings.Contains(l, "48;5;253") {
+	if l := bar(m); !strings.Contains(l, "48;5;252") {
 		t.Errorf("light bar missing: %q", l)
 	}
 	// FLEET_THEME wins over the answer.

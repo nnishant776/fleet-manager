@@ -85,3 +85,17 @@ func TestListLabelsArePaddedToOneWidth(t *testing.T) {
 		t.Errorf("label changed: %q", got[2])
 	}
 }
+
+// On the console the accent is cyan, which its black shows; section names are
+// yellow where the background is dark and the accent where it is light.
+func TestTheAccentAndSectionsFollowTheLook(t *testing.T) {
+	if (Look{Console: true}).Accent() != lipgloss.Cyan || (Look{}).Accent() != Accent {
+		t.Error("the accent does not follow the look")
+	}
+	if got := (Look{}).Section(false).GetForeground(); got != Accent {
+		t.Errorf("light: section colour %v, want the accent", got)
+	}
+	if got := (Look{}).Section(true).GetForeground(); got != Warn {
+		t.Errorf("dark: section colour %v, want yellow", got)
+	}
+}

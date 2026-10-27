@@ -3,6 +3,7 @@ package ui
 import (
 	"errors"
 	"fmt"
+	"image/color"
 	"strconv"
 	"strings"
 
@@ -437,9 +438,9 @@ func (m *menuModel) panel(title string, body []string, w, h int, focused bool) [
 	if m.look.Console {
 		b = lipgloss.NormalBorder()
 	}
-	colour := Dim
+	var colour color.Color = Dim
 	if focused {
-		colour = Accent
+		colour = m.look.Accent()
 	}
 	edge := lipgloss.NewStyle().Foreground(colour)
 	iw, ih := max(w-2, 0), max(h-2, 0)
@@ -474,7 +475,7 @@ func (m *menuModel) listBody(g geometry) []string {
 	if len(entries) == 0 {
 		return []string{lipgloss.NewStyle().Foreground(Dim).Render("  no match")}
 	}
-	section := lipgloss.NewStyle().Bold(true).Foreground(Warn)
+	section := m.look.Section(m.dark())
 	var out []string
 	for _, e := range entries[min(m.listTop, len(entries)):] {
 		if len(out) >= g.inner() {
@@ -538,10 +539,15 @@ func (m *menuModel) guideLines(g Guide, w int) []string {
 	}
 
 	if g.Usage != "" {
-		blocks = append(blocks, styled(lipgloss.NewStyle().Bold(true).Foreground(Accent), wrap(g.Usage, w)))
+		blocks = append(blocks, styled(lipgloss.NewStyle().Bold(true).Foreground(m.look.Accent()), wrap(g.Usage, w)))
 	}
 	if len(g.Examples) > 0 {
-		blocks = append(blocks, styled(dim, g.Examples))
+		// An example too long for the panel goes on, indented, on the next lines.
+		var examples []string
+		for _, e := range g.Examples {
+			examples = append(examples, hang("  ", "      ", strings.TrimSpace(e), w)...)
+		}
+		blocks = append(blocks, styled(dim, examples))
 	}
 	var about []string
 	for _, p := range g.About {
