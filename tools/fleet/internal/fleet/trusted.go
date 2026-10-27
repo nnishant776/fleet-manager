@@ -227,18 +227,23 @@ func checkTrusted(x *engine.Ctx, dir, address, branch, ref string, line bool) er
 		x.UI.OK(branch + " at " + short(tip) + " follows " + short(rec) + ", the commit you trusted")
 		return save()
 	}
-	if line {
-		behind, err := follows(x, dir, tip, rec)
-		if err != nil {
-			return err
-		}
-		if behind {
-			x.UI.OK(short(tip) + " is on the line of " + what + ", behind " + short(rec) + ", the commit you trusted")
-			return nil
-		}
+	behind, err := follows(x, dir, tip, rec)
+	if err != nil && line {
+		return err
+	}
+	if behind && line {
+		x.UI.OK(short(tip) + " is on the line of " + what + ", behind " + short(rec) + ", the commit you trusted")
+		return nil
 	}
 	p, _ := TrustedPath(address, branch)
 	why := fmt.Sprintf("%s at %s does not follow %s, the commit you trusted last: it could be an old commit served again. ", branch, tip, rec)
+	if behind {
+		// Most often a checkout of yours that is not up to date, since the
+		// record moved on elsewhere (fleet repo sync, or another checkout).
+		why = fmt.Sprintf("%s at %s does not follow %s, the commit you trusted last, but comes before it: "+
+			"a checkout that is not up to date, or an old commit served again. If %s is your checkout, bring it up to date "+
+			"(git pull) and run this again. ", branch, tip, rec, dir)
+	}
 	if name := NameOf(id); name != "" {
 		return fmt.Errorf("%sIf the history was rewritten on purpose and you know why, review and accept it with fleet repo sync %s --accept-rewrite %s", why, name, branch)
 	}

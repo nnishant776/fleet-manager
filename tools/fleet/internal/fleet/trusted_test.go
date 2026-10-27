@@ -162,7 +162,8 @@ func TestARolledBackTipIsRefused(t *testing.T) {
 		t.Fatal("an older commit was accepted")
 	}
 	p, _ := TrustedPath(testOrigin, "main")
-	for _, want := range []string{"main at " + c1, "does not follow " + c2, "old commit served again", "rm " + p, "or give the repository a name with fleet repo add and use fleet repo sync"} {
+	for _, want := range []string{"main at " + c1, "does not follow " + c2, "but comes before it", "old commit served again",
+		"(git pull)", "rm " + p, "or give the repository a name with fleet repo add and use fleet repo sync"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the refusal lacks %q:\n%v", want, err)
 		}
