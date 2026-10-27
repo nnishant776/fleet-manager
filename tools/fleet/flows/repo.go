@@ -71,7 +71,9 @@ var RepoAdd = &engine.Flow{
 		"  fleet repo add git@github.com:example-org/secrets.git --signers-from inventory",
 	Args: []string{"url"},
 	Inputs: []engine.Input{
-		{Name: "url", Prompt: "Repository address", Help: "Its SSH or https address, as git clones it; a local one needs file://"},
+		{Name: "url", Prompt: "Address of the repository to add",
+			Help: "Your repositories are added one at a time: fleet-manager, your inventory, then your secrets repository. " +
+				"Give the address git clones it from, SSH or https (a local one needs file://); fleet repo list shows the ones added already"},
 		{Name: "name", Prompt: "Name for it", Help: "What --flake and --repo take for it; the last part of its address by default",
 			Optional: true, Pattern: fleet.NamePattern, Default: nameFromAddress},
 		{Name: "signers-from", Prompt: "Repository whose keys sign it",
@@ -86,14 +88,14 @@ var RepoAdd = &engine.Flow{
 	Needs: []string{"git"},
 	Steps: []engine.Step{
 		{
-			Title: "Clone it",
+			Title: "Clone {{.url}}",
 			Why:   "The tools work in a clone of their own, kept under ~/.local/share/fleet/repos, so that what they read is not a checkout you edit. It is left on main's newest commit, detached.",
 			Do:    engine.Func(repoClone),
 		},
 		{
 			Title: "Trust its keys",
 			Why: "Commits are checked against your own copy of the keys that sign them, not against a file a pushed commit could change. " +
-				"A repository with a fleet/allowed_signers gives them; one without, such as the secrets repository, is signed with the keys of another, named by --signers-from.",
+				"A repository with a fleet/allowed_signers gives them; one without, such as the secrets repository, is signed with the keys of another, which --signers-from names, or which you choose when asked.",
 			Do: engine.Func(repoTrustKeys),
 		},
 		{
@@ -131,7 +133,7 @@ var RepoAdd = &engine.Flow{
 			Do: engine.Func(installHook),
 		},
 		{
-			Title: "Name it",
+			Title: "Name it {{.name}}",
 			Why:   "So that --flake NAME or --repo NAME means this clone. A name names one repository only.",
 			Do: engine.Func(func(x *engine.Ctx) error {
 				if x.Options.DryRun {
@@ -217,14 +219,15 @@ func repoTrustKeys(x *engine.Ctx) error {
 		}
 		return pointGitAtSignersCopy(x)
 	}
-	from := x.Value("signers-from")
-	if from == "" {
-		return fmt.Errorf("%s has no fleet/allowed_signers: give --signers-from <name>, the repository whose keys sign its commits; "+
-			"for the secrets repository, the configuration's", path)
-	}
 	names, err := fleet.ReadNames()
 	if err != nil {
 		return err
+	}
+	from := x.Value("signers-from")
+	if from == "" {
+		if from, err = chooseSignersFrom(x, names); err != nil {
+			return err
+		}
 	}
 	id, ok := names[from]
 	if !ok {
@@ -247,6 +250,51 @@ func repoTrustKeys(x *engine.Ctx) error {
 	}
 	x.UI.OK("its commits are checked against your copy of the keys of " + from + " (" + id + ")")
 	return setGitConfig(x, path, "gpg.ssh.allowedSignersFile", copyPath)
+}
+
+// signersFromWhy says which repository's keys a repository without its own
+// fleet/allowed_signers takes.
+const signersFromWhy = "Hosts check the secrets repository's commits against the keys of the configuration they build: " +
+	"name your inventory, or fleet-manager if its own hosts use these secrets."
+
+// chooseSignersFrom asks, on a terminal, which named repository's keys sign
+// the commits of a repository that has no fleet/allowed_signers, offering
+// those whose keys you keep a copy of; elsewhere it says to give
+// --signers-from, and which names there are.
+func chooseSignersFrom(x *engine.Ctx, names map[string]string) (string, error) {
+	var choices []string
+	for n, id := range names {
+		if id == x.Value("repo_id") {
+			continue
+		}
+		clone, err := fleet.ClonePathOfID(id)
+		if err != nil || !fileExists(clone) {
+			continue
+		}
+		origin, err := fleet.OriginOf(x, clone)
+		if err != nil {
+			continue
+		}
+		if p, err := fleet.SignersCopy(origin); err == nil && fileExists(p) {
+			choices = append(choices, n)
+		}
+	}
+	sort.Strings(choices)
+	id := x.Value("repo_id")
+	if len(choices) == 0 {
+		return "", fmt.Errorf("%s has no fleet/allowed_signers, so its commits are checked against the keys of another repository, "+
+			"and none is added yet: add that one first (fleet repo add ADDRESS), then this one with --signers-from NAME. %s", id, signersFromWhy)
+	}
+	if !x.UI.Interactive() {
+		return "", fmt.Errorf("%s has no fleet/allowed_signers, so its commits are checked against the keys of another repository: "+
+			"give --signers-from NAME, one of: %s. %s", id, strings.Join(choices, ", "), signersFromWhy)
+	}
+	from, err := x.UI.Choose("Whose keys sign the commits of "+id+"?", "It has no fleet/allowed_signers of its own. "+signersFromWhy, choices)
+	if err != nil {
+		return "", err
+	}
+	x.Values["signers-from"] = from
+	return from, nil
 }
 
 func verifyCommit(x *engine.Ctx, dir, ref string) error {

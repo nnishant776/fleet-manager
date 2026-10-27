@@ -187,6 +187,11 @@ func TestRepoAddOfARepositoryWithoutSignersTakesAnotherNamesKeys(t *testing.T) {
 	if err := w.add(inv, nil); err != nil {
 		t.Fatalf("%v\n%s", err, w.out)
 	}
+	// Without a terminal to choose on, it names the repositories to choose from.
+	w.out.Reset()
+	if err := w.add(sec, nil); err == nil || !strings.Contains(w.out.String(), "give --signers-from NAME, one of: inventory.") {
+		t.Fatalf("no choices named: %v\n%s", err, w.out)
+	}
 	// The failed tries left a clone and no name; adding it right now finishes.
 	if names, _ := fleet.ReadNames(); names["secrets"] != "" {
 		t.Fatalf("named before it worked: %v", names)

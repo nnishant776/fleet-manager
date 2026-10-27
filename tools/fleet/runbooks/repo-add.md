@@ -24,7 +24,7 @@ fleet repo add git@github.com:example-org/secrets.git --signers-from inventory
 
 | Flag | |
 |---|---|
-| `--url` | Its SSH or https address, as git clones it; a local one needs file:// |
+| `--url` | Your repositories are added one at a time: fleet-manager, your inventory, then your secrets repository. Give the address git clones it from, SSH or https (a local one needs file://); fleet repo list shows the ones added already |
 | `--name` | What --flake and --repo take for it; the last part of its address by default |
 | `--signers-from` | For a repository without fleet/allowed_signers, such as the secrets repository: the name of the repository whose keys sign its commits |
 | `--signing-key` | The SSH private key that signs commits made in the clone; made by fleet setup |
@@ -35,9 +35,9 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 ## Steps
 
-1. **Clone it.** The tools work in a clone of their own, kept under ~/.local/share/fleet/repos, so that what they read is not a checkout you edit. It is left on main's newest commit, detached.
+1. **Clone URL.** The tools work in a clone of their own, kept under ~/.local/share/fleet/repos, so that what they read is not a checkout you edit. It is left on main's newest commit, detached.
 
-2. **Trust its keys.** Commits are checked against your own copy of the keys that sign them, not against a file a pushed commit could change. A repository with a fleet/allowed_signers gives them; one without, such as the secrets repository, is signed with the keys of another, named by --signers-from.
+2. **Trust its keys.** Commits are checked against your own copy of the keys that sign them, not against a file a pushed commit could change. A repository with a fleet/allowed_signers gives them; one without, such as the secrets repository, is signed with the keys of another, which --signers-from names, or which you choose when asked.
 
 3. **Check main and trust it.** Main's newest commit must be signed by a key you trust. It becomes the first commit you trust for main, and later ones are accepted only when they follow it.
 
@@ -47,7 +47,7 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 6. **Install the secrets repository's commit check.** Its pre-commit hook refuses anything under hosts/ or users/ that is not ciphertext. Git runs a hook as you, with your agent at hand, so what is installed is a copy you have read, not the repository's own file, which anyone who can push could change.
 
-7. **Name it.** So that --flake NAME or --repo NAME means this clone. A name names one repository only.
+7. **Name it NAME.** So that --flake NAME or --repo NAME means this clone. A name names one repository only.
 
 8. **Next.** How to use it.
 

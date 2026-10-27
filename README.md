@@ -477,8 +477,12 @@ fleet repo add git@github.com:example-org/inventory.git
 fleet repo add git@github.com:example-org/secrets.git --signers-from inventory
 ```
 
-The secrets repository has no `fleet/allowed_signers`, so `--signers-from`
-names the repository whose keys sign it. Edit in a checkout of your own, as
+Each clone is named after the last part of its address, unless you give
+`--name`. The secrets repository has no `fleet/allowed_signers`, so
+`--signers-from` gives the name of the repository whose keys sign it: your
+inventory, whose keys the hosts check the secrets against (fleet-manager, if
+its own hosts use the secrets). `fleet repo list` shows the names, and on a
+terminal you are asked if you leave `--signers-from` out. Edit in a checkout of your own, as
 before. In the clone only the tools work: they fetch it, and the secrets
 commands commit there and push from there, as they do in a checkout. A commit
 a command does not push stays in the clone, and the command says how to push
