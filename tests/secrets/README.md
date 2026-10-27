@@ -40,12 +40,16 @@ the URLs in `harness.nix` use that address. The scratch host's deploy key is
 `nix build .#checks.x86_64-linux.secrets-sync` runs a NixOS VM test
 (`vm-test.nix`): a `forge` node serves signed bare repositories over sshd and a
 `fleet` node built from the scratch host has to bootstrap, snapshot, activate
-and refuse an unsigned commit on its branch. Keys come from the secrets too:
+and refuse an unsigned commit on its branch and an older commit served again. It
+also fetches its configuration from a private repository with its own
+configuration key (an SSH `conf.fleet.repo.url`), refusing what is not signed,
+and activates the running system again when only the secrets changed. Keys come from the secrets too:
 alice logs in with a key that is in no configuration (her file has
 `authorized_keys`, and the forge holds the private half), support does the same
 with `fleet.support.keysFromSecrets` and its key in `users/support/<host>.yaml`,
 and `ops`, a privileged account, unlocks sudo with a key from `sudo_keys` through a
-forwarded agent, as `tests/users/ssh-key-sudo.nix` does for `sudoSshKeys`. A check
+forwarded agent, as `tests/users/ssh-key-sudo.nix` does for `sudoSshKeys`. A key in
+alice's `~/.ssh/authorized_keys` does not log in. A check
 with a file that lacks `authorized_keys` is refused, and `fleet secrets user-keys`
 is run on the forge: a line that is not a key stops it, and keys it stores reach
 the host's snapshot.
@@ -67,8 +71,22 @@ newest commit no trusted key signed is not built on. The host takes it all, and
 once it runs a generation with `secrets.own` for dave, `fleet-user-secret token`
 prints his secret to him alone, and the login key he added logs in as him.
 
+Erin is enrolled with `fleet secrets user-enroll` and retired with
+`user-retire`, and the host's sync reads what those commands leave: her file from
+her branch, signed by her own key.
+
 The forge also plays the
 maintainer: `fleet host secret` works in a worktree of `host/scratch-secrets` in
 a clone that stays on `main`, with the recovery recipient cached the way
 `fleet setup` leaves it. It needs KVM and takes a few minutes; the CI
 workflow does not run it.
+
+## Evaluation check
+
+`nix build .#checks.x86_64-linux.secrets-user-owner-only` (`user-secrets.nix`)
+boots nothing. It checks, on `hosts/scratch-secrets`, that a user's secrets stay
+that user's: their key files, the login and sudo keys from the secrets
+(`secrets.authorizedKeys`, `secrets.sudoKeys`, support's `keysFromSecrets`), and
+`secrets.own` with `fleet-user-secret`, and that a secret of a user's file that
+another account or group could read, or a host secret named like the users' own,
+fails the build.

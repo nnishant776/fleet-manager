@@ -13,7 +13,6 @@ a common configuration module rather than being per host.
 ```
 ├── flake.nix                        # entry point; discovers hosts/
 ├── bootstrap                        # first-run script; see First run
-├── docs/                            # design notes
 ├── fleet/
 │   └── allowed_signers              # keys the fleet accepts on commits; see Signing commits for a fleet
 ├── lib/
@@ -21,6 +20,8 @@ a common configuration module rather than being per host.
 │   ├── mkFleet.nix                  # lib.mkFleet: a fleet's systems, homes and apps from its host folders; see A private fleet
 │   ├── mkHost.nix                   # host factory (NixOS / nix-darwin)
 │   ├── secrets-sync.nix             # fleet-secrets-sync and fleet-identity, used by the sync and os-install
+│   ├── clone-flake.nix              # fleet-clone-flake: clones a private flake for an install, at an exact commit
+│   ├── forge-host-keys.nix          # GitHub's SSH host keys, which every fetch over SSH is checked against
 │   ├── buildUser.nix                # assembles a user's Home Manager modules
 │   ├── mkUser.nix                   # standalone Home Manager builder
 │   └── flakeLib.nix                 # helpers shared by this flake's modules
@@ -31,7 +32,7 @@ a common configuration module rather than being per host.
 ├── users/<username>/                # optional per-user configuration
 │   └── default.nix                  # merged into that user's home, both paths
 ├── tests/                           # VM and evaluation checks wired into the flake's `checks`
-│   │                                # one folder per area: fleet, networking, pi-gw, rpi-image, secrets, users
+│   │                                # one folder per area: boot, fleet, lib (shared helpers), networking, pi-gw, rpi-image, secrets, users
 │   └── secrets/                     # also holds secrets-harness, the local stand-in for the secrets repository
 ├── tools/fleet/                     # fleet, the guided command-line tool; runbooks/ has a page per command
 └── modules/
@@ -341,6 +342,7 @@ A utility, run by hand when needed; nothing in a rebuild or the sync uses it.
 ```bash
 nix run .#rpi-image                     # writes ./nixos-rpi5.img.zst
 nix run .#rpi-image -- -o pi.img.zst
+nix run .#rpi-image -- --flake <reference>   # build from another flake
 ```
 
 It builds one generic Raspberry Pi 5 SD image from the installer in
@@ -407,7 +409,9 @@ default):
 - `fleet trust signers --flake <checkout>` shows the checkout's keys with their
   fingerprints, marks yours, and keeps them once you approve. Later, it takes
   a change only through a commit signed by a key already in your copy, and
-  shows the keys added and removed first.
+  shows the keys added and removed first. It also points the checkout's git
+  (`gpg.ssh.allowedSignersFile`) at the copy, so that `git verify-commit` there
+  checks against it too.
 - `fleet setup` makes the copy and points git there, for the configuration
   checkout and the secrets checkout alike.
 - Every command that reads a checkout starts by comparing its keys with your
@@ -542,12 +546,16 @@ cannot be limited to a branch.
      fleet-manager commit.
   3. Enrolls the host and registers both of its keys.
   4. Checks the configuration fits the machine as it is.
-  5. Shows what `/etc/nixos` holds, warns that all of it is deleted after the
+  5. Checks that the host's secrets branch holds every secret the
+     configuration declares, reading the sops files without decrypting them,
+     and stops before the switch, with the command that adds what is missing.
+  6. Shows what `/etc/nixos` holds, warns that all of it is deleted after the
      switch, and asks. If you say no, nothing changes.
-  6. Switches, fetching the private configuration with the host's own key.
-  7. Replaces `/etc/nixos` with the fleet's checkout, made by the first-boot
+  7. Switches, fetching the private configuration with the host's own key.
+  8. Replaces `/etc/nixos` with the fleet's checkout, made by the first-boot
      clone at the commit the host now runs. This runs as a unit on the host,
      so a dropped connection cannot leave the host without a checkout.
+  9. Syncs the host and runs `fleet host check` (`--sync=false` leaves this out).
 
   The configuration has to describe the machine as it is, since nothing is
   reinstalled:
@@ -570,11 +578,13 @@ cannot be limited to a branch.
   2. Run `fleet host enroll <host> --flake <checkout of it>`. It sees that
      the host runs a configuration from another repository, and:
      1. adds the configuration key on the host and registers it;
-     2. checks the configuration fits the machine;
+     2. checks the configuration fits the machine, and that the host's secrets
+        branch holds every secret it declares;
      3. warns that `/etc/nixos` is replaced, and asks;
      4. switches the host to its configuration there, on its branch, fetched
         with that key;
-     5. replaces `/etc/nixos` with a checkout of the new repository.
+     5. replaces `/etc/nixos` with a checkout of the new repository;
+     6. syncs the host and runs `fleet host check`, unless `--sync=false`.
 
      The first-boot clone records the commit it checks out as the first the
      host accepted from there, so the sync goes on from it. Nothing in this
@@ -632,9 +642,10 @@ it, `bootstrap` builds `fleet` from that commit rather than taking the latest
 release, which is whatever `main` had when CI last ran.
 
 `fleet secrets …` does what `fleet-secrets` does, with the same files and
-commit messages. `nix run .#fleet-secrets` is still the shell version. One
-command is only in `fleet`: `fleet secrets user-keys`, which stores a user's login
-and sudo keys and pushes the branch (see [Secrets](#confsecrets)). So are the
+commit messages. `nix run .#fleet-secrets` is still the shell version. Three
+commands are only in `fleet`: `fleet secrets user-keys`, which stores a user's login
+and sudo keys and pushes the branch (see [Secrets](#confsecrets)), and
+`fleet secrets user-enroll` and `user-retire`. So are the
 commands that a user with a branch of their own runs for themselves: `fleet user
 init`, `password`, `keys` and `secret set|unset`. On a host whose
 configuration sets `fleet.support.keysFromSecrets`, `fleet support-key rotate`
@@ -1217,10 +1228,11 @@ branch, commits there, and removes the worktree, and it refuses to build on a
 branch whose newest commit no trusted key signed. `host-enroll` makes the
 branch, `host-rekey` replaces the host's recipient in every file on it, and
 `host-retire` deletes it. None of them pushes; push the branch afterwards with
-`git push origin host/laptop1` (`fleet host enroll` and `fleet host secret` push
-the branch themselves). For a user the host's file lists, `user-password`,
-`user-key` and `user-keys` work on the user's branch instead, and `host-rekey`
-replaces the host's recipient in the user's files there too. Two more, in the
+`git push origin host/laptop1` (`fleet host enroll`, `fleet host secret`, `fleet secrets user-keys`, `user-enroll` and
+`user-retire` push for themselves). For a user the host's file lists,
+`user-password` and `user-key` (and `fleet secrets user-keys`) work on the user's
+branch instead, and `host-rekey` replaces the host's recipient in the user's
+files there too. Two more, in the
 Go tool only: `fleet secrets user-enroll <name> --from <name>.enroll` gives a
 user a branch of their own, and `fleet secrets user-retire <name>` takes the
 user off every host's list. A user with a branch of their own uses `fleet user`
@@ -1234,8 +1246,11 @@ own key nor a key in their copy of the configuration repository's signers
 their key (their git configuration is not touched) and pushes the branch; a
 change that changes nothing makes no commit. The commands that encrypt need your recovery
 recipient in the cache `fleet setup` fills, and stop with "run fleet setup"
-without it. `fleet-identity` is installed on opted-in hosts and prints the
-host's enrollment file (`--qr` for a QR code); it needs `sudo`, since the state
+without it. `fleet setup` also installs, in the secrets
+clone, a copy of the repository's pre-commit hook, which refuses a file under
+`hosts/` or `users/` that is not ciphertext. `fleet-secrets-sync` (`init`, `sync` and `check`, which the sync and the
+installer run) and `fleet-identity` are installed on opted-in hosts;
+`fleet-identity` prints the host's enrollment file (`--qr` for a QR code); it needs `sudo`, since the state
 directory is root's; `sudo fleet-identity --export`
 writes the private identity document for a planned reinstall. For a local
 test without a hosting service, `nix run .#secrets-harness` stands in for the
@@ -1607,13 +1622,14 @@ notice below. Merge locally and push instead.
 
 **A host never goes back to an older commit.** Each host remembers the last
 commit it accepted: for its configuration in `/var/lib/fleet-sync/accepted`,
-for its secrets in `<statePath>/accepted`. It takes a new tip only if it is that
+for its secrets in `<statePath>/accepted/host`. It takes a new tip only if it is that
 commit or built on it. An older signed commit served again, by someone who can
 push but holds only old signatures, is refused, and the notice says so. Fix a
 mistake with a new commit on top, a revert included, and never rewind `main` or
 the secrets repository with a force push. When a history is rewritten on
 purpose, remove the record on each host (`sudo rm /var/lib/fleet-sync/accepted`,
-or `/var/lib/fleet/accepted` for the secrets); the next sync then takes what it
+or `sudo rm /var/lib/fleet/accepted/host` for the secrets, and
+`accepted/user-<name>` for a user's own branch); the next sync then takes what it
 fetches. A new install records the revision it was installed from; a host
 without a record takes the first commit it fetches. The record holds when a
 host's configuration moves to another repository too. A new address for the
@@ -1634,7 +1650,11 @@ notification in a graphical session, shown again on every run that stops and
 taken down by the first one that succeeds, and a few lines at every shell
 login, which covers SSH and headless hosts. `fleet-sync-status` prints it on
 demand. A fetch that fails, usually the network, is retried on the next run and
-shows nothing.
+shows nothing. On a host with secrets, a second, smaller notice names the users
+whose own branch failed a check; the machine still updates, and they keep the file
+they had. It reads `/var/lib/fleet-sync/user-problems`, a copy of the sync's list,
+and `/var/lib/fleet-sync/secrets-applied` records the snapshot the running system
+was last activated with.
 
 **On headless hosts only `wheel` may use the Nix daemon**
 (`nix.settings.allowed-users`), so an unprivileged account with
@@ -1649,7 +1669,7 @@ otherwise from `initialHashedPassword`; an account with neither is locked.
 
 **Every Linux host audits.** `auditd` records commands run as root by a
 logged-in person, and writes to the configuration checkout, the system
-profiles, identity files, `/etc/ssh` and, where Flatpak is on, `/var/lib/flatpak`.
+profiles, `/etc/passwd`, `shadow`, `group` and `sudoers`, `/etc/ssh` and, where Flatpak is on, `/var/lib/flatpak`.
 `ausearch -k root-exec` reads the first; the journal is capped at 1 GiB and
 90 days. With `conf.fleet.logs.lokiUrl` set, the journal goes to the fleet's Loki,
 audit records included: `{host="laptop1", transport="audit"}` finds them there.
