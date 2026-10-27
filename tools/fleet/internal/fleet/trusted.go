@@ -153,6 +153,21 @@ func follows(x *engine.Ctx, dir, a, b string) (bool, error) {
 	return false, fmt.Errorf("git merge-base --is-ancestor %s %s in %s: %w", a, b, dir, err)
 }
 
+// GitIn runs git in the checkout dir and returns what it printed; a nonzero
+// exit is an error with the result's Code set.
+func GitIn(x *engine.Ctx, dir string, args ...string) (engine.Result, error) {
+	return gitIn(x, dir, args...)
+}
+
+// CommitOf is the full hash of a ref or commit in the checkout.
+func CommitOf(x *engine.Ctx, dir, ref string) (string, error) { return commitOf(x, dir, ref) }
+
+// Follows says whether commit a is b or an ancestor of it; see follows.
+func Follows(x *engine.Ctx, dir, a, b string) (bool, error) { return follows(x, dir, a, b) }
+
+// Short is the first 12 characters of a commit hash.
+func Short(c string) string { return short(c) }
+
 func short(c string) string {
 	if len(c) > 12 {
 		return c[:12]

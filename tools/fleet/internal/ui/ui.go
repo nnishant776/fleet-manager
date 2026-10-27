@@ -70,6 +70,15 @@ func NewWith(out io.Writer, in *os.File) *UI {
 	return u
 }
 
+// NewScripted returns a UI that behaves as on a terminal, answering its
+// questions from in; for tests, which feed it the lines a person would type.
+func NewScripted(out io.Writer, in io.Reader) *UI {
+	u := NewWith(out, nil)
+	u.tty = true
+	u.reader = bufio.NewReader(in)
+	return u
+}
+
 // Interactive reports whether prompts can be shown.
 func (u *UI) Interactive() bool { return u.tty }
 
@@ -143,27 +152,9 @@ func (u *UI) Confirm(question string, def bool) (bool, error) {
 		hint = "[y/N]"
 	}
 	_, _ = lipgloss.Fprint(u.out, Indent+question+" "+u.dim.Render(hint)+" ")
-	// Read in the background, so that an interrupted run does not wait for
-	// Enter. The reader left behind ends with the process.
-	type answer struct {
-		line string
-		err  error
-	}
-	answers := make(chan answer, 1)
-	go func() {
-		line, err := u.reader.ReadString('\n')
-		answers <- answer{line, err}
-	}()
-	var line string
-	select {
-	case a := <-answers:
-		if a.err != nil && a.line == "" {
-			return false, a.err
-		}
-		line = a.line
-	case <-u.ctx.Done():
-		u.println("")
-		return false, ErrCancelled
+	line, err := u.readLine()
+	if err != nil {
+		return false, err
 	}
 	switch strings.ToLower(strings.TrimSpace(line)) {
 	case "":
@@ -173,6 +164,45 @@ func (u *UI) Confirm(question string, def bool) (bool, error) {
 	default:
 		return false, nil
 	}
+}
+
+// readLine reads one line the person types. It reads in the background, so
+// that an interrupted run does not wait for Enter. The reader left behind
+// ends with the process.
+func (u *UI) readLine() (string, error) {
+	type answer struct {
+		line string
+		err  error
+	}
+	answers := make(chan answer, 1)
+	go func() {
+		line, err := u.reader.ReadString('\n')
+		answers <- answer{line, err}
+	}()
+	select {
+	case a := <-answers:
+		if a.err != nil && a.line == "" {
+			return "", a.err
+		}
+		return a.line, nil
+	case <-u.ctx.Done():
+		u.println("")
+		return "", ErrCancelled
+	}
+}
+
+// Typed asks the person to type want, exactly, to confirm something that
+// should not be a mere yes: it returns whether they did.
+func (u *UI) Typed(question, want string) (bool, error) {
+	if !u.tty {
+		return false, ErrNoTerminal
+	}
+	_, _ = lipgloss.Fprint(u.out, Indent+question+" "+u.dim.Render("(type "+want+")")+" ")
+	line, err := u.readLine()
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(line) == want, nil
 }
 
 // Input asks for a line of text.

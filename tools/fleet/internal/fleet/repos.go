@@ -210,6 +210,12 @@ func SyncClone(x *engine.Ctx, dir string) error {
 	if err != nil {
 		return err
 	}
+	return MoveClone(x, dir, tip)
+}
+
+// MoveClone detaches the tools' clone at tip (origin's main, once it is
+// checked) and moves the local branches that only lag behind origin's.
+func MoveClone(x *engine.Ctx, dir, tip string) error {
 	here, _ := commitOf(x, dir, "HEAD")
 	detached := false
 	if res, err := gitIn(x, dir, "symbolic-ref", "-q", "HEAD"); err != nil && res.Code != 0 {
