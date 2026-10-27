@@ -153,9 +153,101 @@ pkgs.writeShellApplication {
         || die "git runs the repository's own hook (core.hooksPath is .githooks): run fleet setup, which installs a copy you have read in its place"
     }
 
+    # A repository's address as a relative path, host/owner/repo, the same
+    # however it is written (git@host:o/r.git, ssh://, https://, git+ forms):
+    # the name its records are kept under, as the Go tool's RepoID.
+    repo_id() {  # repo_id ADDRESS
+      local a="''${1#git+}" host path rest part
+      local -a parts
+      if [[ "$a" =~ ^([^@/:]+@)?([^/:]+):(.+)$ ]] && [[ "$a" != *://* ]]; then
+        host="''${BASH_REMATCH[2]}"
+        path="''${BASH_REMATCH[3]}"
+      elif [[ "$a" == *://* ]]; then
+        rest="''${a#*://}"
+        rest="''${rest%%[?#]*}"
+        host="''${rest%%/*}"
+        path=""
+        if [ "$host" != "$rest" ]; then path="''${rest#*/}"; fi
+        host="''${host##*@}"
+        host="''${host%:*}"
+        if [ -z "$host" ] && [ "''${a%%:*}" = "file" ]; then host="file"; path="/$path"; fi
+      else
+        return 1
+      fi
+      [ -n "$host" ] || return 1
+      path="''${path#"''${path%%[!/]*}"}"
+      path="''${path%"''${path##*[!/]}"}"
+      path="''${path%.git}"
+      IFS=/ read -r -a parts <<<"$path"
+      [ "''${#parts[@]}" -gt 0 ] || return 1
+      for part in "''${parts[@]}"; do
+        case "$part" in ""|.|..) return 1 ;; *) ;; esac
+      done
+      printf '%s/%s' "$(tr '[:upper:]' '[:lower:]' <<<"$host")" "$path"
+    }
+
+    # Where the commit you trusted last on a branch is recorded, beside your
+    # copy of the repository's keys, outside every checkout: one line, a full
+    # commit hash, in a file named after the branch (host/laptop1 is a nested
+    # path). The Go fleet tool keeps the same files.
+    trusted_file() {  # trusted_file BRANCH
+      local origin id
+      origin="$(git remote get-url origin 2>/dev/null)" \
+        || die "$repo has no origin: trusted commits are kept per repository, named after its address"
+      id="$(repo_id "$origin")" || die "$origin is not a repository address"
+      printf '%s/fleet/repos/%s/trusted/%s' "''${XDG_STATE_HOME:-$HOME/.local/state}" "$id" "$1"
+    }
+
+    # 0 when commit $1 is commit $2 or an ancestor of it, 1 when it is not. A
+    # shallow clone may lack the history that tells, and then it stops rather
+    # than guess.
+    commit_follows() {  # commit_follows OLDER NEWER
+      local shallow rc=0
+      [ "$1" != "$2" ] || return 0
+      shallow="$(git rev-parse --is-shallow-repository)"
+      if git cat-file -e "$1^{commit}" 2>/dev/null; then
+        git merge-base --is-ancestor "$1" "$2" 2>/dev/null || rc=$?
+        [ "$rc" -ne 0 ] || return 0
+        [ "$rc" -eq 1 ] || die "git merge-base --is-ancestor $1 $2 failed (exit $rc)"
+      else
+        rc=1
+      fi
+      [ "$shallow" != true ] \
+        || die "$repo is a shallow clone, and cannot tell whether $2 follows $1 from the history it has: fetch the rest (git -C $repo fetch --unshallow) and try again"
+      return 1
+    }
+
+    # Signed is not enough: an old commit, served again, is signed too. A tip
+    # is accepted when there is no record yet (it becomes the record) or the
+    # record is that commit or an ancestor of it (the record moves to it).
+    require_followed() {  # require_followed REF — after the signature check
+      local branch tip f rec
+      branch="''${1#refs/heads/}"
+      branch="''${branch#refs/remotes/origin/}"
+      tip="$(git rev-parse --verify -q "$1^{commit}")" || die "$1 is no commit in $repo"
+      f="$(trusted_file "$branch")"
+      if [ -f "$f" ]; then
+        rec="$(tr -d '[:space:]' < "$f")"
+        [[ "$rec" =~ ^[0-9a-f]{40}([0-9a-f]{24})?$ ]] \
+          || die "$f does not hold a commit hash: remove it to trust the branch afresh"
+        [ "$rec" != "$tip" ] || return 0
+        commit_follows "$rec" "$tip" \
+          || die "$branch at $tip does not follow $rec, the commit you trusted last: it could be an old commit served again. If the history was rewritten on purpose and you know why, trust it afresh: rm $f, then run this again"
+      else
+        echo "You have no trusted commit for $(repo_id "$(git remote get-url origin)") $branch yet: taking $tip as the first. Later tips are accepted only when they follow it." >&2
+      fi
+      (
+        umask 077
+        mkdir -p "$(dirname "$f")"
+        printf '%s\n' "$tip" > "$f.tmp"
+        mv "$f.tmp" "$f"
+      )
+    }
+
     require_signed() {  # require_signed REF
       git verify-commit "$1" >/dev/null 2>&1 \
         || die "the newest commit of $1 is not signed by a key in gpg.ssh.allowedSignersFile (fleet setup sets it): look at it with git log --show-signature -1 $1 before going on"
+      require_followed "$1"
     }
 
     # The hosts that have a branch, local or fetched from origin, one per line.
@@ -204,6 +296,7 @@ pkgs.writeShellApplication {
       rm -f "$tmp"
       [ "$rc" -eq 0 ] \
         || die "the newest commit of $1 is not signed by a key in gpg.ssh.allowedSignersFile (fleet setup sets it) or by $2's own signing key: look at it with git log --show-signature -1 $1 before going on"
+      require_followed "$1"
     }
 
     # A user that hosts/HOST.yaml lists (fleet secrets user-enroll) keeps their
@@ -470,6 +563,8 @@ pkgs.writeShellApplication {
       else
         echo "there is no local branch host/$host; only origin's copy remains"
       fi
+      rm -f "$(trusted_file "host/$host")"
+      echo "forgot the commit you trusted on host/$host"
 
       cat <<EOF
 

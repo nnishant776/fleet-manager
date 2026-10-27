@@ -68,6 +68,12 @@ pkgs.runCommand "fleet-secrets-parity" {
   )
   cp -r start sh
   cp -r start go
+  # Each copy has an origin, as a clone does: the tools keep the commit they
+  # trusted last on every branch, per repository, named after its address.
+  for repo in sh go; do
+    git init -q --bare origin-$repo.git
+    git -C $repo remote add origin "file://$PWD/origin-$repo.git"
+  done
 
   sh_tool() { (cd sh && ${shellTool}/bin/fleet-secrets "$@"); }
   go_tool() { ${fleet}/bin/fleet secrets "$@" --repo go --yes; }
@@ -287,8 +293,7 @@ pkgs.runCommand "fleet-secrets-parity" {
   # local branch from it and commits there, and the branch, with the commit,
   # is still there afterwards to be pushed.
   for repo in sh go; do
-    git clone -q --bare $repo origin-$repo.git
-    git -C $repo remote add origin "$PWD/origin-$repo.git"
+    git -C $repo push -q origin 'refs/heads/*:refs/heads/*'
     git -C $repo fetch -q origin
     git -C $repo branch -q -D host/alpha
   done
@@ -483,6 +488,62 @@ pkgs.runCommand "fleet-secrets-parity" {
   [ "$(git -C go rev-parse host/alpha)" = "$(git -C origin-go.git rev-parse host/alpha)" ]
   [ "$(git -C go rev-parse user/alice)" = "$(git -C origin-go.git rev-parse user/alice)" ] || { echo "go: user-keys did not push user/alice"; exit 1; }
   expect_recipients_of go user/alice users/alice/alpha.yaml alpha3 alice
+
+  # The commit each tool trusted last on a branch (fleet/repos/<id>/trusted/
+  # <branch> in the state folder): both write the same files, and the id comes
+  # from the origin's address however it is written. host-rekey with the
+  # identity the host holds already stops after the checks of its branch's
+  # tip, so it checks and records and changes nothing.
+  record_of() {  # record_of REPO BRANCH: the file under the origin's id
+    echo "state/fleet/repos/file$PWD/origin-$1/trusted/$2"
+  }
+  check_alpha() {  # check_alpha TOOL: the checks of host/alpha's tip, which stops before any change
+    if [ "$1" = sh ]; then sh_tool host-rekey alpha --from ../alpha3.enroll > $1.err 2>&1 || true
+    else go_tool host-rekey alpha --from alpha3.enroll > $1.err 2>&1 || true; fi
+  }
+  for tool in sh go; do
+    check_alpha $tool
+    [ "$(cat "$(record_of $tool host/alpha)")" = "$(git -C $tool rev-parse host/alpha)" ] \
+      || { echo "$tool: the record of host/alpha is not its tip"; cat $tool.err; exit 1; }
+    [ "$(stat -c %a "$(record_of $tool host/alpha)")" = 600 ] || { echo "$tool: the record is not private"; exit 1; }
+  done
+  # A listed user's branch is recorded under its own name.
+  for repo in sh go; do
+    [ -f "$(record_of $repo user/alice)" ] || { echo "$repo: no record of user/alice"; exit 1; }
+    [ ! -e "$(record_of $repo host/beta)" ] || { echo "$repo: a retired host's record is left"; exit 1; }
+    [ ! -e "$(record_of $repo user/dave)" ] || { echo "$repo: a retired user's record is left"; exit 1; }
+  done
+  # The same address in every written form gives the same id for both.
+  for form in git@example.test:o/r.git ssh://git@example.test/o/r.git https://example.test/o/r https://EXAMPLE.test/o/r.git/; do
+    for tool in sh go; do
+      git -C $tool remote set-url origin "$form"
+      rm -rf state/fleet/repos/example.test
+      check_alpha $tool
+      [ "$(cat state/fleet/repos/example.test/o/r/trusted/host/alpha)" = "$(git -C $tool rev-parse host/alpha)" ] \
+        || { echo "$tool: $form is not recorded as example.test/o/r"; cat $tool.err; exit 1; }
+    done
+  done
+  rm -rf state/fleet/repos/example.test
+  for repo in sh go; do git -C $repo remote set-url origin "file://$PWD/origin-$repo.git"; done
+
+  # A branch whose tip was reset to an older signed commit, as a pushed old
+  # main would be served again, is refused by both with the record named;
+  # with the record removed both take it.
+  for tool in sh go; do
+    git -C $tool rev-parse host/alpha > $tool.newest
+    git -C $tool branch -q -f host/alpha host/alpha~1
+    git -C $tool verify-commit host/alpha 2>/dev/null
+    check_alpha $tool
+    grep -q "host/alpha at $(git -C $tool rev-parse host/alpha) does not follow $(cat $tool.newest), the commit you trusted last" $tool.err \
+      || { echo "$tool: took an older signed tip, or without naming the record"; cat $tool.err; exit 1; }
+    grep -q "rm $PWD/$(record_of $tool host/alpha)" $tool.err || { echo "$tool: did not say which record to remove"; cat $tool.err; exit 1; }
+    [ "$(cat "$(record_of $tool host/alpha)")" = "$(cat $tool.newest)" ] || { echo "$tool: the refusal moved the record"; exit 1; }
+    rm "$(record_of $tool host/alpha)"
+    check_alpha $tool
+    if grep -q "does not follow" $tool.err; then echo "$tool: refused after the record was removed"; cat $tool.err; exit 1; fi
+    [ "$(cat "$(record_of $tool host/alpha)")" = "$(git -C $tool rev-parse host/alpha)" ] \
+      || { echo "$tool: the older tip was not recorded afresh"; exit 1; }
+  done
 
   echo "parity: the shell tool and the port agree on every command"
   touch $out
