@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/nnishant776/fleet-manager/tools/fleet/internal/ui"
 )
 
@@ -464,5 +465,46 @@ func TestResolveMapsTheCheckedValue(t *testing.T) {
 	x, _, _ = newCtx(Options{Yes: true}, nil)
 	if err := RunWith(x, f, map[string]string{"host": "bad"}); err == nil || !strings.Contains(err.Error(), "host: no such thing") {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestFancySummaryListsEveryStep(t *testing.T) {
+	var out bytes.Buffer
+	fake := &Fake{Respond: func(s Spec) (Result, error) {
+		if s.Name == "bad" {
+			return Result{Code: 1}, errors.New("exit 1")
+		}
+		return Result{}, nil
+	}}
+	x := &Ctx{
+		Context: context.Background(),
+		UI:      ui.NewFancy(&out, ui.Look{}, 50, nil),
+		Runner:  fake,
+		Options: Options{Yes: true},
+		Values:  map[string]string{},
+		Stdin:   strings.NewReader(""),
+	}
+	f := &Flow{Title: "t", Steps: []Step{
+		{Title: "One", Do: Cmd("good")},
+		{Title: "Two", When: func(*Ctx) (bool, string) { return false, "no need" }, Do: Cmd("good")},
+		{Title: "Three", Do: Cmd("bad")},
+		{Title: "Four", Do: Cmd("good")},
+	}}
+	if err := Run(x, f); err == nil {
+		t.Fatal("expected a failure")
+	}
+	s := ansi.Strip(out.String())
+	i := strings.Index(s, "╭─ Failed · t")
+	if i < 0 {
+		t.Fatalf("no summary:\n%s", s)
+	}
+	box := s[i:]
+	for _, want := range []string{"✓ 1  One", "2  Two", "skipped", "✗ 3  Three", "4  Four", "not run"} {
+		if !strings.Contains(box, want) {
+			t.Errorf("summary lacks %q:\n%s", want, box)
+		}
+	}
+	if !strings.HasPrefix(strings.TrimLeft(s, " "), "fleet · t") {
+		t.Errorf("header: %q", s[:40])
 	}
 }
