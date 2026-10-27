@@ -12,6 +12,7 @@ var Groups = engine.Groups{
 	"inventory":   "A private inventory: each host's own branch",
 	"support-key": "The key that opens the support account",
 	"trust":       "The keys you trust, kept outside every checkout",
+	"repo":        "The tools' own clones of your repositories, by name",
 	"user":        "Your own keys and files, for a user who has a branch of their own in the secrets repository",
 	"secret":      "Secrets of your own, which your hosts hand only to you",
 }
@@ -20,7 +21,7 @@ var Groups = engine.Groups{
 // host, then this machine, then the secrets repository one change at a time.
 var Menu = []engine.Section{
 	{Name: "Hosts", Flows: []*engine.Flow{HostCheck, HostSecret, HostEnroll, SupportKeyRotate, InventoryPublish}},
-	{Name: "This machine", Flows: []*engine.Flow{Install, InstallPrep, Setup, TrustSigners, Doctor}},
+	{Name: "This machine", Flows: []*engine.Flow{Install, InstallPrep, Setup, TrustSigners, RepoAdd, RepoList, Doctor}},
 	{Name: "Secrets", Flows: []*engine.Flow{
 		SecretsUserPassword, SecretsUserKey, SecretsUserKeys, SecretsUserEnroll, SecretsUserRetire, SecretsHostEnroll, SecretsHostRekey, SecretsHostRetire,
 	}},

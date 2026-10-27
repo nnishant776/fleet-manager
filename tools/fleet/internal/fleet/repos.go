@@ -41,6 +41,11 @@ func ClonePath(address string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return ClonePathOfID(id)
+}
+
+// ClonePathOfID is the same for a repository known by its id.
+func ClonePathOfID(id string) (string, error) {
 	dir, err := DataDir()
 	if err != nil {
 		return "", err
@@ -167,12 +172,12 @@ func ResolveName(x *engine.Ctx, input, value string) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("%q is neither a path nor the name of a repository: fleet repo list shows the names, fleet repo add makes one", value)
 	}
-	dir, err := DataDir()
+	clone, err := ClonePathOfID(id)
 	if err != nil {
 		return "", err
 	}
 	x.Values[input+"_name"] = value
-	return filepath.Join(dir, "repos", filepath.FromSlash(id)), nil
+	return clone, nil
 }
 
 // SyncClone brings the tools' clone in dir up to date, and stops at the
@@ -270,4 +275,72 @@ func syncBranches(x *engine.Ctx, dir string) error {
 		x.UI.Note(b + " and origin's have gone apart: look at git -C " + dir + " log --oneline --graph " + b + " origin/" + b)
 	}
 	return nil
+}
+
+// Records are the trusted commits kept for the repository with the id,
+// branch to commit.
+func Records(id string) (map[string]string, error) {
+	dir, err := StateDir()
+	if err != nil {
+		return nil, err
+	}
+	root := filepath.Join(dir, "repos", filepath.FromSlash(id), "trusted")
+	records := map[string]string{}
+	err = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		if d.IsDir() || strings.HasSuffix(p, ".tmp") {
+			return nil
+		}
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, p)
+		if err != nil {
+			return err
+		}
+		records[filepath.ToSlash(rel)] = strings.TrimSpace(string(data))
+		return nil
+	})
+	return records, err
+}
+
+// KnownIDs are the repositories that have trusted commits or a copy of their
+// signers kept, sorted.
+func KnownIDs() ([]string, error) {
+	dir, err := StateDir()
+	if err != nil {
+		return nil, err
+	}
+	root := filepath.Join(dir, "repos")
+	var ids []string
+	err = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		if !d.IsDir() || p == root {
+			return nil
+		}
+		_, errSigners := os.Stat(filepath.Join(p, "allowed_signers"))
+		st, errTrusted := os.Stat(filepath.Join(p, "trusted"))
+		if errSigners == nil || (errTrusted == nil && st.IsDir()) {
+			rel, err := filepath.Rel(root, p)
+			if err != nil {
+				return err
+			}
+			ids = append(ids, filepath.ToSlash(rel))
+			return filepath.SkipDir
+		}
+		return nil
+	})
+	sort.Strings(ids)
+	return ids, err
 }
