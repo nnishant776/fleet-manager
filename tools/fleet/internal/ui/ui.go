@@ -46,6 +46,7 @@ type UI struct {
 	tty    bool
 	reader *bufio.Reader
 	ctx    context.Context // see Bind
+	look   Look
 
 	title, step, dim, good, bad, warn lipgloss.Style
 }
@@ -57,7 +58,7 @@ func New() *UI { return NewWith(os.Stdout, os.Stdin) }
 // terminal; tests pass a buffer and nil.
 func NewWith(out io.Writer, in *os.File) *UI {
 	tty := in != nil && term.IsTerminal(in.Fd())
-	u := &UI{out: out, in: in, tty: tty, ctx: context.Background()}
+	u := &UI{out: out, in: in, tty: tty, ctx: context.Background(), look: DetectLook(nil)}
 	if in != nil {
 		u.reader = bufio.NewReader(in)
 	}
@@ -237,8 +238,13 @@ func (u *UI) Choose(title, help string, options []string) (string, error) {
 		return "", ErrNoTerminal
 	}
 	var value string
+	labels := padded(options)
+	opts := make([]huh.Option[string], len(options))
+	for i, o := range options {
+		opts[i] = huh.NewOption(labels[i], o)
+	}
 	field := huh.NewSelect[string]().Title(title).Description(help).
-		Options(huh.NewOptions(options...)...).Value(&value)
+		Options(opts...).Value(&value)
 	return value, u.run(field)
 }
 
@@ -259,10 +265,13 @@ func (u *UI) Menu(title string, rows []MenuRow) (int, error) {
 	for _, r := range rows {
 		width = max(width, len([]rune(r.Section)))
 	}
-	options := make([]huh.Option[int], len(rows))
+	labels := make([]string, len(rows))
 	for i, r := range rows {
-		pad := strings.Repeat(" ", width-len([]rune(r.Section)))
-		options[i] = huh.NewOption(r.Section+pad+"   "+r.Label, i)
+		labels[i] = r.Section + strings.Repeat(" ", width-len([]rune(r.Section))) + "   " + r.Label
+	}
+	options := make([]huh.Option[int], len(rows))
+	for i, l := range padded(labels) {
+		options[i] = huh.NewOption(l, i)
 	}
 	var chosen int
 	field := huh.NewSelect[int]().Title(title).
@@ -275,7 +284,7 @@ func (u *UI) run(field huh.Field) error { return u.form(field, false) }
 
 func (u *UI) form(field huh.Field, help bool) error {
 	err := huh.NewForm(huh.NewGroup(field)).
-		WithTheme(huh.ThemeFunc(theme)).
+		WithTheme(huh.ThemeFunc(u.theme)).
 		WithShowHelp(help).
 		WithInput(u.in).
 		WithOutput(u.out).
@@ -286,15 +295,32 @@ func (u *UI) form(field huh.Field, help bool) error {
 	return err
 }
 
-// theme is huh's base theme without its focus border, in the palette above.
-func theme(isDark bool) *huh.Styles {
-	t := huh.ThemeBase(isDark)
+// padded makes the labels of a list one width, so that the bar across the
+// highlighted one is as wide as the list.
+func padded(labels []string) []string {
+	width := 0
+	for _, l := range labels {
+		width = max(width, lipgloss.Width(l))
+	}
+	out := make([]string, len(labels))
+	for i, l := range labels {
+		out[i] = l + strings.Repeat(" ", width-lipgloss.Width(l))
+	}
+	return out
+}
+
+// theme is huh's base theme without its focus border, in the palette above,
+// with a bar across the highlighted row of a list (Look.Highlight).
+func (u *UI) theme(answeredDark bool) *huh.Styles {
+	dark := u.look.Dark(answeredDark)
+	t := huh.ThemeBase(dark)
 	t.Focused.Base = lipgloss.NewStyle().PaddingLeft(len(Indent))
 	t.Focused.Card = t.Focused.Base
 	t.Focused.Title = lipgloss.NewStyle().Bold(true)
 	t.Focused.Description = lipgloss.NewStyle().Foreground(Dim)
-	t.Focused.SelectSelector = lipgloss.NewStyle().Foreground(Accent).SetString("› ")
-	t.Focused.SelectedOption = lipgloss.NewStyle().Foreground(Accent)
+	t.Focused.SelectSelector = lipgloss.NewStyle().Foreground(Accent).SetString(u.look.Selector())
+	t.Focused.SelectedOption = u.look.Highlight(dark).Padding(0, 1)
+	t.Focused.UnselectedOption = lipgloss.NewStyle().Padding(0, 1)
 	t.Focused.ErrorIndicator = lipgloss.NewStyle().Foreground(Bad).SetString(" *")
 	t.Focused.ErrorMessage = lipgloss.NewStyle().Foreground(Bad)
 	t.Blurred = t.Focused
