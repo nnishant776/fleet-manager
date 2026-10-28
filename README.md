@@ -442,7 +442,10 @@ line, a full commit hash, and is readable by you only.
 - A fleet-manager commit that is pinned (the one `fleet install prep` takes
   the installer from, or in an inventory's `flake.lock`) must be on the
   trusted line of fleet-manager's `main`: the recorded commit, one before it,
-  or one after it, which moves the record.
+  or one after it, which moves the record. The pin and every commit it brings
+  over the previous pin (or else over the recorded commit) must each be signed
+  by a key you trust: a signed commit on top does not vouch for unsigned ones
+  under it.
 - `fleet install prep`, `fleet inventory publish` (`main` and each host's
   branch), `fleet host enroll`, the commands that change a host's or user's
   files in the secrets repository (`fleet host secret`, `fleet secrets …`) and
@@ -504,8 +507,12 @@ clone move to what you saw, and nothing is written before that. A repository is
 refused whole, and nothing is written for it, when a branch went backwards or
 was rewritten, when the newest commit of `main` or of a host's branch is not
 signed by a key you trust, or when the list of keys changed in a commit that no
-key you already trust signed. If the history was rewritten on purpose and you
-know why, `fleet repo sync <name> --accept-rewrite <branch>` shows the commits
+key you already trust signed. Every new commit of `main` and of a host's
+branch must be signed by a key you trust, not only the newest, because a signed
+commit on top does not vouch for the ones under it. If one is not, the
+repository is refused; at a terminal, but not with `--yes`, you can accept
+them by typing the branch's name. If the history was rewritten on purpose and
+you know why, `fleet repo sync <name> --accept-rewrite <branch>` shows the commits
 that were dropped and the new ones, and takes the branch once you type its
 name; this needs a terminal, even with `--yes`. A user's branch is signed by
 the user's own key, which only the encrypted files name, so when it is not
