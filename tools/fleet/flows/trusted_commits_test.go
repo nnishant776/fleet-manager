@@ -170,8 +170,10 @@ func TestPrepRecordsWhatItChecksOnFirstUse(t *testing.T) {
 	if r := trustedOf(t, invAddress, "main"); r != pinnedINV {
 		t.Errorf("the configuration's record is %q, want %s", r, pinnedINV)
 	}
-	if r := trustedOf(t, fleet.UpstreamURL, "main"); r != pinnedFM {
-		t.Errorf("fleet-manager's record is %q, want %s", r, pinnedFM)
+	// The fleet-manager pin is checked by its signature, and makes no record: a
+	// pin is not the tip of fleet-manager's main.
+	if r := trustedOf(t, fleet.UpstreamURL, "main"); r != "" {
+		t.Errorf("a pin made fleet-manager's record %q", r)
 	}
 }
 
@@ -194,8 +196,8 @@ func TestPrepRefusesAConfigurationCommitThatDoesNotFollowTheRecord(t *testing.T)
 	}
 }
 
-// The pin may be the trusted commit, one before it, or one after it, which
-// moves the record; any other commit is off the line.
+// The pin may be the trusted commit, one before it, or one after it, and the
+// record stays where it is; any other commit is off the line.
 func TestPrepHoldsTheFleetManagerPinToTheTrustedLine(t *testing.T) {
 	for _, tc := range []struct {
 		name             string
@@ -203,7 +205,7 @@ func TestPrepHoldsTheFleetManagerPinToTheTrustedLine(t *testing.T) {
 		pinBehindRec     bool // the pin is an ancestor of the record
 		wantErr, wantRec string
 	}{
-		{"after", true, false, "", pinnedFM},
+		{"after", true, false, "", oldCommit},
 		{"before", false, true, "", oldCommit},
 		{"off", false, false, "does not follow " + oldCommit, oldCommit},
 	} {

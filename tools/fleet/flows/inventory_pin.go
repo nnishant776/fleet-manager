@@ -267,6 +267,15 @@ func chooseNewPin(x *engine.Ctx) error {
 		if err := fleet.CheckTrustedLine(x, clone, origin, "main", pin); err != nil {
 			return err
 		}
+		// Only main's commits: a branch's may never reach main, and hosts
+		// would build what was never merged.
+		onMain, err := fleet.Follows(x, clone, pin, "refs/remotes/origin/main")
+		if err != nil {
+			return err
+		}
+		if !onMain {
+			return fmt.Errorf("%s is not on fleet-manager's main: pin only commits that are on main", to)
+		}
 	}
 	x.Values["new_pin"] = pin
 	if pin == x.Value("old_pin") {

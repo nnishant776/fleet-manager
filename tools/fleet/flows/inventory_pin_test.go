@@ -429,3 +429,21 @@ func TestInventoryPinDryRunChangesNothing(t *testing.T) {
 		t.Errorf("did not say it was a dry run:\n%s", out)
 	}
 }
+
+// A commit that grew from main on a branch follows the trusted commit, but is
+// not on main: hosts would build what was never merged, so it is refused, and
+// the record of main stays where it was.
+func TestInventoryPinRefusesACommitNotOnMain(t *testing.T) {
+	e := newPinEnv(t, fleet.UpstreamURL)
+	e.withFleetManager()
+	branch := "7777777777777777777777777777777777777777"
+	e.ancestors[pinNew+" "+branch] = true
+	err, fake, out := e.run(map[string]string{"to": branch}, true)
+	if err == nil || !strings.Contains(err.Error()+out, "is not on fleet-manager's main") {
+		t.Fatalf("went ahead, or without saying why: %v\n%s", err, out)
+	}
+	changedNothing(t, fake)
+	if r := trustedOf(t, fleet.UpstreamURL, "main"); r != pinNew {
+		t.Errorf("the record of fleet-manager's main is %q, want %s", r, pinNew)
+	}
+}

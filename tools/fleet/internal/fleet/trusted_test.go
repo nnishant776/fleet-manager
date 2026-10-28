@@ -214,7 +214,15 @@ func TestAPinnedCommitMayBeOnTheLineBehindOrAhead(t *testing.T) {
 	c1 := g.commit("one")
 	c2 := g.commit("two")
 	c3 := g.commit("three")
+	// With no record yet, a pin is taken on its signature alone, and no record
+	// is made: a pin is not the branch's tip.
 	if err := CheckTrustedLine(g.x, g.dir, testOrigin, "main", c2); err != nil {
+		t.Fatal(err)
+	}
+	if r := record(t, "main"); r != "" {
+		t.Errorf("a pin made the record %q", r)
+	}
+	if err := CheckTrusted(g.x, g.dir, testOrigin, "main", c2); err != nil {
 		t.Fatal(err)
 	}
 	// Behind the record: accepted, the record stays.
@@ -224,12 +232,16 @@ func TestAPinnedCommitMayBeOnTheLineBehindOrAhead(t *testing.T) {
 	if r := record(t, "main"); r != c2 {
 		t.Errorf("record moved back to %q", r)
 	}
-	// Ahead: accepted, the record advances.
+	// Ahead: accepted, and the record stays too; only the branch's own tips
+	// move it.
 	if err := CheckTrustedLine(g.x, g.dir, testOrigin, "main", c3); err != nil {
 		t.Fatalf("a descendant: %v", err)
 	}
-	if r := record(t, "main"); r != c3 {
-		t.Errorf("record %q, want %q", r, c3)
+	if r := record(t, "main"); r != c2 {
+		t.Errorf("a pin ahead moved the record to %q", r)
+	}
+	if err := CheckTrusted(g.x, g.dir, testOrigin, "main", c3); err != nil {
+		t.Fatal(err)
 	}
 	// Off the line: a side branch from c1.
 	g.git("checkout", "-q", "-b", "side", c1)

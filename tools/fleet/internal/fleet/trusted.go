@@ -185,7 +185,7 @@ func CheckTrusted(x *engine.Ctx, dir, address, branch, tip string) error {
 
 // CheckTrustedLine is CheckTrusted for a commit that is pinned rather than
 // followed, such as the fleet-manager commit a flake.lock holds: it may also
-// be an ancestor of the trusted commit, then the record stays where it is.
+// be an ancestor of the trusted commit. It never moves the record.
 func CheckTrustedLine(x *engine.Ctx, dir, address, branch, commit string) error {
 	return checkTrusted(x, dir, address, branch, commit, true)
 }
@@ -210,6 +210,17 @@ func checkTrusted(x *engine.Ctx, dir, address, branch, ref string, line bool) er
 		return WriteTrusted(address, branch, tip)
 	}
 	what := id + " " + branch
+	if line {
+		// A pin is not the branch's tip: it may sit anywhere on the line, or
+		// even on another branch that grew from it, so it never moves the
+		// record. Only the branch's own tips do.
+		save = func() error { return nil }
+		if rec == "" {
+			x.UI.Note("You have no trusted commit for " + what + " yet, so only its signature vouches for " + tip + ". " +
+				"fleet repo sync, or a command that checks the branch itself, records one.")
+			return nil
+		}
+	}
 	if rec == "" {
 		x.UI.Note("You have no trusted commit for " + what + " yet: taking " + tip + " as the first. " +
 			"Later tips are accepted only when they follow it.")
