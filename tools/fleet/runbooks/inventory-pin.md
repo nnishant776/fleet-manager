@@ -16,8 +16,8 @@ fleet-manager when you publish the inventory after that.
 ```
 fleet inventory pin [flags]
 
-fleet inventory pin --flake fleet-inventory
-fleet inventory pin --to 3f2a9c1 --flake fleet-inventory
+fleet inventory pin --flake inventory
+fleet inventory pin --to 3f2a9c1 --flake inventory
 ```
 
 ## Flags

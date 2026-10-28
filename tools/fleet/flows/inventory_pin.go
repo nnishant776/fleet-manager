@@ -30,8 +30,8 @@ var InventoryPin = &engine.Flow{
 		"the new fleet-manager breaks is found now, not on the host. If all of them evaluate,\n" +
 		"it commits flake.lock, signed, and pushes it once you approve. The hosts take the new\n" +
 		"fleet-manager when you publish the inventory after that.",
-	Example: "  fleet inventory pin --flake fleet-inventory\n" +
-		"  fleet inventory pin --to 3f2a9c1 --flake fleet-inventory",
+	Example: "  fleet inventory pin --flake inventory\n" +
+		"  fleet inventory pin --to 3f2a9c1 --flake inventory",
 	Inputs: []engine.Input{
 		fleet.FlakeInput,
 		{Name: "to", Prompt: "Commit to pin", Help: "A fleet-manager commit or branch to pin; its newest main by default", Optional: true},
