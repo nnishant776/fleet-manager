@@ -48,6 +48,8 @@ type UI struct {
 	reader *bufio.Reader
 	ctx    context.Context // see Bind
 	look   Look
+	// menuPrefs is the menu's layout, read once from where it is kept.
+	menuPrefs *MenuPrefs
 
 	// fancy: out is a terminal and colour is wanted (see detectFancy).
 	fancy bool

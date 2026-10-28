@@ -110,9 +110,12 @@ func TestMenuTwoPanels(t *testing.T) {
 		has(t, lines, "› Check a host")
 		has(t, lines, "fleet host check [HOST]")
 		has(t, lines, "Steps")
-		if !strings.HasSuffix(strings.TrimSpace(lines[len(lines)-1]), "q quit") ||
-			!strings.Contains(lines[len(lines)-1], "↑↓ move · enter run · / filter · tab guide · pgup/pgdn scroll · q quit") {
-			t.Errorf("key line: %q", lines[len(lines)-1])
+		want := "↑↓ move · enter run · / filter · d hide docs · < > width · ? keys · q quit"
+		if size[0] >= 100 {
+			want = "↑↓ move · enter run · / filter · d hide docs · tab docs · pgup/pgdn scroll · < > width · ? keys · q quit"
+		}
+		if !strings.Contains(lines[len(lines)-1], want) {
+			t.Errorf("key line: %q, want %q", lines[len(lines)-1], want)
 		}
 		if !m.View().AltScreen {
 			t.Error("not on the alternate screen")
@@ -281,7 +284,7 @@ func TestMenuLooks(t *testing.T) {
 	has(t, lines, "┌ Commands")
 	lacks(t, lines, "╭")
 	has(t, lines, "> Check a host")
-	has(t, lines, "up/down move | enter run | / filter | tab guide | pgup/pgdn scroll | q quit")
+	has(t, lines, "up/down move | enter run | / filter | d hide docs | < > width | ? keys | q quit")
 	has(t, lines, "v more (pgdn)")
 	has(t, lines, "Add or change a host secr...")
 	for _, l := range lines {
@@ -329,5 +332,106 @@ func TestMenuWithoutTerminal(t *testing.T) {
 	u := NewWith(&bytes.Buffer{}, nil)
 	if _, err := u.Menu("x", testRows(), 0); err != ErrNoTerminal {
 		t.Errorf("got %v", err)
+	}
+}
+
+// d hides the docs, and the commands then fill the screen, titles whole; d
+// shows them again.
+func TestMenuHidesAndShowsTheDocs(t *testing.T) {
+	m := newTest(120, 30, Look{})
+	long := "Add or change a host secret that has a long title"
+	m.prefs.ListWidth = 28
+	m.settle()
+	lacks(t, screen(m), long)
+	send(m, "d")
+	lines := screen(m)
+	has(t, lines, long)
+	lacks(t, lines, "fleet host check [HOST]")
+	has(t, lines, "d show docs")
+	lacks(t, lines, "tab docs")
+	if !m.prefs.DocsHidden {
+		t.Error("hiding the docs is not kept")
+	}
+	send(m, "tab")
+	if m.guideFocus {
+		t.Error("tab moved into hidden docs")
+	}
+	send(m, "d")
+	has(t, screen(m), "fleet host check [HOST]")
+}
+
+// < and > narrow and widen the commands panel, within what leaves the docs
+// room; = fits it to the longest title.
+func TestMenuResizesTheCommandsPanel(t *testing.T) {
+	m := newTest(120, 30, Look{})
+	start := m.geometry().left
+	send(m, ">")
+	if got := m.geometry().left; got != start+4 {
+		t.Errorf("> made it %d, want %d", got, start+4)
+	}
+	send(m, "<", "<")
+	if got := m.geometry().left; got != start-4 {
+		t.Errorf("< < made it %d, want %d", got, start-4)
+	}
+	for i := 0; i < 40; i++ {
+		send(m, "<")
+	}
+	if got := m.geometry().left; got != minListWidth {
+		t.Errorf("narrowest is %d, want %d", got, minListWidth)
+	}
+	for i := 0; i < 40; i++ {
+		send(m, ">")
+	}
+	if got := m.geometry(); got.right != minDocsWidth {
+		t.Errorf("widest leaves the docs %d, want %d", got.right, minDocsWidth)
+	}
+	send(m, "=")
+	has(t, screen(m), "Add or change a host secret that has a long title")
+	for _, l := range screen(m) {
+		if w := ansi.StringWidth(l); w > 120 {
+			t.Errorf("a line is %d wide: %q", w, l)
+		}
+	}
+}
+
+// ? covers the screen with every key; any key goes back.
+func TestMenuListsItsKeys(t *testing.T) {
+	m := newTest(100, 30, Look{})
+	send(m, "?")
+	lines := screen(m)
+	has(t, lines, "Keys")
+	has(t, lines, "fit the commands panel to its longest title")
+	has(t, lines, "any key: back")
+	send(m, "x")
+	lacks(t, screen(m), "any key: back")
+	if m.done {
+		t.Error("closing the keys did something else")
+	}
+}
+
+// The key line fits, dropping the least needed keys first; ? and q stay.
+func TestMenuKeyLineFits(t *testing.T) {
+	for _, w := range []int{72, 80, 100, 140} {
+		m := newTest(w, 30, Look{})
+		last := screen(m)[29]
+		if ansi.StringWidth(last) > w || !strings.Contains(last, "? keys") || !strings.Contains(last, "q quit") {
+			t.Errorf("at %d: %q", w, last)
+		}
+	}
+}
+
+// The layout is kept between runs.
+func TestMenuPrefsAreKept(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	if p := LoadMenuPrefs(); p != (MenuPrefs{}) {
+		t.Errorf("nothing kept yet, but %+v", p)
+	}
+	MenuPrefs{ListWidth: 52, DocsHidden: true}.Save()
+	if p := LoadMenuPrefs(); p != (MenuPrefs{ListWidth: 52, DocsHidden: true}) {
+		t.Errorf("read back %+v", p)
+	}
+	MenuPrefs{}.Save()
+	if p := LoadMenuPrefs(); p != (MenuPrefs{}) {
+		t.Errorf("reset read back %+v", p)
 	}
 }

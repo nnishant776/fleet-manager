@@ -29,9 +29,19 @@ func (u *UI) Menu(title string, rows []MenuRow, start int) (int, error) {
 	if !u.tty || u.in == nil {
 		return 0, ErrNoTerminal
 	}
+	if u.menuPrefs == nil {
+		p := LoadMenuPrefs()
+		u.menuPrefs = &p
+	}
 	m := newMenu(title, rows, start, u.look)
+	m.prefs = *u.menuPrefs
 	p := tea.NewProgram(m, tea.WithContext(u.ctx), tea.WithInput(u.in), tea.WithOutput(u.out))
-	if _, err := p.Run(); err != nil {
+	_, err := p.Run()
+	if m.prefs != *u.menuPrefs {
+		*u.menuPrefs = m.prefs
+		m.prefs.Save()
+	}
+	if err != nil {
 		if u.ctx.Err() != nil || errors.Is(err, tea.ErrInterrupted) || errors.Is(err, tea.ErrProgramKilled) {
 			return 0, ErrCancelled
 		}
@@ -58,6 +68,8 @@ type menuModel struct {
 	guideFocus bool
 	filtering  bool
 	filter     string
+	prefs      MenuPrefs // the commands panel's width, and the docs hidden or not
+	showKeys   bool      // the list of keys (?) covers the screen
 
 	done      bool
 	cancelled bool
@@ -141,19 +153,43 @@ type geometry struct {
 	height int // outer height of a panel
 }
 
+// The narrowest the two panels get side by side.
+const (
+	minListWidth = 24
+	minDocsWidth = 32
+)
+
 func (m *menuModel) geometry() geometry {
-	g := geometry{wide: m.width >= 72 && m.height >= 16, height: max(m.height-2, 3)}
+	g := geometry{wide: m.width >= 72 && m.height >= 16 && !m.prefs.DocsHidden, height: max(m.height-2, 3)}
 	if !g.wide {
 		g.left, g.right = m.width, m.width
 		return g
 	}
+	g.left = m.prefs.ListWidth
+	if g.left == 0 {
+		g.left = min(max(m.fitWidth(), 28), 44, m.width*40/100)
+	}
+	g.left = min(max(g.left, minListWidth), m.width-minDocsWidth)
+	g.right = m.width - g.left
+	return g
+}
+
+// fitWidth is the commands panel's width that shows every title whole.
+func (m *menuModel) fitWidth() int {
 	longest := 0
 	for _, r := range m.rows {
 		longest = max(longest, lipgloss.Width(r.Label))
 	}
-	g.left = min(max(longest+6, 28), 44, m.width*40/100)
-	g.right = m.width - g.left
-	return g
+	return longest + 6
+}
+
+// resize sets the commands panel's width, within what leaves room for the
+// docs.
+func (m *menuModel) resize(w int) {
+	if m.width > 0 {
+		w = min(max(w, minListWidth), m.width-minDocsWidth)
+	}
+	m.prefs.ListWidth = max(w, minListWidth)
 }
 
 func (g geometry) inner() int { return max(g.height-2, 1) }
@@ -258,6 +294,11 @@ func (m *menuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *menuModel) key(msg tea.KeyPressMsg) tea.Cmd {
 	half := max(m.geometry().inner()/2, 1)
 	k := msg.String()
+	if m.showKeys && k != "ctrl+c" {
+		// Any key closes the list of keys.
+		m.showKeys = false
+		return nil
+	}
 	switch k {
 	case "ctrl+c":
 		m.cancelled, m.done = true, true
@@ -275,7 +316,7 @@ func (m *menuModel) key(msg tea.KeyPressMsg) tea.Cmd {
 			return tea.Quit
 		}
 	case "tab":
-		m.guideFocus = !m.guideFocus
+		m.guideFocus = !m.guideFocus && !m.prefs.DocsHidden
 	case "up":
 		m.step(-1)
 	case "down":
@@ -318,6 +359,22 @@ func (m *menuModel) key(msg tea.KeyPressMsg) tea.Cmd {
 			return tea.Quit
 		case "/":
 			m.filtering = true
+		case "?":
+			m.showKeys = true
+		case "d":
+			m.prefs.DocsHidden = !m.prefs.DocsHidden
+			m.guideFocus = false
+		case "<", ">", "=":
+			if g := m.geometry(); g.wide {
+				switch k {
+				case "<":
+					m.resize(g.left - 4)
+				case ">":
+					m.resize(g.left + 4)
+				default:
+					m.resize(m.fitWidth())
+				}
+			}
 		case "k":
 			m.step(-1)
 		case "j":
@@ -394,6 +451,8 @@ func (m *menuModel) render() string {
 		guide = m.panel(title, body, g.right, g.height, m.guideFocus)
 	}
 	switch {
+	case m.showKeys:
+		lines = append(lines, m.panel("Keys", m.keysBody(), m.width, g.height, true)...)
 	case g.wide:
 		for i := range list {
 			lines = append(lines, list[i]+guide[i])
@@ -421,14 +480,66 @@ func (m *menuModel) keyLine() string {
 	if m.filtering {
 		return " filter: " + m.filter + m.ascii("▏", "_") + sep + "esc clear"
 	}
-	updown := m.ascii("↑↓", "up/down")
-	full := []string{updown + " move", "enter run", "/ filter", "tab guide", "pgup/pgdn scroll", "q quit"}
-	short := []string{updown + " move", "enter run", "tab guide", "q quit"}
-	line := " " + strings.Join(full, sep)
-	if ansi.StringWidth(line) > m.width {
-		line = " " + strings.Join(short, sep)
+	if m.showKeys {
+		return " any key: back"
 	}
-	return line
+	// The keys that apply now, in the order shown, each with its rank: when
+	// the line is too long, the lowest ranked go first. ? lists them all.
+	type hint struct {
+		text string
+		rank int
+	}
+	docs := "d hide docs"
+	if m.prefs.DocsHidden {
+		docs = "d show docs"
+	}
+	hints := []hint{{m.ascii("↑↓", "up/down") + " move", 0}, {"enter run", 0}, {"/ filter", 3}, {docs, 2}}
+	if !m.prefs.DocsHidden {
+		hints = append(hints, hint{"tab docs", 5}, hint{"pgup/pgdn scroll", 6})
+	}
+	if m.geometry().wide {
+		hints = append(hints, hint{"< > width", 4})
+	}
+	hints = append(hints, hint{"? keys", 1}, hint{"q quit", 0})
+	for drop := 6; ; drop-- {
+		var shown []string
+		for _, h := range hints {
+			if h.rank <= drop {
+				shown = append(shown, h.text)
+			}
+		}
+		line := " " + strings.Join(shown, sep)
+		if ansi.StringWidth(line) <= m.width || drop == 0 {
+			return line
+		}
+	}
+}
+
+// keysBody is the list of every key, for ?.
+func (m *menuModel) keysBody() []string {
+	bold := lipgloss.NewStyle().Bold(true)
+	keys := [][2]string{
+		{m.ascii("↑ ↓", "up down") + "  j k", "move through the commands"},
+		{"home end", "the first or the last command"},
+		{"enter", "run the highlighted command"},
+		{"/", "filter the commands by typing; esc clears"},
+		{"tab", "move into the docs to scroll them with " + m.ascii("↑ ↓", "up down") + ", and back"},
+		{"pgup pgdn", "scroll the docs (ctrl+u ctrl+d too)"},
+		{"d", "hide or show the docs; hidden, the commands fill the screen"},
+		{"< >", "narrow or widen the commands panel"},
+		{"=", "fit the commands panel to its longest title"},
+		{"?", "this list"},
+		{"q esc", "quit"},
+	}
+	width := 0
+	for _, k := range keys {
+		width = max(width, ansi.StringWidth(k[0]))
+	}
+	out := []string{""}
+	for _, k := range keys {
+		out = append(out, "  "+bold.Render(padRight(k[0], width))+"   "+k[1])
+	}
+	return append(out, "", "  The width and whether the docs are shown are kept for the next time.")
 }
 
 // panel draws a box with title in its top border; body lines are cut or
