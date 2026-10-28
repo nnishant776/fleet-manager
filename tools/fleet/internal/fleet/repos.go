@@ -184,8 +184,9 @@ func ResolveName(x *engine.Ctx, input, value string) (string, error) {
 // first thing that is not right: it fetches, checks that origin's main is
 // signed by a key you trust (the clone's own gpg.ssh.allowedSignersFile,
 // which fleet repo add sets), checks that it follows the commit you trusted
-// last, and detaches the clone there. Local branches that origin also has are
-// moved forward when they only lag.
+// last with every commit between them signed by a key you trust, and detaches
+// the clone there. Local branches that origin also has are moved forward when
+// they only lag.
 func SyncClone(x *engine.Ctx, dir string) error {
 	if _, err := engine.Cmd("git", "-C", dir, "fetch", "-q", "--prune", "origin").
 		ReadOnly().Quiet().OK("fetched origin into " + dir).Run(x); err != nil {
@@ -201,6 +202,10 @@ func SyncClone(x *engine.Ctx, dir string) error {
 	}
 	origin, err := OriginOf(x, dir)
 	if err != nil {
+		return err
+	}
+	// The newest commit's signature does not vouch for the ones under it.
+	if err := checkRangeSigned(x, dir, origin, "refs/remotes/origin/main"); err != nil {
 		return err
 	}
 	if err := CheckTrusted(x, dir, origin, "main", "refs/remotes/origin/main"); err != nil {
