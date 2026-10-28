@@ -618,6 +618,15 @@ older commits works as before. One limit remains: root on a host can still use
 its configuration key to fetch the other branches, since GitHub's deploy keys
 cannot be limited to a branch.
 
+**Moving the inventory to a newer fleet-manager.** The inventory pins one
+commit of fleet-manager in its `flake.lock`. To move it, run
+`fleet inventory pin --flake inventory` (the name of the clone, or a checkout),
+then publish as above. It takes fleet-manager's newest main, or the commit
+you give with `--to`, only if a key you trust signed it. It shows the commits
+the pin moves over, locks the new commit, and checks that every host still
+evaluates. Then it commits `flake.lock`, signed, and pushes it once you
+approve. Hosts take the new fleet-manager when you publish.
+
 - **Installing a host from it:** run `fleet install prep <host> --flake
   <checkout of it>` on your machine, and the line it prints on the installer
   (see [First run](#first-run)). It sets
