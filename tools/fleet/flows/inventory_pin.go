@@ -459,10 +459,13 @@ func checkHostsAfterPin(x *engine.Ctx) error {
 func commitPin(x *engine.Ctx) error {
 	n, _ := strconv.Atoi(x.Value("pin_count"))
 	body := fmt.Sprintf("From %s to %s: %s.", fleet.Short(x.Value("old_pin")), fleet.Short(x.Value("new_pin")), commits(n))
-	if c := x.Value("hosts_changed"); c != "" {
-		body += "\n\nHosts that change: " + c + "."
-	} else {
-		body += "\n\nNo host changes."
+	switch c := x.Value("hosts_changed"); {
+	case x.Options.DryRun:
+		// The hosts were not evaluated with the new lock.
+	case c != "":
+		body += " Hosts that change: " + c + "."
+	default:
+		body += " No host changes."
 	}
 	x.Values["pin_subject"] = "build: pin fleet-manager at " + fleet.Short(x.Value("new_pin"))
 	x.Values["pin_body"] = body
