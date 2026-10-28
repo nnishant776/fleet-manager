@@ -446,3 +446,44 @@ func TestRepoSyncRefusesAnUnknownNameAndAMissingClone(t *testing.T) {
 	}
 	wantOut(t, w, "run fleet repo add again")
 }
+
+// A signed tip over an unsigned commit: the tip's signature does not vouch for
+// the commit under it. Refused under --yes and without a terminal; at one, the
+// branch's name typed accepts, and a wrong word leaves everything as it is.
+func TestRepoSyncUnsignedCommitUnderASignedTip(t *testing.T) {
+	w, address, work, clone := syncedWorld(t)
+	oldMain := recordOf(t, address, "main")
+	w.push("", work, "main", "sneaked in")
+	tip := w.push(w.key, work, "main", "signed on top")
+
+	err := w.sync(engine.Options{Yes: true}, "", "", "")
+	if err == nil {
+		t.Fatalf("accepted under --yes:\n%s", w.out)
+	}
+	wantOut(t, w, "sneaked in", "✗ unsigned", "main has commits not signed by a key you trust", "inventory: refused")
+	if got := recordOf(t, address, "main"); got != oldMain {
+		t.Errorf("the record moved to %s", got)
+	}
+	// No terminal, no --yes.
+	if err := w.sync(engine.Options{}, "", "", ""); err == nil {
+		t.Fatalf("accepted without a terminal:\n%s", w.out)
+	}
+	// A wrong word: left as is, not a refusal.
+	if err := w.sync(engine.Options{}, "nope\n", "", ""); err != nil {
+		t.Fatalf("wrong word: %v\n%s", err, w.out)
+	}
+	wantOut(t, w, "(type main)", "left as is, because you did not type the branch's name")
+	if got := recordOf(t, address, "main"); got != oldMain {
+		t.Errorf("a wrong word moved the record to %s", got)
+	}
+	if got := gitOut(t, clone, "rev-parse", "HEAD"); got != oldMain {
+		t.Errorf("the clone moved to %s", got)
+	}
+	// The branch's name, then yes to the usual question.
+	if err := w.sync(engine.Options{}, "main\ny\n", "", ""); err != nil {
+		t.Fatalf("typed: %v\n%s", err, w.out)
+	}
+	if got := recordOf(t, address, "main"); got != tip {
+		t.Errorf("record = %s, want %s", got, tip)
+	}
+}

@@ -26,7 +26,11 @@ var RepoSync = &engine.Flow{
 		"A repository is refused, and nothing is written for it, when a branch went backwards\n" +
 		"or was rewritten, when the newest commit of main or of a host's branch is not signed\n" +
 		"by a key you trust, or when its list of keys changed in a commit that no key you\n" +
-		"already trust signed. A user's branch is signed by its user, with a key that only the\n" +
+		"already trust signed. Every new commit of main and of a host's branch must be signed\n" +
+		"too, not only the newest, since a signed commit on top does not vouch for the ones under\n" +
+		"it: otherwise the repository is refused, and at a terminal you can accept them by typing\n" +
+		"the branch's name, which --yes does not.\n" +
+		"A user's branch is signed by its user, with a key that only the\n" +
 		"encrypted files name; if the newest commit is not signed by one of your keys, the\n" +
 		"branch is left alone, and the secrets commands check it against the user's own key.\n" +
 		"\n" +
@@ -464,6 +468,11 @@ func (p *syncRepo) branch(x *engine.Ctx, b *syncBranch, file, rewrite string) {
 		p.fail(x, b.name+"'s newest commit, "+fleet.Short(b.tip)+", is not signed by a key you trust")
 		return
 	}
+	// The newest commit's signature does not vouch for the ones under it. A
+	// user's branch is signed by its user, whose key only the encrypted files name.
+	if follows && !user && !p.confirmUnsigned(x, b, file) {
+		return
+	}
 	if rewritten {
 		if !p.confirmRewrite(x, b, file) {
 			return
@@ -478,6 +487,42 @@ func (p *syncRepo) branch(x *engine.Ctx, b *syncBranch, file, rewrite string) {
 	if !left {
 		b.write = b.tip
 	}
+}
+
+// confirmUnsigned lists the commits since the branch's record that no key in
+// the file signed. They are accepted only by typing the branch's name at a
+// terminal; with --yes or without one the repository is refused. It says
+// whether the branch goes on.
+func (p *syncRepo) confirmUnsigned(x *engine.Ctx, b *syncBranch, file string) bool {
+	bad, err := fleet.UnverifiedCommits(x, p.clone, file, b.rec, b.tip)
+	if err != nil {
+		p.fail(x, b.name+": "+err.Error())
+		return false
+	}
+	if len(bad) == 0 {
+		return true
+	}
+	x.UI.Note(fmt.Sprintf("%d of the new commits on %s are not signed by a key you trust, so the signature on its newest commit does not vouch for them:", len(bad), b.name))
+	x.UI.Text("  " + strings.Join(bad, "\n  "))
+	switch {
+	case x.Options.DryRun:
+		x.UI.Skip("dry run: you would be asked to type " + b.name)
+		return true
+	case x.Options.Yes || !x.UI.Interactive():
+		p.fail(x, b.name+" has commits not signed by a key you trust")
+		return false
+	}
+	ok, err := x.UI.Typed("Accept the unsigned commits on "+b.name+"?", b.name)
+	if err != nil {
+		p.fail(x, err.Error())
+		return false
+	}
+	if !ok {
+		x.UI.Skip("that is not the branch's name: the commits are not accepted")
+		p.declined = true
+		return false
+	}
+	return true
 }
 
 // confirmRewrite shows what a rewrite dropped and added, and asks for the

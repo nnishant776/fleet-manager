@@ -12,7 +12,11 @@ accept, the commits you trust move to them and the clone moves to main.
 A repository is refused, and nothing is written for it, when a branch went backwards
 or was rewritten, when the newest commit of main or of a host's branch is not signed
 by a key you trust, or when its list of keys changed in a commit that no key you
-already trust signed. A user's branch is signed by its user, with a key that only the
+already trust signed. Every new commit of main and of a host's branch must be signed
+too, not only the newest, since a signed commit on top does not vouch for the ones under
+it: otherwise the repository is refused, and at a terminal you can accept them by typing
+the branch's name, which --yes does not.
+A user's branch is signed by its user, with a key that only the
 encrypted files name; if the newest commit is not signed by one of your keys, the
 branch is left alone, and the secrets commands check it against the user's own key.
 
