@@ -138,9 +138,16 @@ func TestEnrollDoesWhatIsMissingInOrder(t *testing.T) {
 	}
 }
 
+// enrollMain is the newest commit of fleet-manager's main in these tests, and
+// enrollRecord the one trusted before it.
+const (
+	enrollMain   = "abc1230000000000000000000000000000000000"
+	enrollRecord = "7777777777777777777777777777777777777777"
+)
+
 // noTooling answers like a host that does not run a fleet configuration yet,
 // whose configuration here sets conf.secrets.repo.url, with upstream main at
-// abc123.
+// enrollMain.
 func noTooling(respond func(engine.Spec) (engine.Result, error)) func(engine.Spec) (engine.Result, error) {
 	return func(s engine.Spec) (engine.Result, error) {
 		res, err := respond(s)
@@ -150,8 +157,8 @@ func noTooling(respond func(engine.Spec) (engine.Result, error)) func(engine.Spe
 			res.Stdout = strings.Replace(res.Stdout, "has_tooling=true", "has_tooling=false", 1)
 		case s.Name == "nix" && strings.Contains(args, "conf.secrets.repo.url"):
 			res.Stdout = "git@github.com:example-org/secrets.git"
-		case s.Name == "git" && strings.Contains(args, "rev-parse FETCH_HEAD"):
-			res.Stdout = "abc123\n"
+		case s.Name == "git" && strings.Contains(args, "rev-parse --verify -q refs/remotes/origin/main^{commit}"):
+			res.Stdout = enrollMain + "\n"
 		case s.Name == "nix" && strings.Contains(args, "c.fileSystems"):
 			res.Stdout = `{"fs":{"/":"/dev/disk/by-label/nixos","/boot":"/dev/disk/by-label/boot"},"efi":true,"disko":false}`
 		}
@@ -169,6 +176,11 @@ func runSwitch(t *testing.T, respond func(engine.Spec) (engine.Result, error)) (
 func runSwitchSync(t *testing.T, respond func(engine.Spec) (engine.Result, error), sync string) (error, *engine.Fake, string) {
 	t.Helper()
 	trustCopies(t, fleet.UpstreamURL)
+	// The commit you trusted last on fleet-manager's main, which its newest is
+	// checked against.
+	if err := fleet.WriteTrusted(fleet.UpstreamURL, "main", enrollRecord); err != nil {
+		t.Fatal(err)
+	}
 	flake := t.TempDir()
 	_ = os.MkdirAll(filepath.Join(flake, "fleet"), 0o755)
 	_ = os.WriteFile(filepath.Join(flake, "fleet", "allowed_signers"), []byte("me namespaces=\"git\" ssh-ed25519 AAAA\n"), 0o644)
@@ -195,9 +207,9 @@ func TestEnrollSwitchesToASignedCommitOfMain(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 	cmds := strings.Join(fake.Commands(), "\n")
-	order := []string{"fetch -q --depth=1 https://github.com/nnishant776/fleet-manager refs/heads/main",
+	order := []string{"fetch -q https://github.com/nnishant776/fleet-manager +refs/heads/main:refs/remotes/origin/main",
 		// Quoted for the host's shell, then again as part of the ssh command.
-		"verify-commit abc123", `nixos-rebuild switch --flake '\''git+https://github.com/nnishant776/fleet-manager?rev=abc123#pi'\''`}
+		"verify-commit abc1230000000000000000000000000000000000", `nixos-rebuild switch --flake '\''git+https://github.com/nnishant776/fleet-manager?rev=abc1230000000000000000000000000000000000#pi'\''`}
 	pos := 0
 	for _, want := range order {
 		i := strings.Index(cmds[pos:], want)
@@ -576,7 +588,7 @@ func TestEnrollMakesTheIdentityBeforeTheSwitch(t *testing.T) {
 		if len(s.Args) > 0 {
 			script = s.Args[len(s.Args)-1]
 		}
-		if strings.Contains(script, "run 'git+https://github.com/nnishant776/fleet-manager?rev=abc123#fleet-secrets-sync' -- init --state /var/lib/fleet --host pi") {
+		if strings.Contains(script, "run 'git+https://github.com/nnishant776/fleet-manager?rev=abc1230000000000000000000000000000000000#fleet-secrets-sync' -- init --state /var/lib/fleet --host pi") {
 			init = i
 		}
 		if strings.Contains(script, "nixos-rebuild switch") {
@@ -671,7 +683,7 @@ func TestEnrollAPrivateHostWithoutReinstalling(t *testing.T) {
 
 // movingHost answers like pi, which runs a fleet configuration from
 // https://example.org/old.git, with a checkout there, while the configuration
-// here names another repository; upstream main is at abc123.
+// here names another repository; upstream main is at abc123 (enrollMain).
 func movingHost(respond func(engine.Spec) (engine.Result, error)) func(engine.Spec) (engine.Result, error) {
 	return withEtcNixos(func(s engine.Spec) (engine.Result, error) {
 		res, err := respond(s)
@@ -679,8 +691,8 @@ func movingHost(respond func(engine.Spec) (engine.Result, error)) func(engine.Sp
 		switch {
 		case s.Name == "nix" && strings.Contains(args, "conf.secrets.repo.url"):
 			res.Stdout = "git@github.com:example-org/secrets.git"
-		case s.Name == "git" && strings.Contains(args, "rev-parse FETCH_HEAD"):
-			res.Stdout = "abc123\n"
+		case s.Name == "git" && strings.Contains(args, "rev-parse --verify -q refs/remotes/origin/main^{commit}"):
+			res.Stdout = enrollMain + "\n"
 		case s.Name == "nix" && strings.Contains(args, "c.fileSystems"):
 			res.Stdout = `{"fs":{"/":"/dev/disk/by-label/nixos","/boot":"/dev/disk/by-label/boot"},"efi":true,"disko":false}`
 		}
@@ -698,7 +710,7 @@ func TestEnrollMovesAHostFromAnotherRepository(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 	cmds := strings.Join(fake.Commands(), "\n")
-	order := []string{"verify-commit abc123", "sh -s -- true / /dev/disk", "symbolic-ref", "nixos-rebuild switch", "fleet-enroll-remake.sh https://github.com", "systemctl start config-auto-update"}
+	order := []string{"verify-commit abc1230000000000000000000000000000000000", "sh -s -- true / /dev/disk", "symbolic-ref", "nixos-rebuild switch", "fleet-enroll-remake.sh https://github.com", "systemctl start config-auto-update"}
 	pos := 0
 	for _, want := range order {
 		i := strings.Index(cmds[pos:], want)
@@ -730,5 +742,42 @@ func TestEnrollSkipsTheSwitchOfAHostOnThisRepository(t *testing.T) {
 		if got := ranMatching(fake, unwanted); len(got) > 0 {
 			t.Errorf("ran %s", got[0])
 		}
+	}
+}
+
+// The first switch takes main's newest commit only when every commit since the
+// one you trusted is signed too: an unsigned one under a signed tip stops it,
+// and the record stays where it was.
+func TestEnrollDoesNotSwitchOverAnUnsignedCommitUnderTheTip(t *testing.T) {
+	err, fake, out := runSwitch(t, noTooling(func(s engine.Spec) (engine.Result, error) {
+		args := strings.Join(s.Args, " ")
+		if s.Name == "git" && strings.Contains(args, " log ") && strings.HasSuffix(args, enrollRecord+".."+enrollMain) {
+			return engine.Result{Stdout: sigLine(enrollMain, "G", "SHA256:good", "feat: on top") +
+				sigLine("8888888888888888888888888888888888888888", "N", "", "fix: sneaked in")}, nil
+		}
+		return enrollHost(false, false, false)(s)
+	}))
+	if err == nil {
+		t.Fatalf("switched over an unsigned commit\n%s", out)
+	}
+	if !strings.Contains(flat(out), "1 of the 2 commits from "+fleet.Short(enrollRecord)+" to "+fleet.Short(enrollMain)) || !strings.Contains(out, "✗ unsigned fix: sneaked in") {
+		t.Errorf("output:\n%s", out)
+	}
+	if got := ranMatching(fake, "nixos-rebuild"); len(got) > 0 {
+		t.Fatalf("switched anyway: %s", got[0])
+	}
+	if r := trustedOf(t, fleet.UpstreamURL, "main"); r != enrollRecord {
+		t.Errorf("the record moved to %s", r)
+	}
+}
+
+// With every commit signed, the record moves to the commit switched to.
+func TestEnrollMovesTheRecordToTheCommitItSwitchesTo(t *testing.T) {
+	err, _, out := runSwitch(t, noTooling(enrollHost(false, false, false)))
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if r := trustedOf(t, fleet.UpstreamURL, "main"); r != enrollMain {
+		t.Errorf("the record is %s, want %s", r, enrollMain)
 	}
 }

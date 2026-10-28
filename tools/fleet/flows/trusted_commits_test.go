@@ -170,9 +170,9 @@ func TestPrepRecordsWhatItChecksOnFirstUse(t *testing.T) {
 	if r := trustedOf(t, invAddress, "main"); r != pinnedINV {
 		t.Errorf("the configuration's record is %q, want %s", r, pinnedINV)
 	}
-	// The fleet-manager pin is checked by its signature, and makes no record: a
+	// The fleet-manager pin is checked against the record, and makes none: a
 	// pin is not the tip of fleet-manager's main.
-	if r := trustedOf(t, fleet.UpstreamURL, "main"); r != "" {
+	if r := trustedOf(t, fleet.UpstreamURL, "main"); r != prepRecord {
 		t.Errorf("a pin made fleet-manager's record %q", r)
 	}
 }
@@ -207,7 +207,7 @@ func TestPrepHoldsTheFleetManagerPinToTheTrustedLine(t *testing.T) {
 	}{
 		{"after", true, false, "", oldCommit},
 		{"before", false, true, "", oldCommit},
-		{"off", false, false, "does not follow " + oldCommit, oldCommit},
+		{"off", false, false, "have gone apart", oldCommit},
 	} {
 		flake := prepCheckout(t, pinnedFM)
 		if err := fleet.WriteTrusted(fleet.UpstreamURL, "main", oldCommit); err != nil {
@@ -227,8 +227,68 @@ func TestPrepHoldsTheFleetManagerPinToTheTrustedLine(t *testing.T) {
 		if r := trustedOf(t, fleet.UpstreamURL, "main"); r != tc.wantRec {
 			t.Errorf("%s: the record is %q, want %s", tc.name, r, tc.wantRec)
 		}
-		if !strings.Contains(strings.Join(fake.Commands(), "\n"), "fetch -q --unshallow "+fleet.UpstreamURL+" main") {
+		if !strings.Contains(strings.Join(fake.Commands(), "\n"), "fetch -q "+fleet.UpstreamURL+" +refs/heads/main:refs/remotes/origin/main") {
 			t.Errorf("%s: did not fetch main's history to compare", tc.name)
 		}
+	}
+}
+
+// The pin is signed, and so is the commit on top, but one between them is not:
+// the installer would be built from it, so prep stops.
+func TestPrepRefusesAPinAheadOfTheRecordOverAnUnsignedCommit(t *testing.T) {
+	flake := prepCheckout(t, pinnedFM)
+	err, _, out := runPrep(t, flake, func(s engine.Spec) (engine.Result, error) {
+		args := strings.Join(s.Args, " ")
+		if s.Name == "git" && strings.Contains(args, " log ") && strings.HasSuffix(args, prepRecord+".."+pinnedFM) {
+			return engine.Result{Stdout: sigLine(pinnedFM, "G", "SHA256:good", "feat: on top") +
+				sigLine("8888888888888888888888888888888888888888", "N", "", "fix: sneaked in")}, nil
+		}
+		return prepRepo(invAddress, "")(s)
+	})
+	if err == nil || !strings.Contains(flat(out), "1 of the 2 commits from "+fleet.Short(prepRecord)+" to "+fleet.Short(pinnedFM)) ||
+		!strings.Contains(out, "✗ unsigned fix: sneaked in") {
+		t.Fatalf("went ahead, or without saying why: %v\n%s", err, out)
+	}
+	if strings.Contains(out, "sh /tmp/bootstrap") {
+		t.Error("printed the line anyway")
+	}
+	if r := trustedOf(t, fleet.UpstreamURL, "main"); r != prepRecord {
+		t.Errorf("the record moved to %s", r)
+	}
+}
+
+// Behind the record, the commits were checked when it moved there: nothing is
+// listed, and the pin is accepted.
+func TestPrepAcceptsAPinBehindTheRecordWithoutListingCommits(t *testing.T) {
+	flake := prepCheckout(t, pinnedFM)
+	err, fake, out := runPrep(t, flake, func(s engine.Spec) (engine.Result, error) {
+		if notAncestor(s, prepRecord, pinnedFM) {
+			return engine.Result{Code: 1}, errors.New("exited with code 1")
+		}
+		return prepRepo(invAddress, "")(s)
+	})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if !strings.Contains(flat(out), "its commits were checked as the record moved on") {
+		t.Errorf("did not say so:\n%s", out)
+	}
+	for _, c := range fake.Commands() {
+		if strings.Contains(c, " log ") && strings.Contains(c, "%G?") {
+			t.Errorf("listed a range: %s", c)
+		}
+	}
+}
+
+// A pin with no commit trusted on fleet-manager's main to start from is
+// refused, naming the command that makes one.
+func TestPrepNeedsATrustedCommitOfFleetManagerToCheckThePinFrom(t *testing.T) {
+	flake := prepCheckout(t, pinnedFM)
+	if err := fleet.RemoveTrusted(fleet.UpstreamURL, "main"); err != nil {
+		t.Fatal(err)
+	}
+	err, _, out := runPrep(t, flake, prepRepo(invAddress, ""))
+	if err == nil || !strings.Contains(flat(out), "run fleet repo sync fleet-manager, or fleet repo add, first") {
+		t.Fatalf("went ahead, or without saying why: %v\n%s", err, out)
 	}
 }

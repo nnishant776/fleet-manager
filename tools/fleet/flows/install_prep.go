@@ -259,36 +259,14 @@ func checkInstallerCommit(x *engine.Ctx) error {
 	if url := x.Value("config_url"); url != "" {
 		x.UI.OK(x.Value("host") + " syncs from " + url)
 	}
-	tmp, err := os.MkdirTemp("", "fleet-prep-*")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(tmp)
-	x.Values["fm_git"] = tmp
 	if fm == inv {
 		x.UI.OK("the same commit: this is fleet-manager's own checkout")
 		x.Values["fm_git"] = x.Value("flake")
 	} else {
-		// fleet-manager's commits against your copy of fleet-manager's keys.
-		fmSigners, err := trustedSignersFor(x, fleet.UpstreamURL, "<a fleet-manager checkout, such as /etc/nixos>")
-		if err != nil {
-			return err
-		}
-		x.Values["fm_signers"] = fmSigners
-		steps := []*engine.Command{
-			engine.Cmd("git", "init", "-q", "--bare", "{{.fm_git}}").OK("a scratch repository to fetch it into"),
-			engine.Cmd("git", "-C", "{{.fm_git}}", "fetch", "-q", "--depth=1", fleet.UpstreamURL, "{{.fm}}").OK("fetched {{.fm}} from " + fleet.UpstreamURL),
-			engine.Cmd("git", "-C", "{{.fm_git}}", "-c", "gpg.ssh.allowedSignersFile={{.fm_signers}}", "verify-commit", "{{.fm}}").
-				Explain(func(engine.Result) string {
-					return "fleet-manager's {{.fm}}, which flake.lock pins, is not signed by a key you trust for fleet-manager ({{.fm_signers}})"
-				}).OK("{{.fm}} is signed by a key you trust"),
-		}
-		for _, c := range steps {
-			if _, err := c.ReadOnly().Quiet().Run(x); err != nil {
-				return err
-			}
-		}
-		if err := checkUpstreamTrust(x, x.Value("fm_git"), x.Value("fm"), true); err != nil {
+		// The pin, and every commit it brings over the one you trusted last on
+		// fleet-manager's main, against your copy of fleet-manager's keys.
+		defer releaseFleetManagerHistory(x)
+		if err := verifyFleetManagerPin(x, fm, ""); err != nil {
 			return err
 		}
 	}
@@ -306,28 +284,6 @@ func checkInstallerCommit(x *engine.Ctx) error {
 	x.Values["bootstrap_sum"] = hex.EncodeToString(sum[:])
 	x.UI.OK("bootstrap at that commit has SHA-256 " + x.Value("bootstrap_sum"))
 	return nil
-}
-
-// checkUpstreamTrust checks a fleet-manager commit, fetched alone into the
-// scratch repository gitDir, against the commit you trusted last on
-// fleet-manager's main: a pin may be that commit, before it or after it (line);
-// main's newest must follow it. When there is a record to compare with, the
-// scratch repository gets the history of main too.
-func checkUpstreamTrust(x *engine.Ctx, gitDir, rev string, line bool) error {
-	rec, err := fleet.ReadTrusted(fleet.UpstreamURL, "main")
-	if err != nil {
-		return err
-	}
-	if rec != "" && rec != rev {
-		if _, err := engine.Cmd("git", "-C", gitDir, "fetch", "-q", "--unshallow", fleet.UpstreamURL, "main").
-			ReadOnly().Quiet().OK("fetched main's history, to see where " + rev + " stands against the commit you trusted").Run(x); err != nil {
-			return err
-		}
-	}
-	if line {
-		return fleet.CheckTrustedLine(x, gitDir, fleet.UpstreamURL, "main", rev)
-	}
-	return fleet.CheckTrusted(x, gitDir, fleet.UpstreamURL, "main", rev)
 }
 
 // printInstallLine prints the line for the installer. A configuration with a

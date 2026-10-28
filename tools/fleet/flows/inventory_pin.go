@@ -25,9 +25,10 @@ var InventoryPin = &engine.Flow{
 	Long: "An inventory builds its hosts from fleet-manager, at the commit its flake.lock pins.\n" +
 		"This moves that pin. fleet brings its clone of fleet-manager up to date, which only\n" +
 		"takes a commit signed by a key you trust, and pins main's newest commit, or the one\n" +
-		"you give with --to. It shows the commits the pin moves over, and asks before it pins\n" +
-		"an older one. Then it locks the new commit and evaluates every host, so that a host\n" +
-		"the new fleet-manager breaks is found now, not on the host. If all of them evaluate,\n" +
+		"you give with --to. Every commit the pin moves over must be signed by a key you trust\n" +
+		"too, not only the newest. It shows the commits, and asks before it pins an older one.\n" +
+		"Then it locks the new commit and evaluates every host, so that a host the new\n" +
+		"fleet-manager breaks is found now, not on the host. If all of them evaluate,\n" +
 		"it commits flake.lock, signed, and pushes it once you approve. The hosts take the new\n" +
 		"fleet-manager when you publish the inventory after that.",
 	Example: "  fleet inventory pin --flake inventory\n" +
@@ -46,8 +47,8 @@ var InventoryPin = &engine.Flow{
 		},
 		{
 			Title: "Bring fleet-manager's clone up to date",
-			Why: "The new pin is taken from the tool's own clone of fleet-manager, fetched here. A commit is pinned only if a key you trust signed it " +
-				"and it is on the line of main that you trusted.",
+			Why: "The new pin is taken from the tool's own clone of fleet-manager, fetched here. A commit is pinned only if a key you trust signed it, " +
+				"and each commit it brings over the old pin, and it is on the line of main that you trusted.",
 			Do: engine.Func(chooseNewPin),
 		},
 		unlessPinned(engine.Step{
@@ -238,10 +239,6 @@ func chooseNewPin(x *engine.Ctx) error {
 	if err := fleet.SyncClone(x, clone); err != nil {
 		return err
 	}
-	origin, err := fleet.OriginOf(x, clone)
-	if err != nil {
-		return err
-	}
 	var pin string
 	if to := x.Value("to"); to == "" {
 		if pin, err = fleet.CommitOf(x, clone, "refs/remotes/origin/main"); err != nil {
@@ -257,31 +254,18 @@ func chooseNewPin(x *engine.Ctx) error {
 				return fmt.Errorf("%s is neither a commit nor a branch in fleet-manager's clone", to)
 			}
 		}
-		x.Values["fm_pin"] = pin
-		if _, err := engine.Cmd("git", "-C", "{{.fm_clone}}", "verify-commit", "{{.fm_pin}}").ReadOnly().Quiet().
-			Explain(func(engine.Result) string {
-				return "{{.fm_pin}} is not signed by a key you trust: git checks it against the clone's gpg.ssh.allowedSignersFile setting"
-			}).OK("{{.fm_pin}} is signed by a key you trust").Run(x); err != nil {
-			return err
-		}
-		if err := fleet.CheckTrustedLine(x, clone, origin, "main", pin); err != nil {
-			return err
-		}
-		// Only main's commits: a branch's may never reach main, and hosts
-		// would build what was never merged.
-		onMain, err := fleet.Follows(x, clone, pin, "refs/remotes/origin/main")
-		if err != nil {
-			return err
-		}
-		if !onMain {
-			return fmt.Errorf("%s is not on fleet-manager's main: pin only commits that are on main", to)
-		}
 	}
 	x.Values["new_pin"] = pin
 	if pin == x.Value("old_pin") {
 		x.Values["done"] = "true"
 		x.UI.OK("the inventory pins " + fleet.Short(pin) + " already: nothing to do")
 		return nil
+	}
+	// The pin, and each commit it brings: a signature on the newest commit does
+	// not vouch for the ones under it. Hosts build all of them.
+	defer releaseFleetManagerHistory(x)
+	if err := verifyFleetManagerPin(x, pin, x.Value("old_pin")); err != nil {
+		return err
 	}
 	x.UI.OK("pinning " + fleet.Short(pin))
 	return nil

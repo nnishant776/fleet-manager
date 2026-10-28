@@ -526,43 +526,30 @@ func switchHost(x *engine.Ctx) error {
 	return err
 }
 
-// signedUpstreamMain fetches the newest commit of fleet-manager's main and
-// returns it once it is signed by a key in your copy of fleet-manager's keys
-// (fleet trust signers): a host's own sync takes no other, so neither does
-// its first switch.
+// signedUpstreamMain takes the newest commit of fleet-manager's main, fetched with
+// its whole history, and returns it once it and every commit since the one you
+// trusted last are signed by a key in your copy of fleet-manager's keys (fleet
+// trust signers): a host's own sync takes no other, so neither does its first
+// switch. The record then moves to it.
 func signedUpstreamMain(x *engine.Ctx) (string, error) {
-	signers, err := trustedSignersFor(x, fleet.UpstreamURL, "<a fleet-manager checkout, such as /etc/nixos>")
+	dir, signers, cleanup, err := fleetManagerHistory(x)
 	if err != nil {
 		return "", err
 	}
-	tmp, err := os.MkdirTemp("", "fleet-upstream-*")
+	defer cleanup()
+	rev, err := fleet.CommitOf(x, dir, "refs/remotes/origin/main")
 	if err != nil {
+		if x.Options.DryRun {
+			return "<newest commit of main>", nil
+		}
 		return "", err
 	}
-	defer os.RemoveAll(tmp)
-	x.Values["upstream_git"], x.Values["signers"] = tmp, signers
-	steps := []*engine.Command{
-		engine.Cmd("git", "init", "-q", "--bare", "{{.upstream_git}}"),
-		engine.Cmd("git", "-C", "{{.upstream_git}}", "fetch", "-q", "--depth=1", fleet.UpstreamURL, "refs/heads/main"),
-		engine.Cmd("git", "-C", "{{.upstream_git}}", "rev-parse", "FETCH_HEAD").Capture("upstream_rev"),
-		engine.Cmd("git", "-C", "{{.upstream_git}}", "-c", "gpg.ssh.allowedSignersFile={{.signers}}", "verify-commit", "{{.upstream_rev}}").
-			Explain(func(engine.Result) string {
-				return "main's newest commit, {{.upstream_rev}}, is not signed by a key you trust for fleet-manager ({{.signers}}): not switching {{.host}} to it"
-			}).OK("{{.upstream_rev}} is signed by a key you trust"),
+	x.Values["upstream_rev"] = rev
+	if err := verifyPinIn(x, dir, signers, rev, ""); err != nil {
+		return "", fmt.Errorf("not switching %s to main's newest commit: %w", x.Value("host"), err)
 	}
-	for _, c := range steps {
-		if _, err := c.ReadOnly().Quiet().Run(x); err != nil {
-			return "", err
-		}
-	}
-	rev := x.Value("upstream_rev")
-	if x.Options.DryRun && rev == "" {
-		rev = "<newest commit of main>"
-	}
-	if !x.Options.DryRun || rev != "<newest commit of main>" {
-		if err := checkUpstreamTrust(x, tmp, rev, false); err != nil {
-			return "", err
-		}
+	if err := fleet.CheckTrusted(x, dir, fleet.UpstreamURL, "main", rev); err != nil {
+		return "", err
 	}
 	return rev, nil
 }

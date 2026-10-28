@@ -13,6 +13,9 @@ import (
 	"github.com/nnishant776/fleet-manager/tools/fleet/internal/fleet"
 )
 
+// prepRecord is the commit trusted on fleet-manager's main in the prep tests.
+const prepRecord = "9999999999999999999999999999999999999999"
+
 const prepBootstrap = "#!/bin/sh\n# pinned-installs: 1 (marker)\necho pinned\n"
 
 // prepCheckout is a configuration checkout whose flake.lock pins
@@ -20,6 +23,11 @@ const prepBootstrap = "#!/bin/sh\n# pinned-installs: 1 (marker)\necho pinned\n"
 func prepCheckout(t *testing.T, fm string) string {
 	t.Helper()
 	trustCopies(t, "git@github.com:example-org/inventory.git", fleet.UpstreamURL)
+	// The commit you trusted last on fleet-manager's main, which the pin is
+	// checked against.
+	if err := fleet.WriteTrusted(fleet.UpstreamURL, "main", prepRecord); err != nil {
+		t.Fatal(err)
+	}
 	dir := t.TempDir()
 	_ = os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
 	_ = os.MkdirAll(filepath.Join(dir, "fleet"), 0o755)
@@ -97,7 +105,7 @@ func TestPrepPrintsTheLineForAPrivateHost(t *testing.T) {
 		}
 	}
 	cmds := strings.Join(fake.Commands(), "\n")
-	if !strings.Contains(cmds, "fetch -q --depth=1 https://github.com/nnishant776/fleet-manager "+pinnedFM) ||
+	if !strings.Contains(cmds, "fetch -q https://github.com/nnishant776/fleet-manager +refs/heads/main:refs/remotes/origin/main") ||
 		!strings.Contains(cmds, "verify-commit "+pinnedFM) {
 		t.Errorf("did not check fleet-manager's commit:\n%s", cmds)
 	}
@@ -123,7 +131,7 @@ func TestPrepRefusesWhatIsNotCheckedOrPushed(t *testing.T) {
 	for fail, want := range map[string]string{
 		"config":        "is not signed by a key you trust",
 		"push":          "push it, since the installer fetches it",
-		"fleet-manager": "which flake.lock pins, is not signed by a key you trust",
+		"fleet-manager": "is not signed by a key you trust for fleet-manager",
 		"old":           "predates pinned installs",
 	} {
 		err, _, out := runPrep(t, prepCheckout(t, pinnedFM), prepRepo("git@github.com:example-org/inventory.git", fail))

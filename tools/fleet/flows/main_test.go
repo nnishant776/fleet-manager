@@ -13,9 +13,17 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	os.Setenv("XDG_STATE_HOME", dir)
+	// Nor to the real clones in ~/.local/share/fleet: tests that need one set
+	// XDG_DATA_HOME themselves.
+	data, err := os.MkdirTemp("", "fleet-flows-data-*")
+	if err != nil {
+		panic(err)
+	}
+	os.Setenv("XDG_DATA_HOME", data)
 	// Tests stand in for the installer; one checks the refusal.
 	onInstaller = func() bool { return true }
 	code := m.Run()
 	os.RemoveAll(dir)
+	os.RemoveAll(data)
 	os.Exit(code)
 }

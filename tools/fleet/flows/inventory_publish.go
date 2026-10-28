@@ -216,6 +216,11 @@ func cutHostBranches(x *engine.Ctx) error {
 		}
 		sort.Strings(hosts)
 	}
+	// Before any commit is made: the fleet-manager commits that a branch's pin
+	// moves over are checked, each of them.
+	if err := checkBranchPins(x, hosts); err != nil {
+		return err
+	}
 	var pushes []published
 	for _, h := range hosts {
 		if _, ok := accounts[h]; !ok {
@@ -234,6 +239,52 @@ func cutHostBranches(x *engine.Ctx) error {
 		lines = append(lines, p.commit+":refs/heads/host/"+p.host)
 	}
 	x.Values["publish_refs"] = strings.Join(lines, "\n")
+	return nil
+}
+
+// checkBranchPins checks, for each host whose branch would pin another
+// fleet-manager commit than its last one (or has no branch yet), that the new
+// pin and each commit it brings are signed by a key you trust. An inventory
+// that does not pin fleet-manager (fleet-manager itself) has nothing to check.
+func checkBranchPins(x *engine.Ctx, hosts []string) error {
+	defer releaseFleetManagerHistory(x)
+	show := func(rev string) (string, error) {
+		res, err := engine.Cmd("git", "-C", "{{.flake}}", "show", rev+":flake.lock").ReadOnly().Quiet().Run(x)
+		return res.Stdout, err
+	}
+	lock, err := show(x.Value("main_rev"))
+	if err != nil {
+		return err
+	}
+	newPin, found, err := fleetManagerInLock(lock)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return nil
+	}
+	checked := map[string]bool{}
+	for _, h := range hosts {
+		oldPin := ""
+		parent, err := engine.Silently(x, nil, "git", "-C", x.Value("flake"), "rev-parse", "-q", "--verify", "refs/remotes/origin/host/"+h+"^{commit}")
+		if err == nil && parent != "" {
+			if lock, err := show(parent); err == nil {
+				if oldPin, _, err = fleetManagerInLock(lock); err != nil {
+					oldPin = "" // its pin is not one to compare with: the record stands in
+				}
+			}
+		}
+		if oldPin == newPin {
+			continue
+		}
+		if checked[oldPin] {
+			continue
+		}
+		checked[oldPin] = true
+		if err := verifyFleetManagerPin(x, newPin, oldPin); err != nil {
+			return fmt.Errorf("host/%s would pin fleet-manager at %s: %w", h, fleet.Short(newPin), err)
+		}
+	}
 	return nil
 }
 

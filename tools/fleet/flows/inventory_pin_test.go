@@ -3,6 +3,7 @@ package flows
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,6 +17,8 @@ const (
 	pinNew  = "2222222222222222222222222222222222222222"
 	pinHead = "3333333333333333333333333333333333333333"
 	pinDone = "4444444444444444444444444444444444444444"
+	// Where two commits that follow no common line part, for merge-base.
+	pinBase = "8888888888888888888888888888888888888888"
 )
 
 // pinEnv is an inventory checkout with a flake.lock, and the tools' clone of
@@ -30,7 +33,8 @@ type pinEnv struct {
 	ancestors map[string]bool
 	untrusted map[string]bool // commits of fleet-manager no trusted key signed
 	log       map[string]string
-	lockFails bool // the hosts do not evaluate once the lock changed
+	sigs      map[string]string // "base..tip" to the signature listing git log gives
+	lockFails bool              // the hosts do not evaluate once the lock changed
 	locked    bool
 	committed bool
 	pushedAt  string
@@ -40,7 +44,7 @@ func newPinEnv(t *testing.T, lockURL string) *pinEnv {
 	t.Helper()
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
-	e := &pinEnv{t: t, headSame: true, ancestors: map[string]bool{pinOld + " " + pinNew: true}, untrusted: map[string]bool{}, log: map[string]string{}}
+	e := &pinEnv{t: t, headSame: true, ancestors: map[string]bool{pinOld + " " + pinNew: true}, untrusted: map[string]bool{}, log: map[string]string{}, sigs: map[string]string{}}
 	e.flake = t.TempDir()
 	if err := os.MkdirAll(filepath.Join(e.flake, ".git"), 0o755); err != nil {
 		t.Fatal(err)
@@ -51,16 +55,18 @@ func newPinEnv(t *testing.T, lockURL string) *pinEnv {
 			t.Fatal(err)
 		}
 	}
-	// The keys you trust for the inventory.
-	p, err := fleet.SignersCopy(invAddress)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(p, []byte("me namespaces=\"git\" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAaJ2zd1Tv4i10L7o8kJBLT2upzNnBOJc13FgTh09Azx\n"), 0o600); err != nil {
-		t.Fatal(err)
+	// The keys you trust for the inventory, and for fleet-manager.
+	for _, address := range []string{invAddress, fleet.UpstreamURL} {
+		p, err := fleet.SignersCopy(address)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("me namespaces=\"git\" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAaJ2zd1Tv4i10L7o8kJBLT2upzNnBOJc13FgTh09Azx\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return e
 }
@@ -123,10 +129,14 @@ func (e *pinEnv) respond(s engine.Spec) (engine.Result, error) {
 			return engine.Result{}, nil
 		}
 		return fail, errors.New("exited with code 1")
+	case strings.Contains(args, " merge-base "):
+		return engine.Result{Stdout: pinBase + "\n"}, nil
 	case strings.Contains(args, " verify-commit "):
 		if e.untrusted[s.Args[len(s.Args)-1]] {
 			return fail, errors.New("exited with code 1")
 		}
+	case strings.Contains(args, " log ") && strings.Contains(args, "%G?"):
+		return engine.Result{Stdout: e.sigs[s.Args[len(s.Args)-1]]}, nil
 	case strings.Contains(args, " log "):
 		return engine.Result{Stdout: e.log[s.Args[len(s.Args)-1]]}, nil
 	case strings.Contains(args, " commit "):
@@ -269,18 +279,20 @@ func TestInventoryPinTheNameIsGivenToPublish(t *testing.T) {
 	}
 }
 
-func TestInventoryPinRefusesACommitOffTheTrustedLine(t *testing.T) {
+// A commit asked for that is not on main is refused before the trusted line is
+// looked at (TestInventoryPinRefusesACommitNotOnMain); a main that does not
+// follow the commit you trusted is refused when the clone is brought up to date.
+func TestInventoryPinRefusesAMainOffTheTrustedLine(t *testing.T) {
 	e := newPinEnv(t, fleet.UpstreamURL)
 	e.withFleetManager()
 	rec := "5555555555555555555555555555555555555555"
 	if err := fleet.WriteTrusted(fleet.UpstreamURL, "main", rec); err != nil {
 		t.Fatal(err)
 	}
-	// The record is ahead of the commit asked for, which does not lead to it.
-	e.ancestors = map[string]bool{rec + " " + pinNew: true}
-	bad := "6666666666666666666666666666666666666666"
-	err, fake, out := e.run(map[string]string{"to": bad}, true)
-	if err == nil || !strings.Contains(out, "does not follow "+pinNew) {
+	// The record is not before main's newest commit.
+	e.ancestors = map[string]bool{}
+	err, fake, out := e.run(map[string]string{}, true)
+	if err == nil || !strings.Contains(out, "does not follow "+rec) {
 		t.Fatalf("went ahead, or without saying why: %v\n%s", err, out)
 	}
 	changedNothing(t, fake)
@@ -445,5 +457,319 @@ func TestInventoryPinRefusesACommitNotOnMain(t *testing.T) {
 	changedNothing(t, fake)
 	if r := trustedOf(t, fleet.UpstreamURL, "main"); r != pinNew {
 		t.Errorf("the record of fleet-manager's main is %q, want %s", r, pinNew)
+	}
+}
+
+// sigLine is one line of what git log prints for the signature check: a hash,
+// the status, the key, the subject.
+func sigLine(hash, status, key, subject string) string {
+	return hash + "\x1f" + status + "\x1f" + key + "\x1f" + subject + "\n"
+}
+
+// The signature on the newest commit does not vouch for the ones under it:
+// an unsigned commit in the range stops the pin before anything is locked.
+func TestInventoryPinRefusesAnUnsignedCommitUnderASignedOne(t *testing.T) {
+	e := newPinEnv(t, fleet.UpstreamURL)
+	e.withFleetManager()
+	sneaked := "9999999999999999999999999999999999999999"
+	e.sigs[pinOld+".."+pinNew] = sigLine(pinNew, "G", "SHA256:good", "feat(pi): signed on top") +
+		sigLine(sneaked, "N", "", "fix(nas): sneaked in")
+	err, fake, out := e.run(map[string]string{}, true)
+	if err == nil {
+		t.Fatalf("went ahead\n%s", out)
+	}
+	for _, want := range []string{"1 of the 2 commits from " + fleet.Short(pinOld) + " to " + fleet.Short(pinNew), fleet.Short(sneaked) + " ✗ unsigned fix(nas): sneaked in"} {
+		if !strings.Contains(flat(out), want) {
+			t.Errorf("the output lacks %q:\n%s", want, out)
+		}
+	}
+	changedNothing(t, fake)
+}
+
+func TestInventoryPinSaysEveryCommitIsSigned(t *testing.T) {
+	e := newPinEnv(t, fleet.UpstreamURL)
+	e.withFleetManager()
+	e.sigs[pinOld+".."+pinNew] = sigLine(pinNew, "G", "SHA256:good", "two") + sigLine("9999999999999999999999999999999999999999", "G", "SHA256:good", "one")
+	err, _, out := e.run(map[string]string{}, true)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if want := "2 commits from " + fleet.Short(pinOld) + " to " + fleet.Short(pinNew) + ", each signed by a key you trust"; !strings.Contains(flat(out), want) {
+		t.Errorf("the output lacks %q:\n%s", want, out)
+	}
+}
+
+func TestInventoryPinAnOlderCommitBringsNothingToCheck(t *testing.T) {
+	e := newPinEnv(t, fleet.UpstreamURL)
+	e.withFleetManager()
+	e.ancestors = map[string]bool{pinNew + " " + pinOld: true}
+	// A listing that would be refused if it were read.
+	e.sigs[pinNew+".."+pinOld] = sigLine(pinOld, "N", "", "unsigned")
+	err, _, out := e.run(map[string]string{}, true)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if want := "it brings no commit that was not pinned before"; !strings.Contains(flat(out), want) {
+		t.Errorf("the output lacks %q:\n%s", want, out)
+	}
+}
+
+// fmFake answers a history of fleet-manager's main for verifyFleetManagerPin
+// on its own: main's newest is fmTip.
+type fmFake struct {
+	ancestors map[string]bool   // "a b": a is an ancestor of b
+	sigs      map[string]string // "base..tip" to the listing
+	missing   map[string]bool   // commits the history lacks
+	untrusted map[string]bool
+	mergeBase string
+	logged    []string
+}
+
+const (
+	fmTip = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	fmRec = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	fmPin = "cccccccccccccccccccccccccccccccccccccccc"
+	fmOld = "dddddddddddddddddddddddddddddddddddddddd"
+)
+
+func newFMFake() *fmFake {
+	// Everything is on main: an ancestor of its newest commit.
+	return &fmFake{ancestors: map[string]bool{fmPin + " " + fmTip: true}, sigs: map[string]string{}, missing: map[string]bool{}, untrusted: map[string]bool{},
+		mergeBase: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"}
+}
+
+func (f *fmFake) respond(s engine.Spec) (engine.Result, error) {
+	args := strings.Join(s.Args, " ")
+	fail := func() (engine.Result, error) { return engine.Result{Code: 1}, errors.New("exited with code 1") }
+	switch {
+	case s.Name != "git":
+	case strings.Contains(args, "rev-parse --verify -q "):
+		ref := strings.TrimSuffix(s.Args[len(s.Args)-1], "^{commit}")
+		switch {
+		case f.missing[ref]:
+			return fail()
+		case ref == fmMain:
+			return engine.Result{Stdout: fmTip + "\n"}, nil
+		}
+	case strings.Contains(args, "merge-base --is-ancestor"):
+		if !f.ancestors[s.Args[len(s.Args)-2]+" "+s.Args[len(s.Args)-1]] {
+			return fail()
+		}
+	case strings.Contains(args, " merge-base "):
+		return engine.Result{Stdout: f.mergeBase + "\n"}, nil
+	case strings.Contains(args, " verify-commit "):
+		if f.untrusted[s.Args[len(s.Args)-1]] {
+			return fail()
+		}
+	case strings.Contains(args, " log "):
+		rng := s.Args[len(s.Args)-1]
+		f.logged = append(f.logged, rng)
+		return engine.Result{Stdout: f.sigs[rng]}, nil
+	}
+	return engine.Result{}, nil
+}
+
+func (f *fmFake) verify(t *testing.T, rec, pin, base string) (error, string) {
+	t.Helper()
+	trustCopies(t, fleet.UpstreamURL)
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	if rec != "" {
+		if err := fleet.WriteTrusted(fleet.UpstreamURL, "main", rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	x, _, out := newFakeCtx(f.respond)
+	defer releaseFleetManagerHistory(x)
+	err := verifyFleetManagerPin(x, pin, base)
+	return err, flat(out.String())
+}
+
+func TestVerifyFleetManagerPinFromTheRecordWhenThereIsNoBase(t *testing.T) {
+	f := newFMFake()
+	f.ancestors[fmRec+" "+fmPin] = true
+	f.sigs[fmRec+".."+fmPin] = sigLine(fmPin, "G", "SHA256:good", "b") + sigLine(fmTip, "G", "SHA256:good", "a")
+	// A base the history lacks is the same as none.
+	for _, base := range []string{"", fmOld} {
+		f.missing[fmOld] = true
+		err, out := f.verify(t, fmRec, fmPin, base)
+		if err != nil {
+			t.Fatalf("base %q: %v\n%s", base, err, out)
+		}
+		if want := "2 commits from " + fleet.Short(fmRec) + " to " + fleet.Short(fmPin) + ", each signed by a key you trust"; !strings.Contains(out, want) {
+			t.Errorf("base %q: the output lacks %q:\n%s", base, want, out)
+		}
+	}
+	// An unsigned commit in the range is refused.
+	f.sigs[fmRec+".."+fmPin] = sigLine(fmPin, "G", "SHA256:good", "b") + sigLine(fmTip, "N", "", "sneaked")
+	err, _ := f.verify(t, fmRec, fmPin, "")
+	if err == nil || !strings.Contains(err.Error(), "1 of the 2 commits") || !strings.Contains(err.Error(), "✗ unsigned sneaked") {
+		t.Errorf("an unsigned commit: %v", err)
+	}
+}
+
+func TestVerifyFleetManagerPinNeedsARecordWhenThereIsNoBase(t *testing.T) {
+	err, _ := newFMFake().verify(t, "", fmPin, "")
+	if err == nil || !strings.Contains(err.Error(), "no trusted commit for fleet-manager's main yet: run fleet repo sync fleet-manager, or fleet repo add, first") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestVerifyFleetManagerPinChecksFromTheBase(t *testing.T) {
+	f := newFMFake()
+	// The base is an ancestor of the pin: base..pin, whatever the record is.
+	f.ancestors[fmOld+" "+fmPin] = true
+	f.sigs[fmOld+".."+fmPin] = sigLine(fmPin, "G", "SHA256:good", "x")
+	if err, out := f.verify(t, "", fmPin, fmOld); err != nil || !strings.Contains(out, "1 commit from "+fleet.Short(fmOld)) {
+		t.Errorf("%v\n%s", err, out)
+	}
+	if len(f.logged) != 1 || f.logged[0] != fmOld+".."+fmPin {
+		t.Errorf("listed %v", f.logged)
+	}
+	// The base and the pin parted: from where they did.
+	f = newFMFake()
+	f.sigs[f.mergeBase+".."+fmPin] = sigLine(fmPin, "N", "", "off the base")
+	if err, _ := f.verify(t, "", fmPin, fmOld); err == nil || !strings.Contains(err.Error(), "off the base") {
+		t.Errorf("parted: %v", err)
+	}
+	if len(f.logged) != 1 || f.logged[0] != f.mergeBase+".."+fmPin {
+		t.Errorf("listed %v", f.logged)
+	}
+}
+
+func TestVerifyFleetManagerPinOlderThanTheBaseBringsNothing(t *testing.T) {
+	f := newFMFake()
+	f.ancestors[fmPin+" "+fmOld] = true
+	err, out := f.verify(t, "", fmPin, fmOld)
+	if err != nil || !strings.Contains(out, "an older commit than "+fleet.Short(fmOld)+": it brings no commit that was not pinned before") {
+		t.Errorf("%v\n%s", err, out)
+	}
+	if len(f.logged) != 0 {
+		t.Errorf("listed %v", f.logged)
+	}
+}
+
+// A pin behind the record, or the record itself, has nothing to check beyond
+// its own signature: the record's commits were checked as it moved.
+func TestVerifyFleetManagerPinBehindTheRecordIsAcceptedWithoutARange(t *testing.T) {
+	f := newFMFake()
+	f.ancestors[fmPin+" "+fmRec] = true
+	f.ancestors[fmRec+" "+fmTip] = true
+	err, out := f.verify(t, fmRec, fmPin, "")
+	if err != nil || !strings.Contains(out, "behind "+fleet.Short(fmRec)+", the commit you trusted") {
+		t.Errorf("%v\n%s", err, out)
+	}
+	if len(f.logged) != 0 {
+		t.Errorf("listed %v", f.logged)
+	}
+	if err, out := newFMFake().verify(t, fmPin, fmPin, ""); err != nil || !strings.Contains(out, "it is the commit you trusted") {
+		t.Errorf("the record itself: %v\n%s", err, out)
+	}
+}
+
+func TestVerifyFleetManagerPinRefusesWhatCannotBePlacedAgainstTheRecord(t *testing.T) {
+	f := newFMFake()
+	err, _ := f.verify(t, fmRec, fmPin, "")
+	if err == nil || !strings.Contains(err.Error(), fleet.Short(fmRec)) || !strings.Contains(err.Error(), fleet.Short(fmPin)) || !strings.Contains(err.Error(), "gone apart") {
+		t.Errorf("gone apart: %v", err)
+	}
+	f.missing[fmRec] = true
+	if err, _ := f.verify(t, fmRec, fmPin, ""); err == nil || !strings.Contains(err.Error(), "not in its history") {
+		t.Errorf("record not in the history: %v", err)
+	}
+}
+
+func TestVerifyFleetManagerPinNeedsASignedCommitOnMain(t *testing.T) {
+	f := newFMFake()
+	f.untrusted[fmPin] = true
+	if err, _ := f.verify(t, fmRec, fmPin, ""); err == nil || !strings.Contains(err.Error(), "is not signed by a key you trust for fleet-manager") {
+		t.Errorf("unsigned: %v", err)
+	}
+	f = newFMFake()
+	delete(f.ancestors, fmPin+" "+fmTip)
+	if err, _ := f.verify(t, fmRec, fmPin, ""); err == nil || !strings.Contains(err.Error(), "is not on fleet-manager's main") {
+		t.Errorf("off main: %v", err)
+	}
+	f = newFMFake()
+	f.missing[fmPin] = true
+	if err, _ := f.verify(t, fmRec, fmPin, ""); err == nil || !strings.Contains(err.Error(), "not in the history of fleet-manager's main") {
+		t.Errorf("not in the history: %v", err)
+	}
+}
+
+func TestVerifyFleetManagerPinNeedsYourKeys(t *testing.T) {
+	f := newFMFake()
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	x, _, _ := newFakeCtx(f.respond)
+	err := verifyFleetManagerPin(x, fmPin, "")
+	if err == nil || !strings.Contains(err.Error(), "you trust no keys for fleet-manager yet: run fleet repo add (with no address it adds fleet-manager)") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+// With real git: the tools' clone of fleet-manager holds a signed commit, an
+// unsigned one, and signed ones on top.
+func TestVerifyFleetManagerPinWithRealGit(t *testing.T) {
+	w := newRepoWorld(t)
+	bare := filepath.Join(w.root, "fm.git")
+	work := filepath.Join(w.root, "fm-work")
+	for _, args := range [][]string{{"init", "-q", "--bare", "-b", "main", bare}, {"init", "-q", "-b", "main", work}} {
+		if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+			t.Fatalf("%v\n%s", err, out)
+		}
+	}
+	w.git(work, "remote", "add", "origin", "file://"+bare)
+	commit := func(subject string, signed bool) string {
+		args := []string{"commit", "-q", "--allow-empty", "-m", subject}
+		if !signed {
+			args = append([]string{"-c", "commit.gpgsign=false"}, args...)
+		}
+		w.git(work, args...)
+		return w.git(work, "rev-parse", "HEAD")
+	}
+	c1 := commit("one", true)
+	c2 := commit("sneaked in", false)
+	c3 := commit("three", true)
+	c4 := commit("four", true)
+	w.git(work, "push", "-q", "origin", "main")
+	id, _ := fleet.RepoID(fleet.UpstreamURL)
+	clone, _ := fleet.ClonePathOfID(id)
+	if out, err := exec.Command("git", "clone", "-q", "file://"+bare, clone).CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	p, _ := fleet.SignersCopy(fleet.UpstreamURL)
+	if err := fleet.WriteSignersCopy(p, []byte(w.pub)); err != nil {
+		t.Fatal(err)
+	}
+	verify := func(pin, base string) (error, string) {
+		x := w.ctx(engine.Options{Yes: true})
+		defer releaseFleetManagerHistory(x)
+		err := verifyFleetManagerPin(x, pin, base)
+		return err, w.out.String()
+	}
+
+	if err := fleet.WriteTrusted(fleet.UpstreamURL, "main", c1); err != nil {
+		t.Fatal(err)
+	}
+	err, _ := verify(c4, "")
+	if err == nil || !strings.Contains(err.Error(), "1 of the 3 commits from "+fleet.Short(c1)+" to "+fleet.Short(c4)) || !strings.Contains(err.Error(), fleet.Short(c2)+" ✗ unsigned sneaked in") {
+		t.Fatalf("an unsigned commit under signed ones, from the record: %v", err)
+	}
+	if err, _ := verify(c3, c1); err == nil || !strings.Contains(err.Error(), fleet.Short(c2)+" ✗ unsigned") {
+		t.Errorf("an unsigned commit, from a base: %v", err)
+	}
+	// From a base above the unsigned commit, all is signed.
+	err, out := verify(c4, c3)
+	if err != nil || !strings.Contains(flat(out), "1 commit from "+fleet.Short(c3)+" to "+fleet.Short(c4)+", each signed by a key you trust") {
+		t.Errorf("signed range: %v\n%s", err, out)
+	}
+	// An older pin than the base brings nothing, and the unsigned commit
+	// under it is not looked at.
+	err, out = verify(c3, c4)
+	if err != nil || !strings.Contains(flat(out), "it brings no commit that was not pinned before") {
+		t.Errorf("older pin: %v\n%s", err, out)
+	}
+	// The record never moves.
+	if r := trustedOf(t, fleet.UpstreamURL, "main"); r != c1 {
+		t.Errorf("the record moved to %s", r)
 	}
 }

@@ -7,9 +7,10 @@ Pin fleet-manager's newest trusted commit, or a given one, in the inventory, che
 An inventory builds its hosts from fleet-manager, at the commit its flake.lock pins.
 This moves that pin. fleet brings its clone of fleet-manager up to date, which only
 takes a commit signed by a key you trust, and pins main's newest commit, or the one
-you give with --to. It shows the commits the pin moves over, and asks before it pins
-an older one. Then it locks the new commit and evaluates every host, so that a host
-the new fleet-manager breaks is found now, not on the host. If all of them evaluate,
+you give with --to. Every commit the pin moves over must be signed by a key you trust
+too, not only the newest. It shows the commits, and asks before it pins an older one.
+Then it locks the new commit and evaluates every host, so that a host the new
+fleet-manager breaks is found now, not on the host. If all of them evaluate,
 it commits flake.lock, signed, and pushes it once you approve. The hosts take the new
 fleet-manager when you publish the inventory after that.
 
@@ -39,7 +40,7 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 3. **Check the inventory.** The pin is committed on top of its main, so the checkout must be clean, level with origin's main, and that commit signed by a key you trust. The pin it holds now is read from flake.lock.
 
-4. **Bring fleet-manager's clone up to date.** The new pin is taken from the tool's own clone of fleet-manager, fetched here. A commit is pinned only if a key you trust signed it and it is on the line of main that you trusted.
+4. **Bring fleet-manager's clone up to date.** The new pin is taken from the tool's own clone of fleet-manager, fetched here. A commit is pinned only if a key you trust signed it, and each commit it brings over the old pin, and it is on the line of main that you trusted.
 
 5. **See what changes.** The commits between the old pin and the new one, so that you know what the hosts will get. Pinning an older commit is asked about first. The hosts are evaluated as they are now, to compare with after.
 
