@@ -165,6 +165,12 @@ var RepoAdd = &engine.Flow{
 				home, err := os.UserHomeDir()
 				return filepath.Join(home, ".ssh", "fleet_manager_config_signing_key"), err
 			}},
+		{Name: "git-name", Prompt: "Your name on commits",
+			Help:    "The author name of the commits made in the clone; by default the one git uses where you run this",
+			Default: gitIdentity("user.name")},
+		{Name: "git-email", Prompt: "Your email on commits",
+			Help:    "The author email of the commits made in the clone, such as your forge's noreply address; by default the one git uses where you run this",
+			Default: gitIdentity("user.email")},
 	},
 	Needs: []string{"git"},
 	Steps: []engine.Step{
@@ -189,6 +195,11 @@ var RepoAdd = &engine.Flow{
 			Why: "Each host has a branch, host/NAME. The same is done for the ones signed by a key you trust, so that an old commit served again is noticed. " +
 				"The branches of users, user/NAME, are signed by their users, and are recorded the first time a command checks them.",
 			Do: engine.Func(repoTrustHosts),
+		},
+		{
+			Title: "Set who commits in it",
+			Why:   "The commits the tools make in the clone, such as publish's and the secrets commands', carry your name and email, as in your checkouts.",
+			Do:    engine.Func(repoIdentity),
 		},
 		{
 			Title: "Sign the commits made in it",
@@ -429,6 +440,31 @@ func repoTrustHosts(x *engine.Ctx) error {
 	if n == 0 {
 		x.UI.Skip("no host branches to record")
 	}
+	return nil
+}
+
+// gitIdentity is the default of an author setting: what git uses where fleet
+// runs, from the checkout there or the global settings; empty when unset, so
+// that it is asked for.
+func gitIdentity(key string) func(*engine.Ctx) (string, error) {
+	return func(x *engine.Ctx) (string, error) {
+		v, _ := engine.Silently(x, nil, "git", "config", "--get", key)
+		return strings.TrimSpace(v), nil
+	}
+}
+
+func repoIdentity(x *engine.Ctx) error {
+	if noClone(x) {
+		x.UI.Skip("dry run: nothing is cloned yet")
+		return nil
+	}
+	path := x.Value("clone_path")
+	for _, kv := range [][2]string{{"user.name", x.Value("git-name")}, {"user.email", x.Value("git-email")}} {
+		if err := setGitConfig(x, path, kv[0], kv[1]); err != nil {
+			return err
+		}
+	}
+	x.UI.OK("commits in it are by " + x.Value("git-name") + " <" + x.Value("git-email") + ">")
 	return nil
 }
 

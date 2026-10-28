@@ -90,7 +90,7 @@ func (w *repoWorld) ctx(opts engine.Options) *engine.Ctx {
 }
 
 func (w *repoWorld) add(address string, extra map[string]string) error {
-	flags := map[string]string{"url": address, "signing-key": w.key}
+	flags := map[string]string{"url": address, "signing-key": w.key, "git-name": "Tester", "git-email": "tester@example.org"}
 	for k, v := range extra {
 		flags[k] = v
 	}
@@ -240,7 +240,7 @@ func TestRepoAddOfARepositoryWithoutSignersTakesAnotherNamesKeys(t *testing.T) {
 func TestRepoAddDryRunChangesNothing(t *testing.T) {
 	w := newRepoWorld(t)
 	address, _ := w.origin("inventory", true)
-	err := engine.RunWith(w.ctx(engine.Options{DryRun: true}), RepoAdd, map[string]string{"url": address, "signing-key": w.key})
+	err := engine.RunWith(w.ctx(engine.Options{DryRun: true}), RepoAdd, map[string]string{"url": address, "signing-key": w.key, "git-name": "Tester", "git-email": "tester@example.org"})
 	if err != nil {
 		t.Fatalf("%v\n%s", err, w.out)
 	}
@@ -380,5 +380,47 @@ func TestRepoAddWithoutAnAddressTakesTheNextRepositoryAndSaysWhich(t *testing.T)
 	x = w.ctx(engine.Options{})
 	if _, err := nextRepo(x); err != nil || x.Values["repo_kind"] != "another repository to add" || !strings.Contains(w.out.String(), "secrets (keys from") {
 		t.Fatalf("with all three added: %v, %v\n%s", err, x.Values, w.out)
+	}
+}
+
+// The clone's commits are by the person adding it: the name and email git
+// uses where fleet runs, or the ones given; with neither, it asks, and without
+// a terminal it says which flag to give, before anything is cloned.
+func TestRepoAddSetsWhoCommitsInTheClone(t *testing.T) {
+	w := newRepoWorld(t)
+	address, _ := w.origin("inventory", true)
+	if err := w.add(address, nil); err != nil {
+		t.Fatalf("%v\n%s", err, w.out)
+	}
+	clone, _ := fleet.ClonePath(address)
+	if got := gitOut(t, clone, "config", "--local", "user.name"); got != "Tester" {
+		t.Errorf("user.name = %q", got)
+	}
+	if got := gitOut(t, clone, "config", "--local", "user.email"); got != "tester@example.org" {
+		t.Errorf("user.email = %q", got)
+	}
+
+	// Nowhere to take them from: no checkout here, no global settings.
+	t.Chdir(t.TempDir())
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
+	other, _ := w.origin("other", true)
+	err := engine.RunWith(w.ctx(engine.Options{Yes: true}), RepoAdd, map[string]string{"url": other, "signing-key": w.key})
+	if err == nil || !strings.Contains(err.Error(), "--git-name") {
+		t.Fatalf("no identity: %v\n%s", err, w.out)
+	}
+	if c, _ := fleet.ClonePath(other); fileExists(c) {
+		t.Error("cloned before it knew who commits")
+	}
+	// Taken from where fleet runs.
+	w.git(".", "init", "-q")
+	w.git(".", "config", "user.name", "Here")
+	w.git(".", "config", "user.email", "here@example.org")
+	if err := engine.RunWith(w.ctx(engine.Options{Yes: true}), RepoAdd, map[string]string{"url": other, "signing-key": w.key}); err != nil {
+		t.Fatalf("%v\n%s", err, w.out)
+	}
+	c, _ := fleet.ClonePath(other)
+	if got := gitOut(t, c, "config", "--local", "user.email"); got != "here@example.org" {
+		t.Errorf("user.email from where fleet runs = %q", got)
 	}
 }

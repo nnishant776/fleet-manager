@@ -33,6 +33,8 @@ fleet repo add git@github.com:example-org/secrets.git --signers-from inventory
 | `--name` | What --flake and --repo take for it; the last part of its address by default |
 | `--signers-from` | For a repository without fleet/allowed_signers, such as the secrets repository: the name of the repository whose keys sign its commits; your inventory's when the secrets repository is the one asked for |
 | `--signing-key` | The SSH private key that signs commits made in the clone; made by fleet setup |
+| `--git-name` | The author name of the commits made in the clone; by default the one git uses where you run this |
+| `--git-email` | The author email of the commits made in the clone, such as your forge's noreply address; by default the one git uses where you run this |
 
 Every command also takes `--dry-run` (show every step and command; look, but
 change nothing), `-y`/`--yes` (run changes without asking) and `--verbose`.
@@ -48,13 +50,15 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 4. **Record the hosts' branches.** Each host has a branch, host/NAME. The same is done for the ones signed by a key you trust, so that an old commit served again is noticed. The branches of users, user/NAME, are signed by their users, and are recorded the first time a command checks them.
 
-5. **Sign the commits made in it.** Hosts accept only signed commits, so the clone is set to sign the ones made in it with your signing key, as fleet setup does for your checkouts.
+5. **Set who commits in it.** The commits the tools make in the clone, such as publish's and the secrets commands', carry your name and email, as in your checkouts.
 
-6. **Install the secrets repository's commit check.** Its pre-commit hook refuses anything under hosts/ or users/ that is not ciphertext. Git runs a hook as you, with your agent at hand, so what is installed is a copy you have read, not the repository's own file, which anyone who can push could change.
+6. **Sign the commits made in it.** Hosts accept only signed commits, so the clone is set to sign the ones made in it with your signing key, as fleet setup does for your checkouts.
 
-7. **Name it NAME.** So that --flake NAME or --repo NAME means this clone. A name names one repository only.
+7. **Install the secrets repository's commit check.** Its pre-commit hook refuses anything under hosts/ or users/ that is not ciphertext. Git runs a hook as you, with your agent at hand, so what is installed is a copy you have read, not the repository's own file, which anyone who can push could change.
 
-8. **Next.** How to use it.
+8. **Name it NAME.** So that --flake NAME or --repo NAME means this clone. A name names one repository only.
+
+9. **Next.** How to use it.
 
    > Use the name wherever a command takes --flake or --repo: fleet inventory publish --flake NAME
    > Edit in a checkout of your own; never edit the tool's clone by hand.
