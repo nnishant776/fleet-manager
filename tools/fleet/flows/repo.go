@@ -20,11 +20,10 @@ var cloneSync = engine.Step{
 	Why: "You named a repository, so the command works in the tool's own clone of it. It is fetched, and main's newest commit is taken " +
 		"only if it is signed by a key you trust and follows the commit you trusted last; the clone then stands there.",
 	Required: true,
-	When: func(x *engine.Ctx) (bool, string) {
-		if x.Value("flake_name") != "" || x.Value("repo_name") != "" {
-			return true, ""
-		}
-		return false, "a checkout or flake given by path"
+	// Given a path, there is no clone to bring up to date, and the step is left
+	// out of the run.
+	Hide: func(x *engine.Ctx) bool {
+		return x.Value("flake_name") == "" && x.Value("repo_name") == ""
 	},
 	Do: engine.Func(func(x *engine.Ctx) error {
 		for _, in := range []string{"flake", "repo"} {

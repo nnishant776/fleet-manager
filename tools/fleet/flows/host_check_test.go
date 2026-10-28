@@ -91,7 +91,7 @@ func TestHostCheckReportsEveryProblem(t *testing.T) {
 	answers["fleet-sync/status"] = "kind=signature\ncommit=abc\nsince=2026-10-19T04:25:00+05:30\nmessage=The latest configuration change is not signed by a trusted key.\n"
 	answers["is-system-running"] = "degraded\nhostapd-x.service\n"
 	err, fake, out := runHostCheck(t, answers)
-	if err == nil || !strings.Contains(err.Error(), "2 of 6 steps") {
+	if err == nil || !strings.Contains(err.Error(), "2 of 5 steps") {
 		t.Fatalf("got %v\n%s", err, out)
 	}
 	for _, want := range []string{
@@ -130,7 +130,7 @@ func TestHostCheckReportsEachUserWhoseSecretsCouldNotBeUpdated(t *testing.T) {
 	answers := healthyPi()
 	answers["fleet-sync/user-problems"] = "dave commit abc on user/dave is not signed by the user's key or an allowed signer\nerin has no branch user/erin\n"
 	err, _, out := runHostCheck(t, answers)
-	if err == nil || !strings.Contains(err.Error(), "1 of 6 steps") {
+	if err == nil || !strings.Contains(err.Error(), "1 of 5 steps") {
 		t.Fatalf("got %v\n%s", err, out)
 	}
 	for _, want := range []string{
@@ -171,7 +171,7 @@ func TestHostCheckStopsWhenTheHostCannotBeReached(t *testing.T) {
 		LookPath: func(t string) (string, error) { return "/fake/bin/" + t, nil },
 	}
 	err := engine.RunWith(x, HostCheck, map[string]string{"host": "example", "flake": "/no/such/flake"})
-	if err == nil || !strings.Contains(err.Error(), "stopped at step 3") {
+	if err == nil || !strings.Contains(err.Error(), "stopped at step 2") {
 		t.Fatalf("got %v\n%s", err, &out)
 	}
 	for _, want := range []string{
@@ -182,7 +182,7 @@ func TestHostCheckStopsWhenTheHostCannotBeReached(t *testing.T) {
 			t.Errorf("output lacks %q:\n%s", want, &out)
 		}
 	}
-	if len(fake.Ran) != 1 || strings.Contains(out.String(), "[4/6]") {
+	if len(fake.Ran) != 1 || strings.Contains(out.String(), "[3/5]") {
 		t.Errorf("went on after the host could not be reached: ran %d commands\n%s", len(fake.Ran), &out)
 	}
 }

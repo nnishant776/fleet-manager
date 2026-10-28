@@ -508,3 +508,40 @@ func TestFancySummaryListsEveryStep(t *testing.T) {
 		t.Errorf("header: %q", s[:40])
 	}
 }
+
+// A step whose Hide says so is left out of the run: not numbered, not shown,
+// not in the summary; the others are numbered without it.
+func TestAHiddenStepIsLeftOutOfTheRun(t *testing.T) {
+	var out bytes.Buffer
+	x := &Ctx{
+		Context: context.Background(),
+		UI:      ui.NewFancy(&out, ui.Look{}, 60, nil),
+		Runner:  &Fake{},
+		Options: Options{Yes: true},
+		Values:  map[string]string{"mode": "path"},
+		Stdin:   strings.NewReader(""),
+	}
+	f := &Flow{Title: "t", Steps: []Step{
+		{Title: "Clone it", Hide: func(c *Ctx) bool { return c.Value("mode") == "path" }, Do: Cmd("clone")},
+		{Title: "Use it", Do: Cmd("use")},
+		{Title: "Check it", Do: Cmd("check")},
+	}}
+	if err := Run(x, f); err != nil {
+		t.Fatal(err)
+	}
+	s := ansi.Strip(out.String())
+	if strings.Contains(s, "Clone it") || !strings.Contains(s, "1/2") || !strings.Contains(s, "2/2") {
+		t.Errorf("the hidden step shows, or the others are not numbered without it:\n%s", s)
+	}
+	if ran := x.Runner.(*Fake).Commands(); len(ran) != 2 {
+		t.Errorf("ran %v", ran)
+	}
+	x.Values["mode"] = "name"
+	out.Reset()
+	if err := Run(x, f); err != nil {
+		t.Fatal(err)
+	}
+	if s := ansi.Strip(out.String()); !strings.Contains(s, "Clone it") || !strings.Contains(s, "1/3") {
+		t.Errorf("a step that is not hidden does not show:\n%s", s)
+	}
+}

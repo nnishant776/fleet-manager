@@ -279,12 +279,12 @@ func TestACommandGivenANameFirstBringsTheClonesUpToDate(t *testing.T) {
 	if rec, _ := fleet.ReadTrusted(address, "main"); rec != want {
 		t.Errorf("record = %s", rec)
 	}
-	// A path is used as it is, and the clone step is skipped.
+	// A path is used as it is, and the clone step is left out of the run.
 	x = w.ctx(engine.Options{Yes: true})
 	if err := engine.RunWith(x, TrustSigners, map[string]string{"flake": clone}); err != nil {
 		t.Fatalf("%v\n%s", err, w.out)
 	}
-	if !strings.Contains(w.out.String(), "skipped: a checkout or flake given by path") {
+	if strings.Contains(w.out.String(), "Bring the tool's clone up to date") || !strings.Contains(w.out.String(), "[1/3]") {
 		t.Errorf("by path:\n%s", w.out)
 	}
 	// A word that is no name is refused before anything runs.

@@ -55,6 +55,10 @@ type Step struct {
 	// Required marks a step the ones after it cannot do without, such as
 	// reaching the host: when it fails, even a Report flow stops there.
 	Required bool
+	// Hide, if set, leaves the step out of the run altogether when it says so:
+	// not numbered, not shown, not in the summary. It is asked once, after the
+	// inputs are known and before the first step, so it may look only at them.
+	Hide func(*Ctx) bool
 }
 
 // Action is what a step does.
@@ -222,10 +226,16 @@ func Run(c *Ctx, f *Flow) (err error) {
 	if len(used) > 0 {
 		c.UI.Using(used)
 	}
-	c.total = len(f.Steps)
+	var steps []Step
+	for _, s := range f.Steps {
+		if s.Hide == nil || !s.Hide(c) {
+			steps = append(steps, s)
+		}
+	}
+	c.total = len(steps)
 	began = true
-	titles := make([]string, len(f.Steps))
-	for i, s := range f.Steps {
+	titles := make([]string, len(steps))
+	for i, s := range steps {
 		titles[i] = s.Title
 		if t, err := c.Expand(s.Title); err == nil {
 			titles[i] = t
@@ -233,7 +243,7 @@ func Run(c *Ctx, f *Flow) (err error) {
 	}
 	c.UI.Plan(titles)
 	problems := 0
-	for i, s := range f.Steps {
+	for i, s := range steps {
 		c.n = i + 1
 		title, err := c.Expand(s.Title)
 		if err != nil {
@@ -280,7 +290,7 @@ func Run(c *Ctx, f *Flow) (err error) {
 				c.UI.Blank()
 				continue
 			}
-			if f.Report && i+1 < len(f.Steps) {
+			if f.Report && i+1 < len(steps) {
 				c.UI.Skip("the steps after this one need it, so they were not run")
 			}
 			c.UI.Blank()
