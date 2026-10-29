@@ -131,7 +131,12 @@ func pinnedFleetManager(flake string) (rev, url string, err error) {
 	return n.Locked.Rev, n.Locked.URL, nil
 }
 
-func checkPinSource(x *engine.Ctx) error {
+// checkInventoryCheckout checks the inventory checkout that a commit is made
+// on top of: a git checkout, clean, level with origin's main, its newest
+// commit signed by a key you trust and following the commit you trusted. It
+// leaves the origin in inv_origin, your copy of the keys in signers, the
+// commit in inv_head, and the flake as given in flake_given.
+func checkInventoryCheckout(x *engine.Ctx) error {
 	flake := x.Value("flake")
 	if _, err := os.Stat(filepath.Join(flake, ".git")); err != nil {
 		return fmt.Errorf("%s is not a git checkout of the inventory", flake)
@@ -192,10 +197,14 @@ func checkPinSource(x *engine.Ctx) error {
 		}).OK("{{.inv_head}} is signed by a key you trust").Run(x); err != nil {
 		return err
 	}
-	if err := fleet.CheckTrusted(x, flake, origin, "main", head); err != nil {
+	return fleet.CheckTrusted(x, flake, origin, "main", head)
+}
+
+func checkPinSource(x *engine.Ctx) error {
+	if err := checkInventoryCheckout(x); err != nil {
 		return err
 	}
-	rev, url, err := pinnedFleetManager(flake)
+	rev, url, err := pinnedFleetManager(x.Value("flake"))
 	if err != nil {
 		return err
 	}

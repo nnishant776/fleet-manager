@@ -383,3 +383,16 @@ func pushHostBranches(x *engine.Ctx) error {
 	}
 	return nil
 }
+
+// publishHosts is fleet inventory publish for the given hosts, as Go code:
+// the same three steps, run one after the other, for a flow that publishes
+// as its last step. It reads the inventory checkout in flake.
+func publishHosts(x *engine.Ctx, hosts ...string) error {
+	x.Values["host"] = strings.Join(hosts, "\n")
+	for _, step := range []func(*engine.Ctx) error{checkPublishSource, cutHostBranches, pushHostBranches} {
+		if err := step(x); err != nil {
+			return err
+		}
+	}
+	return nil
+}
