@@ -681,6 +681,13 @@ approve. Hosts take the new fleet-manager when you publish.
     repository before the switch. Accounts become fixed by the configuration,
     and an undeclared one is removed. Keep one admin account with SSH-key
     login, so a mistake cannot lock you out.
+- **A host that fleet-manager defines already** moves into an inventory with
+  `fleet inventory import <host> --flake <inventory>`. It copies the host's
+  folder and its users' folders from a commit of fleet-manager, changes only
+  the path to `fleet/allowed_signers` and the address the host fetches from,
+  checks the host in the inventory, commits, pushes and publishes its branch.
+  It ends by listing the commands that finish the move: `fleet host enroll`,
+  `fleet host check`, and removing the host from fleet-manager.
 - **Moving a running host to it:**
   1. Copy the host's folder there, with `repo.url` set to the private
      repository's SSH address, and push. With host branches, publish its
