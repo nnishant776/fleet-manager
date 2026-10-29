@@ -140,6 +140,21 @@ pkgs.runCommand "inventory-import" {
   [ ! -e inv/config/hosts/bad ] || { echo "wrote the refused host"; exit 1; }
   [ -z "$(git -C inv status --porcelain)" ] || { echo "the refused import left the checkout dirty"; exit 1; }
 
+  # A host without secrets has no identity to fetch the inventory with: it is
+  # refused before anything is copied, with what to do in fleet-manager first.
+  (
+    cd fm
+    mkdir -p hosts/bare
+    echo '{ ... }: { }' > hosts/bare/default.nix
+    git add -A
+    git commit -q -m "a host without secrets"
+  )
+  if imp bare > out 2>&1; then echo "imported a host without secrets"; exit 1; fi
+  grep -qF "bare has no secrets: conf.secrets.repo.url is not set" out || { cat out; exit 1; }
+  grep -qF 'set conf.secrets.repo.url = "ssh://git@forge/secrets.git", as the inventory'"'"'s hosts do' out || { cat out; exit 1; }
+  [ ! -e inv/config/hosts/bare ] || { echo "wrote the refused host"; exit 1; }
+  [ -z "$(git -C inv status --porcelain)" ] || { echo "the refused import left the checkout dirty"; exit 1; }
+
   echo "import: a host moves with its signers path and address adjusted, and its branch is published"
   touch $out
 ''
