@@ -36,6 +36,7 @@ type importEnv struct {
 	users     map[string]bool   // the users folders the commit has
 	ref       string            // what the host's conf.fleet.repo.ref evaluates to
 	repoURL   string            // the host's repo.url, "" to read it from the copied file
+	secrets   string            // the source host's conf.secrets.repo.url, as JSON
 	committed bool
 }
 
@@ -43,7 +44,7 @@ func newImportEnv(t *testing.T) *importEnv {
 	t.Helper()
 	trustCopies(t, invAddress, fleet.UpstreamURL)
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
-	e := &importEnv{t: t, inv: t.TempDir(), fm: t.TempDir(), accounts: "[]", users: map[string]bool{}, ref: "host/mini",
+	e := &importEnv{t: t, inv: t.TempDir(), fm: t.TempDir(), accounts: "[]", users: map[string]bool{}, ref: "host/mini", secrets: `"ssh://git@forge/secrets.git"`,
 		fmFiles: map[string]string{
 			"hosts/mini/default.nix":  impMini,
 			"hosts/mini/hardware.nix": "{ ... }: { fileSystems.\"/\".device = \"/dev/disk/by-label/nixos\"; }\n",
@@ -86,6 +87,8 @@ func (e *importEnv) respond(s engine.Spec) (engine.Result, error) {
 		switch {
 		case strings.Contains(args, "#fleetLayout"):
 			return ok(`{"hostBranches":true,"hosts":"config/hosts","users":"config/users","shared":[]}`)
+		case strings.Contains(args, "git+file://") && strings.Contains(args, "conf.secrets.repo.url"):
+			return ok(e.secrets)
 		case strings.Contains(args, "git+file://"):
 			return ok(e.accounts)
 		case strings.Contains(args, "c.config.conf.fleet.repo.url) cs"):
@@ -369,5 +372,26 @@ func TestInventoryImportDryRunWritesNothing(t *testing.T) {
 	}
 	if !strings.Contains(out, "dry run") {
 		t.Errorf("did not say it was a dry run:\n%s", out)
+	}
+}
+
+// A host without secrets has no identity, so no configuration key to fetch
+// the inventory with, and no secrets to take its login keys from: it is
+// refused before anything is copied, saying what to do in fleet-manager first.
+func TestInventoryImportRefusesAHostWithoutSecrets(t *testing.T) {
+	for _, secrets := range []string{"null", `""`} {
+		e := newImportEnv(t)
+		e.secrets = secrets
+		err, fake, out := e.run(map[string]string{}, nil)
+		if err == nil || !strings.Contains(out, "mini has no secrets: conf.secrets.repo.url is not set") ||
+			!strings.Contains(out, "fleet host enroll mini") {
+			t.Fatalf("%s: went ahead, or without saying why: %v\n%s", secrets, err, out)
+		}
+		if fileExists(filepath.Join(e.inv, "config")) {
+			t.Errorf("%s: wrote into the inventory", secrets)
+		}
+		if w := wrote(fake); len(w) > 0 {
+			t.Errorf("%s: changed something: %v", secrets, w)
+		}
 	}
 }

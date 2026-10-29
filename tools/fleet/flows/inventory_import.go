@@ -294,6 +294,11 @@ func readImportSource(x *engine.Ctx) error {
 		return err
 	}
 	x.Values["imp_kind"] = kind
+	if kind == "nixos" {
+		if err := requireSecrets(x, dir, commit, host); err != nil {
+			return err
+		}
+	}
 	var users []string
 	for _, u := range accounts {
 		if !accountName.MatchString(u) {
@@ -322,6 +327,53 @@ func readImportSource(x *engine.Ctx) error {
 		x.UI.OK(host + "'s accounts with a folder in users/, which come along: " + strings.Join(users, ", "))
 	}
 	return nil
+}
+
+// requireSecrets refuses a host without secrets, before anything is copied.
+// In the inventory a host fetches its configuration over SSH with its own
+// configuration key, which comes with the identity its secrets give it, and
+// its login keys come from them: copying its files cannot give it either.
+func requireSecrets(x *engine.Ctx, dir, commit, host string) error {
+	ref := "git+file://" + dir + "?rev=" + commit
+	res, err := engine.Cmd("nix", "eval", "--json", ref+"#nixosConfigurations."+host+".config.conf.secrets.repo.url").
+		ReadOnly().Quiet().Run(x)
+	if err != nil {
+		return fmt.Errorf("reading %s's secrets address at %s: %w: %s", host, fleet.Short(commit), err, strings.TrimSpace(res.Stderr))
+	}
+	var url *string
+	if err := json.Unmarshal([]byte(strings.TrimSpace(res.Stdout)), &url); err != nil {
+		return fmt.Errorf("%s's secrets address: %w", host, err)
+	}
+	if url != nil && *url != "" {
+		x.UI.OK(host + " has secrets, from " + *url)
+		return nil
+	}
+	// The address the inventory's hosts use, to say what to set.
+	set := "set conf.secrets.repo.url to your secrets repository's address"
+	if res, err := engine.Cmd("nix", "eval", "--json", x.Value("flake")+"#nixosConfigurations",
+		"--apply", "cs: builtins.mapAttrs (_: c: c.config.conf.secrets.repo.url) cs").ReadOnly().Quiet().Run(x); err == nil {
+		var urls map[string]*string
+		if json.Unmarshal([]byte(res.Stdout), &urls) == nil {
+			common := ""
+			for _, u := range urls {
+				switch {
+				case u == nil || *u == "":
+				case common == "":
+					common = *u
+				case common != *u:
+					common = "-"
+				}
+			}
+			if common != "" && common != "-" {
+				set = fmt.Sprintf("set conf.secrets.repo.url = %q, as the inventory's hosts do", common)
+			}
+		}
+	}
+	return fmt.Errorf("%s has no secrets: conf.secrets.repo.url is not set at %s. In the inventory a host fetches its "+
+		"configuration over SSH with its own configuration key, which comes with the identity its secrets give it, and takes its "+
+		"login keys from them; copying its files cannot give it either. In fleet-manager first: %s, turn on "+
+		"conf.fleet.support.keysFromSecrets, move its login keys into the secrets, and enroll it (fleet host enroll %s). Then run this again",
+		host, fleet.Short(commit), set, host)
 }
 
 // sourceAccounts is the accounts a host declares at a commit of fleet-manager,

@@ -34,6 +34,9 @@ pkgs.runCommand "inventory-import" {
   #!/bin/sh
   case "$*" in
     *"#fleetLayout"*) echo '{"hostBranches":true,"hosts":"config/hosts","users":"config/users","shared":[]}' ;;
+    *"git+file://"*"nixosConfigurations.bare.config.conf.secrets.repo.url"*) echo null ;;
+    *"git+file://"*"conf.secrets.repo.url"*) echo '"ssh://git@forge/secrets.git"' ;;
+    *"c.config.conf.secrets.repo.url) cs"*) echo '{"alpha":"ssh://git@forge/secrets.git"}' ;;
     *"git+file://"*"conf.users.accounts"*) echo '[]' ;;
     *"c.config.conf.fleet.repo.url) cs"*) echo '{"alpha":"ssh://git@forge/inventory.git"}' ;;
     *"attrNames c.config.conf.users.accounts"*)
