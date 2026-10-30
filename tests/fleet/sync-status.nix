@@ -27,7 +27,9 @@
 # - a privileged account with no password starts the sync at once with
 #   `fleet-sync-now`, which shows the log and the result; an unprivileged one
 #   cannot, and the rule allows nothing else;
-# - a missing checkout stops the sync, which starts the first-boot clone.
+# - a missing checkout stops the sync, which starts the first-boot clone;
+# - a run that finds nothing new repairs support's access: its keys file, its
+#   account, /etc/sudoers, /etc/ssh/sshd_config and sshd, whichever was broken.
 # The graphical notification is not covered: the VM has no session.
 # Run it with `nix build .#checks.x86_64-linux.fleet-sync-status`.
 { pkgs, inputs }:
@@ -80,6 +82,18 @@ let
     #!/bin/sh
     exit 0
   '';
+  # A configuration that builds and stands for the running system: for `test`
+  # it activates the real system (whose path the test puts in /srv/real-system)
+  # again, as a real switch-to-configuration would the running one, and it
+  # leaves /run/current-system pointing at itself, so that a sync with nothing
+  # new finds it already running, as on a real host.
+  standIn = pkgs.writeScript "switch-to-configuration" ''
+    #!/bin/sh
+    if [ "$1" = test ]; then
+      "$(cat /srv/real-system)/bin/switch-to-configuration" test || exit
+    fi
+    ln -sfn "$(dirname "$(dirname "$(readlink -f "$0")")")" /run/current-system
+  '';
 in
 pkgs.testers.runNixOSTest {
   name = "fleet-sync-status";
@@ -95,6 +109,11 @@ pkgs.testers.runNixOSTest {
       conf.fleet = {
         repo.url = "file:///srv/upstream.git";
         signing.allowedSignersFile = "${signer}/allowed_signers";
+        # A key from the configuration, since this node has no secrets.
+        support = {
+          enable = true;
+          sshKeys = [ "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHN1cHBvcnRLZXlGb3JUaGVTeW5jVGVzdE9ubHk0000 support@test" ];
+        };
       };
       # A privileged account with no password, as on a fleet host where sudo
       # works only by a forwarded SSH agent.
@@ -345,5 +364,58 @@ pkgs.testers.runNixOSTest {
             "systemctl start config-auto-update.service",
         )
         checkout.fail("test -e /var/lib/fleet-sync/status")
+
+    # Applied once with the stand-in, which then counts as the running system.
+    checkout.succeed(
+        "readlink -f /run/current-system > /srv/real-system",
+        "sed 's|./system|./system2|g' ${buildable} > /srv/work/flake.nix",
+        "install -D -m 0755 ${standIn} /srv/work/system2/bin/switch-to-configuration",
+        "echo stand-in > /srv/work/system2/nixos-version",
+        "${upstream} signed add flake.nix system2",
+        "${upstream} signed commit -q -m seven",
+        "${upstream} signed push -q origin HEAD:main",
+        "systemctl start config-auto-update.service",
+    )
+    checkout.fail("test -e /var/lib/fleet-sync/status")
+
+    def repairs():
+        return int(checkout.execute("journalctl -u config-auto-update | grep -c 'repaired support access'")[1].strip())
+
+    def repaired(breaking):
+        before = repairs()
+        checkout.succeed("systemctl start config-auto-update.service")  # nothing new
+        assert repairs() == before, "support was intact: nothing to repair"
+        checkout.succeed(breaking)
+        checkout.succeed("systemctl start config-auto-update.service")
+        assert repairs() == before + 1, (repairs(), before)
+        checkout.fail("test -e /var/lib/fleet-sync/status")
+
+    keys = "/etc/ssh/authorized_keys.d/support"
+
+    with subtest("a sync with nothing new leaves intact support access alone"):
+        checkout.succeed("systemctl start config-auto-update.service")
+        checkout.succeed("journalctl -u config-auto-update | grep -q 'already running the configuration'")
+        assert repairs() == 0, repairs()
+        checkout.succeed(f"test -s {keys}")
+
+    with subtest("a removed keys file is put back"):
+        repaired(f"rm -f {keys}")
+        checkout.succeed(f"test -s {keys}")
+
+    with subtest("a deleted support account is made again"):
+        repaired("userdel support")
+        checkout.succeed("getent passwd support")
+
+    with subtest("an edited sudoers is restored"):
+        repaired("chmod u+w /etc/sudoers; echo 'bob ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers; chmod 0440 /etc/sudoers")
+        checkout.succeed("cmp /etc/sudoers /etc/static/sudoers")
+
+    with subtest("an edited sshd_config is restored"):
+        repaired("rm -f /etc/ssh/sshd_config; echo 'PermitRootLogin yes' > /etc/ssh/sshd_config")
+        checkout.succeed("cmp /etc/ssh/sshd_config /etc/static/ssh/sshd_config")
+
+    with subtest("a stopped sshd is started again"):
+        repaired("systemctl stop sshd.service")
+        checkout.succeed("systemctl is-active sshd.service")
   '';
 }
