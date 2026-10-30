@@ -10,6 +10,7 @@ no arguments offers these as a menu.
 | Command | What it does |
 |---|---|
 | [`fleet host check`](host-check.md) | Check a host: configuration, sync, secrets and health, without changing anything |
+| [`fleet host sync`](host-sync.md) | Have a host fetch its configuration and secrets now, rather than at its next timer, and check what it then runs |
 | [`fleet host secret`](host-secret.md) | Add or change a host secret: encrypt, commit, push, and show how the configuration uses it |
 | [`fleet host enroll`](host-enroll.md) | Enroll a running host: identity, enrollment, deploy key, first sync |
 | [`fleet support-key rotate`](support-key-rotate.md) | Replace the key that opens a host's support account, testing each step |

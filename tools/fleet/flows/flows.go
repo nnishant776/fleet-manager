@@ -20,7 +20,7 @@ var Groups = engine.Groups{
 // Menu is what `fleet` offers when run alone, the everyday work first: a
 // host, then this machine, then the secrets repository one change at a time.
 var Menu = []engine.Section{
-	{Name: "Hosts", Flows: []*engine.Flow{HostCheck, HostSecret, HostEnroll, SupportKeyRotate, InventoryPin, InventoryImport, InventoryPublish}},
+	{Name: "Hosts", Flows: []*engine.Flow{HostCheck, HostSync, HostSecret, HostEnroll, SupportKeyRotate, InventoryPin, InventoryImport, InventoryPublish}},
 	{Name: "This machine", Flows: []*engine.Flow{Install, InstallPrep, Setup, TrustSigners, RepoAdd, RepoList, RepoSync, Doctor}},
 	{Name: "Secrets", Flows: []*engine.Flow{
 		SecretsUserPassword, SecretsUserKey, SecretsUserKeys, SecretsUserEnroll, SecretsUserRetire, SecretsHostEnroll, SecretsHostRekey, SecretsHostRetire,
