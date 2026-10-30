@@ -56,6 +56,6 @@ A value that is neither given nor has a default is asked for on a terminal.
 
    > Hosts fetch their own branches, not main: publish them now, and each host takes the new fleet-manager at its next sync:
    > fleet inventory publish --flake FLAKE_GIVEN
-   > A host can be told to sync at once with: ssh support@\<host> sudo systemctl start config-auto-update
+   > Publish and sync the hosts at once: fleet inventory publish --flake FLAKE_GIVEN --sync, or one host: fleet host sync \<host> --flake FLAKE_GIVEN
 
 It needs `git`, `nix` on the PATH; `fleet doctor` says where to get them.

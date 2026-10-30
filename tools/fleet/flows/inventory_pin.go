@@ -82,7 +82,7 @@ var InventoryPin = &engine.Flow{
 			Why:   "The pin is on main only. Each host fetches its own branch, so it gets the new fleet-manager once you publish.",
 			Do: engine.Show("Hosts fetch their own branches, not main: publish them now, and each host takes the new fleet-manager at its next sync:\n" +
 				"  fleet inventory publish --flake {{.flake_given}}\n" +
-				"A host can be told to sync at once with: ssh support@<host> sudo systemctl start config-auto-update"),
+				"Publish and sync the hosts at once: fleet inventory publish --flake {{.flake_given}} --sync, or one host: fleet host sync <host> --flake {{.flake_given}}"),
 		}),
 	},
 }
