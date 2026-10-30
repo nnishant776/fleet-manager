@@ -24,6 +24,9 @@
 # - after a sync the checkout is the verified commit and nothing else: HEAD
 #   detached at it, origin the only remote, holding only the tracked branch,
 #   and no local branches;
+# - a privileged account with no password starts the sync at once with
+#   `fleet-sync-now`, which shows the log and the result; an unprivileged one
+#   cannot, and the rule allows nothing else;
 # - a missing checkout stops the sync, which starts the first-boot clone.
 # The graphical notification is not covered: the VM has no session.
 # Run it with `nix build .#checks.x86_64-linux.fleet-sync-status`.
@@ -93,6 +96,10 @@ pkgs.testers.runNixOSTest {
         repo.url = "file:///srv/upstream.git";
         signing.allowedSignersFile = "${signer}/allowed_signers";
       };
+      # A privileged account with no password, as on a fleet host where sudo
+      # works only by a forwarded SSH agent.
+      conf.users.accounts.ann = { fullName = "Ann"; privileged = true; };
+
       # The test makes the checkout and runs the sync itself.
       systemd.services.fleet-bootstrap.enable = false;
       systemd.timers.config-auto-update.enable = false;
@@ -295,6 +302,31 @@ pkgs.testers.runNixOSTest {
         remotes = checkout.succeed("${git} -C /etc/nixos remote").split()
         assert remotes == ["origin"], remotes
         checkout.fail("test -e /var/lib/fleet-sync/status")
+
+    def invocation():
+        return checkout.succeed("systemctl show -P InvocationID config-auto-update.service").strip()
+
+    with subtest("a privileged account starts the sync without a password"):
+        checkout.succeed("${upstream} signed commit -q --allow-empty -m six")
+        checkout.succeed("${upstream} signed push -q origin HEAD:main")
+        six = head("/srv/work")
+        before = invocation()
+        out = checkout.succeed("su - ann -c fleet-sync-now </dev/null 2>&1")
+        print(out)
+        assert head("/etc/nixos") == six, head("/etc/nixos")
+        assert invocation() != before
+        assert "config-auto-update: done at " + six in out, out
+        assert "the newest commit of main" in out, out
+        assert "Configuration updates are working." in out, out
+
+    with subtest("an unprivileged account cannot"):
+        before = invocation()
+        status, out = checkout.execute("runuser -u bob -- fleet-sync-now 2>&1")
+        assert status == 1, (status, out)
+        assert "only privileged accounts can start the sync" in out, out
+        assert invocation() == before
+        checkout.fail("runuser -u ann -- /run/wrappers/bin/sudo -n systemctl start config-auto-update")
+        assert invocation() == before
 
     with subtest("a missing checkout stops the sync, which starts the first-boot clone"):
         # This machine has the first-boot clone switched off, so starting it
