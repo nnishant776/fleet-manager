@@ -373,9 +373,10 @@ pkgs.testers.runNixOSTest {
         "readlink -f /run/current-system > /srv/real-system",
         "sed 's|./system|./system2|g' ${buildable} > /srv/work/flake.nix",
         "install -D -m 0755 ${standIn} /srv/work/system2/bin/switch-to-configuration",
-        "echo stand-in > /srv/work/system2/nixos-version",
-        # The test driver finds its tools under /run/current-system/sw.
-        "ln -s \"$(cat /srv/real-system)/sw\" /srv/work/system2/sw",
+        # Everything else of the real system, so that the test driver finds its
+        # tools under /run/current-system/sw and the real activation finds the
+        # same init and systemd as in the running system.
+        "for f in \"$(cat /srv/real-system)\"/*; do [ \"''${f##*/}\" = bin ] || ln -s \"$f\" /srv/work/system2/; done",
         "${upstream} signed add flake.nix system2",
         "${upstream} signed commit -q -m seven",
         "${upstream} signed push -q origin HEAD:main",
