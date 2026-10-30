@@ -11,13 +11,15 @@ other hosts. fleet checks that main's newest commit is signed by a key you trust
 and pushed, cuts each branch from it without touching the checkout, evaluates it,
 and adds a signed commit to every branch whose files changed. Then it pushes them,
 once you approve. A branch whose newest commit no key you trust signed is not
-published on.
+published on. With --sync, each host whose branch was pushed then syncs at once,
+and fleet checks that it runs the commit just pushed.
 
 ```
 fleet inventory publish [HOST] [flags]
 
 fleet inventory publish --flake ~/Projects/inventory
 fleet inventory publish nas1 --flake ~/Projects/inventory
+fleet inventory publish --flake ~/Projects/inventory --sync
 ```
 
 ## Flags
@@ -27,6 +29,7 @@ fleet inventory publish nas1 --flake ~/Projects/inventory
 | `--flake` | A checkout or a flake reference, or the name of a repository (fleet repo list), which means the tool's own clone of it; defaults to this directory's flake, then /etc/nixos |
 | `--host` | A host to publish; give --host more than once for several; all of them by default; may be given more than once |
 | `--no-check` | Do not evaluate each branch before publishing it; for tests without Nix |
+| `--sync` | Sync each host whose branch changed, once it is pushed |
 
 Every command also takes `--dry-run` (show every step and command; look, but
 change nothing), `-y`/`--yes` (run changes without asking) and `--verbose`.
@@ -43,5 +46,7 @@ A value that is neither given nor has a default is asked for on a terminal.
 4. **Cut each host's branch.** With the host's own files only. A branch whose files did not change gets no commit.
 
 5. **Push the branches.** Hosts fetch their branch on their next sync. A push that is not a fast-forward is refused: then someone else changed the branch.
+
+6. **Sync the hosts whose branch changed.** Each host is told to sync now, instead of at its next timer, and its revision is checked against the commit just pushed. A host that fails does not stop the others.
 
 It needs `git`, `nix`, `tar` on the PATH; `fleet doctor` says where to get them.

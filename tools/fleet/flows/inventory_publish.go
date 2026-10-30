@@ -31,15 +31,18 @@ var InventoryPublish = &engine.Flow{
 		"and pushed, cuts each branch from it without touching the checkout, evaluates it,\n" +
 		"and adds a signed commit to every branch whose files changed. Then it pushes them,\n" +
 		"once you approve. A branch whose newest commit no key you trust signed is not\n" +
-		"published on.",
+		"published on. With --sync, each host whose branch was pushed then syncs at once,\n" +
+		"and fleet checks that it runs the commit just pushed.",
 	Example: "  fleet inventory publish --flake ~/Projects/inventory\n" +
-		"  fleet inventory publish nas1 --flake ~/Projects/inventory",
+		"  fleet inventory publish nas1 --flake ~/Projects/inventory\n" +
+		"  fleet inventory publish --flake ~/Projects/inventory --sync",
 	Args: []string{"host"},
 	Inputs: []engine.Input{
 		fleet.FlakeInput,
 		{Name: "host", Prompt: "Hosts to publish", Help: "A host to publish; give --host more than once for several; all of them by default",
 			Many: true, Optional: true},
 		{Name: "no-check", Prompt: "Skip evaluating each branch?", Help: "Do not evaluate each branch before publishing it; for tests without Nix", Bool: true},
+		syncInput,
 	},
 	Needs: []string{"git", "nix", "tar"},
 	Steps: []engine.Step{
@@ -58,6 +61,7 @@ var InventoryPublish = &engine.Flow{
 			Why:   "Hosts fetch their branch on their next sync. A push that is not a fast-forward is refused: then someone else changed the branch.",
 			Do:    engine.Func(pushHostBranches),
 		},
+		syncPublishedStep,
 	},
 }
 
@@ -374,6 +378,7 @@ func pushHostBranches(x *engine.Ctx) error {
 	if err != nil {
 		return err
 	}
+	x.Values["pushed_refs"] = x.Value("publish_refs")
 	// What was pushed is what you trust on those branches now.
 	for _, r := range refs {
 		commit, ref, _ := strings.Cut(r, ":")
