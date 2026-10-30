@@ -303,14 +303,19 @@ pkgs.testers.runNixOSTest {
         assert remotes == ["origin"], remotes
         checkout.fail("test -e /var/lib/fleet-sync/status")
 
+    # The unit's runs so far, by the line systemd writes at each start: an
+    # inactive oneshot unit does not keep its InvocationID.
     def invocation():
-        return checkout.succeed("systemctl show -P InvocationID config-auto-update.service").strip()
+        return checkout.execute("journalctl -u config-auto-update -o cat | grep -c '^Starting Sync'")[1].strip()
 
     with subtest("a privileged account starts the sync without a password"):
         checkout.succeed("${upstream} signed commit -q --allow-empty -m six")
         checkout.succeed("${upstream} signed push -q origin HEAD:main")
         six = head("/srv/work")
         before = invocation()
+        # A machine switched to this commit would run it; the stand-in
+        # system does not stamp one, so say so here.
+        checkout.succeed(f"rm -f /etc/org/revision; echo {six} > /etc/org/revision")
         out = checkout.succeed("su - ann -c fleet-sync-now </dev/null 2>&1")
         print(out)
         assert head("/etc/nixos") == six, head("/etc/nixos")
