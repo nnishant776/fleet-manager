@@ -55,7 +55,8 @@ A value that is neither given nor has a default is asked for on a terminal.
    ```
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'r=$(cat /etc/org/revision); h=$(git -C /etc/nixos rev-parse HEAD 2>/dev/null || echo none); echo "$r $h"'
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'test -d /etc/nixos/.git || { echo none; exit 0; }; git -C /etc/nixos status --porcelain | wc -l'
-   $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'systemctl show -p LoadState,Result,ExecMainExitTimestamp --value config-auto-update.service'
+   $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'systemctl show -p LoadState,Result,ExecMainExitTimestamp --value config-auto-update.service; m=$(systemctl show -p ExecMainExitTimestampMonotonic --value config-auto-update.service); echo "age $m $(cut -d'\'' '\'' -f1 /proc/uptime)"'
+   $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'systemctl cat config-auto-update.timer >/dev/null 2>&1 || { echo none; exit 0; }; systemctl is-active config-auto-update.timer || true; systemctl is-enabled config-auto-update.timer 2>/dev/null || true'
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'cat /var/lib/fleet-sync/status 2>/dev/null || true'
    ```
 

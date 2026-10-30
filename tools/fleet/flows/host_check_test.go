@@ -29,7 +29,8 @@ func healthyPi() hostAnswers {
 		"id -un":                          "support\nneerajpinew\n",
 		"/etc/org/revision":               "eccde35047cbd3a5a09781db27403c7335d83aa6 eccde35047cbd3a5a09781db27403c7335d83aa6\n",
 		"status --porcelain":              "0\n",
-		"systemctl show -p LoadState":     "loaded\nsuccess\nSun 2026-10-18 18:21:40 IST\n",
+		"systemctl show -p LoadState":     "loaded\nsuccess\nSun 2026-10-18 18:21:40 IST\nage 50000000000 100000\n",
+		"config-auto-update.timer":        "active\nenabled\n",
 		"fleet-sync/status":               "",
 		"fleet-sync/user-problems":        "",
 		"readlink /var/lib/fleet/secrets": "snapshots/a32bf3e3cc506d937af8934906ba14e80762d028\n",
@@ -64,6 +65,7 @@ func TestHostCheckOnAHealthyHost(t *testing.T) {
 		"✓ running revision: eccde35047cb, the same as its checkout",
 		"✓ checkout: no local changes",
 		"✓ last sync: succeeded, at Sun 2026-10-18 18:21:40 IST",
+		"✓ sync timer: active",
 		"✓ problems recorded for everyone: none",
 		"✓ secrets snapshot: commit a32bf3e3cc50",
 		"✓ users' own secrets: all up to date",
@@ -104,8 +106,8 @@ func TestHostCheckReportsEveryProblem(t *testing.T) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}
 	}
-	if len(fake.Ran) != 9 {
-		t.Errorf("ran %d probes, want all 9", len(fake.Ran))
+	if len(fake.Ran) != 10 {
+		t.Errorf("ran %d probes, want all 10", len(fake.Ran))
 	}
 }
 
@@ -184,5 +186,55 @@ func TestHostCheckStopsWhenTheHostCannotBeReached(t *testing.T) {
 	}
 	if len(fake.Ran) != 1 || strings.Contains(out.String(), "[3/5]") {
 		t.Errorf("went on after the host could not be reached: ran %d commands\n%s", len(fake.Ran), &out)
+	}
+}
+
+func TestHostCheckReportsAStoppedSyncTimer(t *testing.T) {
+	for name, timer := range map[string]string{
+		"inactive":  "inactive\nenabled\n",
+		"disabled":  "active\ndisabled\n",
+		"no answer": "",
+	} {
+		answers := healthyPi()
+		answers["config-auto-update.timer"] = timer
+		err, _, out := runHostCheck(t, answers)
+		if err == nil || !strings.Contains(err.Error(), "1 of 5 steps") {
+			t.Fatalf("%s: got %v\n%s", name, err, out)
+		}
+		if !strings.Contains(out, "✗ sync timer:") || !strings.Contains(out, "no sync will run until it is active and enabled") {
+			t.Errorf("%s: output:\n%s", name, out)
+		}
+	}
+}
+
+func TestHostCheckOnAHostWithoutASyncTimer(t *testing.T) {
+	answers := healthyPi()
+	answers["config-auto-update.timer"] = "none\n"
+	err, _, out := runHostCheck(t, answers)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if !strings.Contains(out, "✓ sync timer: none (no sync on this host)") {
+		t.Errorf("output:\n%s", out)
+	}
+}
+
+func TestHostCheckAsksWhetherTheTimerIsStoppedAfterAnOldSync(t *testing.T) {
+	answers := healthyPi()
+	// The last exit was 20 days of uptime ago (uptime 30 days, exit at day 10).
+	answers["systemctl show -p LoadState"] = "loaded\nsuccess\nSun 2026-10-18 18:21:40 IST\nage 864000000000 2592000.50\n"
+	err, _, out := runHostCheck(t, answers)
+	if err == nil || !strings.Contains(err.Error(), "1 of 5 steps") {
+		t.Fatalf("got %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "✗ last sync: the last sync ran 20 days ago: is its timer stopped?") {
+		t.Errorf("output:\n%s", out)
+	}
+	// A sync three days old is fine, and so is a host that has not synced since boot.
+	for _, age := range []string{"age 1000000000 260000.0", "age 0 5000"} {
+		answers["systemctl show -p LoadState"] = "loaded\nsuccess\nSun 2026-10-18 18:21:40 IST\n" + age + "\n"
+		if err, _, out := runHostCheck(t, answers); err != nil {
+			t.Errorf("%q: %v\n%s", age, err, out)
+		}
 	}
 }

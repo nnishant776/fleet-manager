@@ -3,6 +3,7 @@ package flows
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/nnishant776/fleet-manager/tools/fleet/internal/engine"
@@ -87,16 +88,42 @@ var hostConfigStep = engine.Step{
 		},
 		engine.Probe{
 			What: "last sync",
-			Cmd:  fleet.OnHost(`systemctl show -p LoadState,Result,ExecMainExitTimestamp --value config-auto-update.service`),
+			Cmd:  fleet.OnHost(`systemctl show -p LoadState,Result,ExecMainExitTimestamp --value config-auto-update.service; m=$(systemctl show -p ExecMainExitTimestampMonotonic --value config-auto-update.service); echo "age $m $(cut -d' ' -f1 /proc/uptime)"`),
 			Expect: func(out string) (string, error) {
-				f := strings.SplitN(strings.TrimSpace(out), "\n", 3)
+				f := strings.SplitN(strings.TrimSpace(out), "\n", 4)
 				if len(f) < 3 || f[0] == "not-found" {
 					return "no sync on this host", nil
 				}
 				if f[1] != "success" {
 					return "", fmt.Errorf("%s, at %s", f[1], orNever(f[2]))
 				}
+				if len(f) == 4 {
+					if days, ok := syncAgeDays(f[3]); ok && days > maxSyncAgeDays {
+						return "", fmt.Errorf("the last sync ran %d days ago: is its timer stopped?", days)
+					}
+				}
 				return "succeeded, at " + orNever(f[2]), nil
+			},
+		},
+		engine.Probe{
+			What: "sync timer",
+			Cmd:  fleet.OnHost(`systemctl cat config-auto-update.timer >/dev/null 2>&1 || { echo none; exit 0; }; systemctl is-active config-auto-update.timer || true; systemctl is-enabled config-auto-update.timer 2>/dev/null || true`),
+			Expect: func(out string) (string, error) {
+				f := strings.Fields(out)
+				if len(f) > 0 && f[0] == "none" {
+					return "none (no sync on this host)", nil
+				}
+				active, enabled := "unknown", "unknown"
+				if len(f) > 0 {
+					active = f[0]
+				}
+				if len(f) > 1 {
+					enabled = f[1]
+				}
+				if active != "active" || !strings.HasPrefix(enabled, "enabled") {
+					return "", fmt.Errorf("%s and %s: no sync will run until it is active and enabled", active, enabled)
+				}
+				return "active", nil
 			},
 		},
 		engine.Probe{
@@ -221,4 +248,24 @@ func orNever(ts string) string {
 		return "never"
 	}
 	return ts
+}
+
+// maxSyncAgeDays is how long a host may go without a sync before it is worth
+// asking whether its timer is stopped; the timer runs daily.
+const maxSyncAgeDays = 3
+
+// syncAgeDays reads the line "age <microseconds since boot of the last exit>
+// <uptime in seconds>" and says how many whole days ago the last sync ran. ok
+// is false when the unit has not run since boot or the line is not understood.
+func syncAgeDays(line string) (int, bool) {
+	f := strings.Fields(line)
+	if len(f) != 3 || f[0] != "age" {
+		return 0, false
+	}
+	exit, err1 := strconv.ParseFloat(f[1], 64)
+	up, err2 := strconv.ParseFloat(f[2], 64)
+	if err1 != nil || err2 != nil || exit <= 0 {
+		return 0, false
+	}
+	return int((up - exit/1e6) / 86400), true
 }
