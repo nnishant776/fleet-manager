@@ -6,6 +6,7 @@
     ./bootstrap.nix
     ./secrets-sync.nix
     ./sync-status.nix
+    ./sync-now.nix
     ./safe-directory.nix
   ];
 }
