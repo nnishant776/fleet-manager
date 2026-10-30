@@ -1777,6 +1777,12 @@ they had. It reads `/var/lib/fleet-sync/user-problems`, a copy of the sync's lis
 and `/var/lib/fleet-sync/secrets-applied` records the snapshot the running system
 was last activated with.
 
+**A privileged account can sync a host at once.** `fleet-sync-now` starts the
+sync without waiting for its timer. It needs no `sudo` and no password, which
+suits a host where a privileged account has none. It shows the sync's log as it
+runs, then the commit the machine runs against the newest one of its branch,
+then what `fleet-sync-status` says. Other accounts cannot start it.
+
 **On headless hosts only `wheel` may use the Nix daemon**
 (`nix.settings.allowed-users`), so an unprivileged account with
 `selfManagedHome` cannot build or run `home-switch` there unless the host
