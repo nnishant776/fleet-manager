@@ -103,10 +103,13 @@ pkgs.testers.runNixOSTest {
   node.pkgsReadOnly = false;
 
   nodes.checkout = {
-    imports = hostNode.modules ++ [{
+    imports = hostNode.modules ++ [({ config, ... }: {
       boot.loader.systemd-boot.enable = lib.mkForce false;
       boot.loader.grub.enable = lib.mkForce false;
 
+      # The repair tests activate the running system again, so it has to be in the VM's store.
+
+      virtualisation.additionalPaths = [ config.system.build.toplevel ];
       conf.fleet = {
         repo.url = "file:///srv/upstream.git";
         signing.allowedSignersFile = "${signer}/allowed_signers";
@@ -123,7 +126,7 @@ pkgs.testers.runNixOSTest {
       # The test makes the checkout and runs the sync itself.
       systemd.services.fleet-bootstrap.enable = false;
       systemd.timers.config-auto-update.enable = false;
-    }];
+    })];
   };
 
   testScript = ''
