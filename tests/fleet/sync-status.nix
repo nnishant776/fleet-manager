@@ -90,9 +90,10 @@ let
   standIn = pkgs.writeScript "switch-to-configuration" ''
     #!/bin/sh
     if [ "$1" = test ]; then
-      "$(cat /srv/real-system)/bin/switch-to-configuration" test || exit
+      "$(${pkgs.coreutils}/bin/cat /srv/real-system)/bin/switch-to-configuration" test || exit
     fi
-    ln -sfn "$(dirname "$(dirname "$(readlink -f "$0")")")" /run/current-system
+    c=${pkgs.coreutils}/bin
+    "$c/ln" -sfn "$("$c/dirname" "$("$c/dirname" "$("$c/readlink" -f "$0")")")" /run/current-system
   '';
 in
 pkgs.testers.runNixOSTest {
