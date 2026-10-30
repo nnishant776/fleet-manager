@@ -150,7 +150,9 @@ func TestHostSyncAtTheTipSaysSoAndStillSyncs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
-	if !strings.Contains(flat(out), "pi now runs 95c22d432af0, the newest commit of host/pi") {
+	if !strings.Contains(flat(out), "pi now runs 95c22d432af0, the newest commit of host/pi") ||
+		!strings.Contains(flat(out), "pi runs 95c22d432af0, the newest commit of host/pi: the sync applies any new secrets") ||
+		strings.Contains(flat(out), "the sync takes it there") {
 		t.Errorf("output:\n%s", out)
 	}
 	if len(f.synced) != 1 {

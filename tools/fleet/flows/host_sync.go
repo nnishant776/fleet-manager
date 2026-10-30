@@ -88,6 +88,10 @@ func seeWhatIsPublished(x *engine.Ctx) error {
 		x.UI.OK(x.Value("host") + " runs " + short(running) + "; the newest commit of " + ref + " is not known: the sync applies any new secrets and checks the rest")
 		return nil
 	}
+	if running == expected {
+		x.UI.OK(fmt.Sprintf("%s runs %s, the newest commit of %s: the sync applies any new secrets and checks the rest", x.Value("host"), short(running), ref))
+		return nil
+	}
 	x.UI.OK(fmt.Sprintf("%s runs %s; %s is at %s: the sync takes it there", x.Value("host"), short(running), ref, short(expected)))
 	return nil
 }
