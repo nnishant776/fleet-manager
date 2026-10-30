@@ -372,6 +372,8 @@ pkgs.testers.runNixOSTest {
         "sed 's|./system|./system2|g' ${buildable} > /srv/work/flake.nix",
         "install -D -m 0755 ${standIn} /srv/work/system2/bin/switch-to-configuration",
         "echo stand-in > /srv/work/system2/nixos-version",
+        # The test driver finds its tools under /run/current-system/sw.
+        "ln -s \"$(cat /srv/real-system)/sw\" /srv/work/system2/sw",
         "${upstream} signed add flake.nix system2",
         "${upstream} signed commit -q -m seven",
         "${upstream} signed push -q origin HEAD:main",
