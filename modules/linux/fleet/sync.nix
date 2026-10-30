@@ -28,6 +28,17 @@ let
     "--host" config.conf.host.name
   ];
 
+  # The support account (fleet/support.nix) is repaired on every run, not only
+  # when the configuration or the secrets change. Enabled by the same rule.
+  sup = cfg.support;
+  supportOn =
+    (if sup.enable != null then sup.enable else config.conf.secrets.repo.url != null)
+    && config.conf.platform == "nixos";
+  supportKeys =
+    if sup.keysFromSecrets
+    then "/run/secrets/users/${sup.user}/authorized_keys"
+    else "/etc/ssh/authorized_keys.d/${sup.user}";
+
   syncScript = pkgs.writeShellApplication {
     name = "config-auto-update";
     runtimeInputs = [
@@ -35,6 +46,8 @@ let
       pkgs.nixos-rebuild
       config.nix.package
       pkgs.coreutils
+      pkgs.diffutils # cmp
+      pkgs.getent
       pkgs.systemd
       pkgs.openssh # ssh-keygen, which git uses to verify SSH signatures
     ];
@@ -51,7 +64,7 @@ let
       # that fails leaves it as it is, since the next run simply retries.
       status=/var/lib/fleet-sync/status
       target=""
-      stop() {  # stop KIND MESSAGE: record the problem and end the run
+      record() {  # record KIND MESSAGE: note the problem for everyone
         since="$(date -Is)"
         if [ -r "$status" ] && grep -qxF "kind=$1" "$status" && grep -qxF "commit=$target" "$status"; then
           since="$(sed -n 's/^since=//p' "$status")"
@@ -60,8 +73,49 @@ let
         printf 'kind=%s\ncommit=%s\nsince=%s\nmessage=%s\n' "$1" "$target" "$since" "$2" > "$tmp"
         chmod 0644 "$tmp"
         mv -f "$tmp" "$status"
+      }
+      stop() {  # stop KIND MESSAGE: record the problem and end the run
+        record "$@"
         exit 1
-      }${lib.optionalString secretsOn ''
+      }${lib.optionalString supportOn ''
+
+        # Whether the maintainer can still log in: the account and its keys, the
+        # sudo rule, sshd's configuration and sshd itself. Activation restores
+        # all of it, but only runs when the configuration or the secrets change,
+        # so what a user with root broke would otherwise stay. Sets problem to
+        # what is wrong. sudoers and sshd_config are compared by content with
+        # what the system was built with, whether NixOS links or copies them.
+        problem=""
+        support_intact() {
+          problem=""
+          if ! getent passwd ${lib.escapeShellArg sup.user} >/dev/null; then
+            problem="the account ${sup.user} does not exist"
+          elif [ ! -s ${lib.escapeShellArg supportKeys} ]; then
+            problem="the keys file ${supportKeys} is missing or empty"
+          elif ! cmp -s /etc/sudoers /etc/static/sudoers; then
+            problem="/etc/sudoers differs from the one the system was built with"
+          elif ! cmp -s /etc/ssh/sshd_config /etc/static/ssh/sshd_config; then
+            problem="/etc/ssh/sshd_config differs from the one the system was built with"
+          elif ! systemctl is-active --quiet sshd.service; then
+            problem="sshd is not running"
+          fi
+          [ -z "$problem" ]
+        }
+        # For a run that found the system already right: activate it again if
+        # support is broken, and stop if that does not mend it.
+        repair_support() {
+          support_intact && return 0
+          log "support access is broken ($problem); activating the running system again to repair it"
+          "$running/bin/switch-to-configuration" test || true
+          systemctl start sshd.service || true
+          if support_intact; then
+            log "repaired support access"
+          else
+            log "support access is still broken: $problem"
+            stop support "Support access to this machine is broken and could not be repaired: $problem. Updates still apply; the maintainer cannot log in to help."
+          fi
+        }
+      ''}${lib.optionalString secretsOn ''
 
         # The snapshot of the secrets the running system was last activated
         # with. Activation is what decrypts them into /run/secrets, so a
@@ -251,11 +305,15 @@ let
             stop activation "This machine could not start with its new secrets, so some services may still use the old ones. It keeps running its current configuration."
           fi
           record_applied
-          log "running $after with the secrets of $(snapshot)"
+          log "running $after with the secrets of $(snapshot)"${lib.optionalString supportOn ''
+
+          repair_support''}
           rm -f "$status"
           exit 0
         fi''}
-        log "already running the configuration at $after"
+        log "already running the configuration at $after"${lib.optionalString supportOn ''
+
+        repair_support''}
         rm -f "$status"
         exit 0
       fi
@@ -289,7 +347,13 @@ let
       fi${lib.optionalString secretsOn ''
 
       record_applied''}
-      rm -f "$status"
+      rm -f "$status"${lib.optionalString supportOn ''
+
+      # Reported and recorded, not acted on, like the state below.
+      if ! support_intact; then
+        log "warning: support access is broken after the switch ($problem)"
+        record support "Support access to this machine is broken: $problem. Updates still apply; the maintainer cannot log in to help."
+      fi''}
 
       # Reported, not acted on: rolling back on any degraded state would put a
       # machine with one pre-existing failed unit into a rollback loop on every
