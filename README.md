@@ -625,6 +625,10 @@ older commits works as before. One limit remains: root on a host can still use
 its configuration key to fetch the other branches, since GitHub's deploy keys
 cannot be limited to a branch.
 
+To sync a host right away, instead of at its next sync, run
+`fleet host sync <host>`; `fleet inventory publish --flake <checkout> --sync`
+publishes and then syncs every host whose branch changed.
+
 **Moving the inventory to a newer fleet-manager.** The inventory pins one
 commit of fleet-manager in its `flake.lock`. To move it, run
 `fleet inventory pin --flake inventory` (the name of the clone, or a checkout),
