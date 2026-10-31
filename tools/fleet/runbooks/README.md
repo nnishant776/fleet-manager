@@ -16,6 +16,7 @@ no arguments offers these as a menu.
 | [`fleet support-key rotate`](support-key-rotate.md) | Replace the key that opens a host's support account, testing each step |
 | [`fleet inventory pin`](inventory-pin.md) | Pin fleet-manager's newest trusted commit, or a given one, in the inventory, check every host, commit and push |
 | [`fleet inventory import`](inventory-import.md) | Copy a host's definition from fleet-manager into the inventory, adjusted, check it, commit, push and publish its branch |
+| [`fleet host adopt`](host-adopt.md) | Store the password and keys of the owner a personal machine made at its first boot, and print the declaration to add |
 | [`fleet inventory publish`](inventory-publish.md) | Cut each host's own files from main into its branch, host/\<name>, signed, and push them |
 | [`fleet install`](install.md) | Install a host from the configuration onto this machine's disks, from the installer |
 | [`fleet install prep`](install-prep.md) | Check the commits a host's install takes, and print the line to run on the installer |
