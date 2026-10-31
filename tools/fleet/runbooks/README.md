@@ -39,4 +39,4 @@ no arguments offers these as a menu.
 | [`fleet user keys`](user-keys.md) | Set the SSH keys that may log in as you, or unlock your sudo, on hosts, on your own branch |
 | [`fleet user secret set`](user-secret-set.md) | Store a secret of your own, which your hosts hand only to you, on your own branch |
 | [`fleet user secret unset`](user-secret-unset.md) | Remove a secret of your own from your files, on your own branch |
-| [`fleet docs`](docs.md) | Write the runbook pages, tools/fleet/runbooks, from the flows themselves |
+| [`fleet docs`](docs.md) | Write the runbook pages, tools/fleet/runbooks, from the flows themselves, and the parts of the guide that follow from its order and headings |
