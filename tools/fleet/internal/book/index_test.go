@@ -12,14 +12,16 @@ var indexBook = map[string]string{
 	"README.md": "# Book\n\n<!-- book:contents -->\n<!-- /book:contents -->\n",
 	"hosts.md": "# Hosts\n\nEvery Host Branch is fetched, and a fleet host syncs.\n\n" +
 		"## Branches\n\nA host\nbranch spans lines. `host.name` sets the name.\n\n" +
-		"## Plurals\n\nHost branches are not counted, nor are host-branch or host_branch. The nixos-install command and\n" +
-		"os-installer are something else, nor is [it](os-install.md) a link's target.\n\n" +
+		"## Plurals\n\nHost branches count, but not host-branch, host_branch or a host branchy word. The nixos-install command and\n" +
+		"os-installer are something else, nor is [it](os-install.md) a link's target, and os-install in prose is not code.\n\n" +
 		"## Code\n\n```\nos-install --disk main=/dev/sda\nhost branch in code does not count\n```\n",
 	"tools.md": "# Tools\n\n## Installing\n\nRun `fleet install prep` first.\n\n" +
-		"## Both\n\n`fleet install` and then fleet install prep, which a . does not end: fleet install prep.\n\n" +
-		"## Checking\n\n`fleet host check` looks at a host.\n\n" +
+		"## Both\n\n`fleet install` and then fleet install prep, which in prose is not a command.\n\n" +
+		"## Checking\n\n`fleet host check` looks at a host; a fleet of hosts is prose.\n\n" +
+		"## Help\n\n`fleet <command> --help` shows more.\n\n" +
+		"## Spans\n\nA code span may go on to the next line: `fleet\ninstall`.\n\n" +
 		"## Fields\n\n`email` here is not an account's field.\n",
-	"accounts.md": "# Accounts\n\n## Mail\n\nSet `email`.\n",
+	"accounts.md": "# Accounts\n\n## Mail\n\nSet `email`; conf.host.name in prose does not count.\n",
 	"configuration.md": "# Configuration reference\n\n" +
 		"## `conf.host`\n\n| Option | Type |\n|---|---|\n| `host.name` | str |\n\n" +
 		"## `conf.homebrew`\n\n| Option | Type |\n|---|---|\n| `homebrew.brews` / `.casks` | listOf str |\n\n" +
@@ -27,7 +29,7 @@ var indexBook = map[string]string{
 		"Each takes:\n\n| Field | Type |\n|---|---|\n| `email` | str |\n\n" +
 		"## `conf.hardware`\n\n| Field | Type |\n|---|---|\n| `size` | str |\n",
 	"glossary.md": "# Glossary\n\n## E\n\n- **`/etc/nixos`**: The checkout. See [Hosts](hosts.md).\n\n" +
-		"## F\n\n- **fleet host**: A host that syncs. See [Hosts](hosts.md#branches).\n" +
+		"## F\n\n- **`fleet`**: The tool. See [Tools](tools.md).\n- **fleet host**: A host that syncs. See [Hosts](hosts.md#branches).\n" +
 		"- **`fleet install`**: Installs. See [Installing](tools.md#installing).\n\n" +
 		"## H\n\n- **host branch**: The branch a host fetches. See\n  [Branches](hosts.md#branches).\n\n" +
 		"## O\n\n- **`os-install`**: The installer.\n\n" +
@@ -57,12 +59,13 @@ func TestIndexTakesItsTermsFromTheGlossaryTheOptionsAndTheCommands(t *testing.T)
 		"## E\n",
 		"- `/etc/nixos`: **[1 › Hosts](hosts.md)**\n",
 		"## F\n",
+		"- `fleet`: **[2 › Tools](tools.md)**, [2 › Help](tools.md#help)",
 		"- fleet host: **[1 › Branches](hosts.md#branches)**, [1 › Hosts](hosts.md)",
 		"- `fleet host check`: **[runbook](../tools/fleet/runbooks/host-check.md)**, [2 › Checking](tools.md#checking)",
-		"- `fleet install`: **[2 › Installing](tools.md#installing)**, [2 › Both](tools.md#both)",
-		"- `fleet install prep`: **[runbook](../tools/fleet/runbooks/install-prep.md)**, [2 › Installing](tools.md#installing), [2 › Both](tools.md#both)\n",
+		"- `fleet install`: **[2 › Installing](tools.md#installing)**, [2 › Both](tools.md#both), [2 › Spans](tools.md#spans)",
+		"- `fleet install prep`: **[runbook](../tools/fleet/runbooks/install-prep.md)**, [2 › Installing](tools.md#installing)\n",
 		"## H\n",
-		"- host branch: **[1 › Branches](hosts.md#branches)**, [1 › Hosts](hosts.md)\n",
+		"- host branch: **[1 › Branches](hosts.md#branches)**, [1 › Hosts](hosts.md), [1 › Plurals](hosts.md#plurals)\n",
 		"## O\n",
 		"- `os-install`: **[B › O](glossary.md#o)**, [1 › Code](hosts.md#code)",
 	}, "\n") + "\n\n" + bottomStart
@@ -108,7 +111,7 @@ func TestIndexWithoutAGlossaryHasTheOtherTerms(t *testing.T) {
 	b, err := Make(writeGuide(t, map[string]string{
 		"SUMMARY.md": "[Preface](README.md)\n- [One](one.md)\n[Glossary](glossary.md)\n[Index](index.md)\n",
 		"README.md":  "<!-- book:contents -->\n<!-- /book:contents -->\n",
-		"one.md":     "# One\n\nRun fleet doctor first.\n",
+		"one.md":     "# One\n\nRun `fleet doctor` first.\n",
 	}), []Command{{Name: "fleet doctor", Runbook: "../tools/fleet/runbooks/doctor.md"}})
 	if err != nil || len(b.Errors) > 0 {
 		t.Fatal(err, b.Errors)
@@ -135,6 +138,32 @@ func TestCodeAtNeedsTheNameToEnd(t *testing.T) {
 	} {
 		if got := codeAt(c.text, "os-install", 0); got != c.at {
 			t.Errorf("codeAt(%q) = %d, want %d", c.text, got, c.at)
+		}
+	}
+}
+
+func TestPhraseMayBePluralOrPossessive(t *testing.T) {
+	ix := &indexer{byKey: map[string]*term{}}
+	ix.add(&term{find: "host branch", kind: proseTerm})
+	ix.add(&term{find: "recovery identity", kind: proseTerm})
+	for s, want := range map[string]bool{
+		"a host branch.":                true,
+		"Host Branches":                 true,
+		"the host\n  branches":          true,
+		"host branchs":                  true,
+		"the host branch's file":        true,
+		"the host branch’s file":        true,
+		"the recovery identity's key":   true,
+		"host-branch":                   false,
+		"a host branchy word":           false,
+		"host branches_x":               false,
+		"subhost branch":                false,
+		"the host branchesque thing":    false,
+		"the recovery identityless one": false,
+	} {
+		got := hasPhrase(s, ix.terms[0].re) || hasPhrase(s, ix.terms[1].re)
+		if got != want {
+			t.Errorf("%q: %v, want %v", s, got, want)
 		}
 	}
 }

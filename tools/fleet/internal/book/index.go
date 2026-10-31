@@ -22,9 +22,9 @@ const symbols = "Symbols"
 
 // The kinds of term, which are looked for differently.
 const (
-	proseTerm   = iota // as a phrase in the text, in any case
-	codeTerm           // as written, in code or not
-	commandTerm        // as code, the longer commands first
+	proseTerm   = iota // as a phrase in the text, in any case, outside code
+	codeTerm           // as written, in code, once the commands are out of it
+	commandTerm        // as written, in code, the longer commands first
 )
 
 type term struct {
@@ -135,7 +135,9 @@ func (ix *indexer) add(t *term) {
 		for i, w := range words {
 			words[i] = regexp.QuoteMeta(w)
 		}
-		t.re = regexp.MustCompile(`(?i)` + strings.Join(words, `\s+`))
+		// Its last word may be plural or possessive: host branches, the
+		// recovery identity's.
+		t.re = regexp.MustCompile(`(?i)` + strings.Join(words, `\s+`) + `(?:es|s|'s|’s)?`)
 	}
 	ix.byKey[key] = t
 	ix.terms = append(ix.terms, t)
@@ -287,24 +289,64 @@ func (ix *indexer) placeOf(target, text string) place {
 type text struct {
 	raw      string          // every line, links as their text
 	prose    string          // outside code, without backticks or commands
-	commands map[string]bool // the commands it names
+	code     string          // fenced code and what is in code spans, without commands
+	commands map[string]bool // the commands its code names
 }
 
 func (ix *indexer) textOf(s *section) text {
-	var raw, prose []string
+	var raw, prose, code, para []string
+	// Code spans are found a paragraph at a time, as one may go on to the
+	// next line.
+	spans := func() {
+		code = append(code, codeSpans(strings.Join(para, "\n"))...)
+		para = nil
+	}
 	for i, l := range s.lines {
 		if s.code[i] {
+			spans()
 			raw = append(raw, l)
+			code = append(code, l)
 			continue
+		}
+		if strings.TrimSpace(l) == "" {
+			spans()
+		} else {
+			para = append(para, l)
 		}
 		l = linkText(l)
 		raw = append(raw, l)
 		prose = append(prose, strings.ReplaceAll(l, "`", ""))
 	}
+	spans()
 	t := text{raw: strings.Join(raw, "\n")}
-	_, t.commands = ix.blankCommands(t.raw)
+	t.code, t.commands = ix.blankCommands(strings.Join(code, "\n"))
 	t.prose, _ = ix.blankCommands(strings.Join(prose, "\n"))
 	return t
+}
+
+// codeSpans is what the code spans of a paragraph hold, each on a line of
+// its own.
+func codeSpans(s string) []string {
+	var spans []string
+	b := []byte(s)
+	for i := 0; i < len(b); {
+		if b[i] != '`' {
+			i++
+			continue
+		}
+		n := 0
+		for i+n < len(b) && b[i+n] == '`' {
+			n++
+		}
+		end := closingRun(b, i+n, n)
+		if end < 0 {
+			i += n
+			continue
+		}
+		spans = append(spans, strings.ReplaceAll(s[i+n:end], "\n", " "))
+		i = end + n
+	}
+	return spans
 }
 
 // blankCommands finds the commands in a text, the longer first, and blanks
@@ -380,7 +422,7 @@ func (t *term) mentions(s *section, tx text) bool {
 	case commandTerm:
 		return tx.commands[t.find]
 	}
-	if codeAt(tx.raw, t.find, 0) >= 0 {
+	if codeAt(tx.code, t.find, 0) >= 0 {
 		return true
 	}
 	for _, c := range t.coded {
