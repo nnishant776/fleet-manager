@@ -177,7 +177,41 @@
       };
     };
 
-    logs.lokiUrl = lib.mkOption {
+    personal = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          A host handed out to one person. At first boot the console asks for a
+          username, a name and a password and creates that account; nobody has
+          to set it up beforehand. The owner manages their own account and
+          their network (Wi-Fi through NetworkManager, its passwords kept on the
+          machine), not the host's secrets. The maintainer keeps updating the
+          system, through signed commits as on any fleet host, and keeps the
+          support account.
+
+          What it gives up: accounts become mutable on this host
+          (`users.mutableUsers`), so a password declared in the configuration
+          applies only when an account is created, and an account made by hand
+          stays. The owner's account is not in the inventory until the
+          maintainer adopts it. Needs `conf.networking.backend =
+          "networkmanager"`. NixOS only.
+        '';
+      };
+      ownerPrivileged = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          Make the owner an administrator: the account can use sudo and change
+          the network freely. It then has root and can change anything on the
+          machine, support access included, which every sync repairs. With
+          `false` the owner gets an ordinary account that can only join and
+          switch networks, as an unprivileged `conf.users` account does.
+        '';
+      };
+    };
+
+    logs.lokiUrl =lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
       example = "http://loki.lan:3100/loki/api/v1/push";

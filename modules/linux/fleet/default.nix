@@ -8,5 +8,6 @@
     ./sync-status.nix
     ./sync-now.nix
     ./safe-directory.nix
+    ./personal.nix
   ];
 }
