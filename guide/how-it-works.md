@@ -5,6 +5,9 @@ git, on a timer, and take only commits a trusted key signed. Nothing is pushed
 to a machine: each one pulls, checks, builds and activates by itself, and says
 so when it cannot.
 
+This chapter is the map. Each section names the chapter that has the detail,
+and the [Glossary](glossary.md) defines the terms it uses.
+
 ## The pieces
 
 ```mermaid
@@ -60,7 +63,7 @@ once, under `modules/linux/`, `modules/darwin/` or `modules/common/`, behind
 its own `mkIf`, so turning an option on in a host is all it takes. Each account
 in `conf.users.accounts` gets a Home Manager home assembled from the baseline in
 `modules/user/` and the user's own folder ([Accounts and homes](accounts.md)).
-Every option is in the [configuration reference](configuration.md).
+Every option is in the [Configuration reference](configuration.md).
 
 ## What a NixOS host does at each sync
 

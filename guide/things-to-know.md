@@ -1,6 +1,10 @@
 # Things to know
 
-Behaviour that surprises people, by area.
+Behaviour that surprises people, by area. Caveats that belong to one subject
+are in its chapter: the sync's in [How it works](how-it-works.md), the
+accounts' in [Accounts and homes](accounts.md).
+
+## The flake
 
 **New files must be added to git.** Flakes only see files git knows about, so a
 new `users/<name>/default.nix` or module is silently ignored until it is at least
@@ -10,10 +14,20 @@ new `users/<name>/default.nix` or module is silently ignored until it is at leas
 hostname.** An assertion enforces the first part. The reason for the second is
 that `nixos-rebuild` with no arguments resolves `#$(hostname)`.
 
+**System outputs must evaluate without `--impure`.** `nix run .#check-purity`
+enforces it. Reading machine state during evaluation, such as `/etc/os-release`,
+describes the builder rather than the target and breaks automated rebuilds. Use
+`conf.platform` instead. `home-switch` does need `--impure`, because a user's own
+configuration lives outside the flake.
+
+## macOS
+
 **A Linux-only toggle set on a Mac does nothing.** The `conf.*` vocabulary is
 declared on both platforms; a platform implements what it can and ignores the
 rest. `conf.desktop`, `conf.sharing`, `conf.networking`, `conf.flatpak` and
 `conf.fleet` have no Darwin implementation today.
+
+## Hardening and auditing
 
 **Hardened defaults are defaults.** Every Linux host gets a kernel and service
 posture from `modules/linux/baseline/` and the concern modules. Most are
@@ -38,12 +52,6 @@ behaviour on a Mac that MDM manages is confirmed, since MDM may manage the same
 settings. FileVault, Gatekeeper, SIP and the screen lock stay with MDM;
 nix-darwin can set the screen lock for one user only.
 
-**System outputs must evaluate without `--impure`.** `nix run .#check-purity`
-enforces it. Reading machine state during evaluation, such as `/etc/os-release`,
-describes the builder rather than the target and breaks automated rebuilds. Use
-`conf.platform` instead. `home-switch` does need `--impure`, because a user's own
-configuration lives outside the flake.
-
 **Every Linux host audits.** `auditd` records commands run as root by a
 logged-in person, and writes to the configuration checkout, the system
 profiles, `/etc/passwd`, `shadow`, `group` and `sudoers`, `/etc/ssh` and, where Flatpak is on, `/var/lib/flatpak`.
@@ -57,6 +65,8 @@ and on `loginctl lock-session`. Shells such as DMS, Noctalia and Caelestia
 handle idle themselves and are left alone. A user with sudo can mask the unit;
 that is for attestation to notice, not for the unit to prevent.
 
+## Desktops and virtual machines
+
 **X11 sessions need `services.xserver.enable`.** The greeter is only given the X
 session directory and launch wrapper when an X server is configured. None of the
 environments offered here currently provides an X11 session.
@@ -67,6 +77,8 @@ hardware-accelerated VMs through `qemu:///session`, plain `qemu`, or
 `libvirtd` allows defining a VM with host disk passthrough, which is equivalent
 to reading any file on the host as root, so it is only granted to privileged
 users.
+
+## Installs
 
 **Installing from a working tree with uncommitted changes cannot pin the
 checkout.** A committed flake passes its revision to the installed system,

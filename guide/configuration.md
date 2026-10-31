@@ -1,13 +1,16 @@
 # Configuration reference
 
-Every `conf.*` option, by concern. The longer explanations are on their own pages: [accounts and homes](accounts.md), [networking](networking.md), [secrets](secrets.md) and [roles](roles.md).
+Every `conf.*` option, by concern, to look things up in. The explanations are
+in the chapters: [Roles and machine types](roles.md),
+[Accounts and homes](accounts.md), [Networking](networking.md) and
+[Secrets](secrets.md).
 
 ## `conf.role`, `conf.machineType`, `conf.platform`
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `role` | enum: `minimal`/`server`/`workstation`/`developer`/`gaming`/`embedded` | `"minimal"` | What the machine is for. See [Roles](roles.md) |
-| `machineType` | enum: `laptop`/`desktop`/`headless`/`vm` | `headless` for server, minimal and embedded, else `desktop` | What the machine physically is. See [Machine types](roles.md#machine-types). Deduced from the role; overridable |
+| `role` | enum: `minimal`/`server`/`workstation`/`developer`/`gaming`/`embedded` | `"minimal"` | What the machine is for. See [Roles](roles.md#roles) in *Roles and machine types* |
+| `machineType` | enum: `laptop`/`desktop`/`headless`/`vm` | `headless` for server, minimal and embedded, else `desktop` | What the machine physically is. See [Machine types](roles.md#machine-types) in *Roles and machine types*. Deduced from the role; overridable |
 | `platform` | enum: `nixos`/`darwin`/`system-manager` | *(set by mkHost)* | Read-only. A host that sets it fails evaluation |
 
 ## `conf.host`
@@ -35,11 +38,11 @@ Each entry in `conf.users.accounts` takes these fields:
 | `groups` | listOf str | `[]` | Extra groups. Privilege-granting groups are rejected here. NixOS only. With SSH sharing on, an unprivileged account needs `ssh-users` here to log in over SSH |
 | `initialHashedPassword` | nullOr str | `null` | Password hash applied when the account is created, `mkpasswd -m yescrypt` format. `null` creates it locked. On a host with `conf.secrets.repo.url` the hash comes from the secrets repository instead. NixOS only |
 | `sshKeys` | listOf str | `[]` | SSH public keys accepted for this account. On a host with `conf.secrets.repo.url`, listing any here is an error: the keys go in the account's file (`secrets.authorizedKeys`). NixOS only |
-| `sudoSshKeys` | listOf str | `[]` | SSH public keys that unlock sudo for this privileged account instead of its password. Not the same as `sshKeys`. Listing keys on an unprivileged account is an error. On a host with `conf.secrets.repo.url`, listing any here is an error: the keys go in the account's file (`secrets.sudoKeys`). NixOS only. See [Sudo with an SSH key](accounts.md#sudo-with-an-ssh-key) |
+| `sudoSshKeys` | listOf str | `[]` | SSH public keys that unlock sudo for this privileged account instead of its password. Not the same as `sshKeys`. Listing keys on an unprivileged account is an error. On a host with `conf.secrets.repo.url`, listing any here is an error: the keys go in the account's file (`secrets.sudoKeys`). NixOS only. See [Sudo with an SSH key](accounts.md#sudo-with-an-ssh-key) in *Accounts and homes* |
 | `secrets.password` | bool | `true` | Take the account's password hash from `users/<name>/<host>.yaml` in the secrets repository. Ignored on a host without `conf.secrets.repo.url`; setting `initialHashedPassword` as well is an error on an opted-in host |
 | `secrets.sshKey` | bool | `false` | Deploy a per-host SSH key from the same file to `/run/secrets/users/<name>/ssh_key`. Can be turned on any time after the account exists. Ignored on a host without `conf.secrets.repo.url`. NixOS only. Also deploys `ssh_key.pub` (mode 0400, as all of a user's secrets), and the key becomes the user's default SSH identity and git signing key |
 | `secrets.authorizedKeys` | bool | `false` | Accept the SSH public keys in `users/<name>/<host>.yaml` (`authorized_keys`, one per line) for this account's login, instead of `sshKeys`, which a host with secrets may not use. sshd reads them from `/run/secrets/users/<name>/authorized_keys` at each login, so changing them needs no rebuild. Ignored on a host without `conf.secrets.repo.url`. NixOS only. See [Secrets](secrets.md) |
-| `secrets.sudoKeys` | bool | `false` | Accept the SSH public keys in the same file (`sudo_keys`, one per line) to unlock sudo for this privileged account, besides `sudoSshKeys`. On an unprivileged account it is an error. Ignored on a host without `conf.secrets.repo.url`. NixOS only. See [Sudo with an SSH key](accounts.md#sudo-with-an-ssh-key) |
+| `secrets.sudoKeys` | bool | `false` | Accept the SSH public keys in the same file (`sudo_keys`, one per line) to unlock sudo for this privileged account, besides `sudoSshKeys`. On an unprivileged account it is an error. Ignored on a host without `conf.secrets.repo.url`. NixOS only. See [Sudo with an SSH key](accounts.md#sudo-with-an-ssh-key) in *Accounts and homes* |
 | `secrets.own` | bool | `false` | Decrypt the account's whole file, `users/<name>/<host>.yaml`, to `/run/secrets/users/<name>/all`, readable by the account alone (mode 0400), and install `fleet-user-secret`, which prints one of the secrets the user keeps in it (`secrets.<name>`, stored with `fleet user secret set`). For a user with a branch of their own. Ignored on a host without `conf.secrets.repo.url`. NixOS only. See [Secrets](secrets.md) |
 | `selfManagedHome` | bool | `false` | This user manages their own home instead of the system doing it |
 | `manageAccount` | nullOr bool | `null` | Whether the account itself is created here. `null` means true on Linux and false on macOS. `false` is an error on Linux. On macOS, `true` puts the account on nix-darwin's delete list, so removing it from `accounts` deletes the macOS account at the next switch |
@@ -239,13 +242,13 @@ default `""`); no module reads them yet.
 | `fleet.autoUpdate.resetLocalChanges` | bool | `true` | Discard local edits and local branches in the checkout before building |
 | `fleet.logs.lokiUrl` | nullOr str | `null` | Push URL of the fleet's Loki (`http://loki.lan:3100/loki/api/v1/push`). When set, Grafana Alloy sends the journal there, audit records included, labelled `host`, `unit`, `level` and `transport` |
 | `fleet.autoUpdate.rollbackOnFailure` | bool | `true` | Return to the previous generation if activation fails |
-| `fleet.personal.enable` | bool | `false` | A host handed out to one person, who makes their own account at the first boot. Accounts become mutable. See [Personal machines](accounts.md#personal-machines). Needs the NetworkManager backend; NixOS only |
+| `fleet.personal.enable` | bool | `false` | A host handed out to one person, who makes their own account at the first boot. Accounts become mutable. See [Personal machines](accounts.md#personal-machines) in *Accounts and homes*. Needs the NetworkManager backend; NixOS only |
 | `fleet.personal.ownerPrivileged` | bool | `true` | Make the owner an administrator, with root. `false` gives an ordinary account that can only join and switch networks |
 
 Point a canary group of machines at one `ref` and the rest at another, then
 promote a release by moving the slower ref.
 
-Personal machines are explained in [Accounts and homes](accounts.md#personal-machines).
+Personal machines are explained under [Personal machines](accounts.md#personal-machines) in *Accounts and homes*.
 
 ## `conf.secrets`
 
