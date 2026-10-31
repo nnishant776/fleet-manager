@@ -1,25 +1,36 @@
 # A private fleet
 
-A real fleet keeps its hosts and users in a private repository, the inventory, which pins fleet-manager and builds them with `lib.mkFleet`.
+How a fleet keeps its hosts and users in a private repository, the inventory,
+and works with it from day to day.
 
 ## Setting one up
 
-The hosts in `hosts/` here are examples and test hosts, and they keep working
-as they are. A real fleet can keep its hosts and users in a private repository
-instead. That repository pins this one and builds its hosts with
-`lib.mkFleet`:
+The hosts in fleet-manager's `hosts/` are examples and test hosts, and they
+keep working as they are. A real fleet can keep its hosts and users in a
+private repository instead. That repository pins fleet-manager and builds its
+hosts with `lib.mkFleet`:
 
 ```nix
 {
   inputs.fleet-manager.url = "git+https://github.com/nnishant776/fleet-manager";
   outputs = { self, fleet-manager }: fleet-manager.lib.mkFleet {
     inherit self;
-    hosts = ./config/hosts;             # one folder per host, as hosts/ here
-    users = ./config/users;             # optional, as users/ here
+    hosts = ./config/hosts;             # one folder per host, as hosts/ in fleet-manager
+    users = ./config/users;             # optional, as users/ in fleet-manager
     extraSystems = [ "x86_64-linux" ];  # the apps where you and CI run them
     hostBranches = true;                # each host fetches only its own files (below)
   };
 }
+```
+
+The inventory then looks like this:
+
+```
+flake.nix               pins fleet-manager, and builds config/ with lib.mkFleet
+flake.lock              the exact fleet-manager, and so nixpkgs, the hosts build with
+config/hosts/<host>/    one folder per machine
+config/users/<user>/    optional per-user configuration (configuration only)
+fleet/allowed_signers   the keys whose signed commits the hosts accept
 ```
 
 Its machines deploy from the private repository: each records that
@@ -28,6 +39,11 @@ configuration names, and builds with the fleet-manager its `flake.lock` pins.
 Moving to a newer fleet-manager is a signed commit there that updates the
 lock. A host's folder works the same there; only the path to a signers file
 changes with the depth, as in `../../../fleet/allowed_signers`.
+
+Passwords and keys are not kept in the inventory; they are in the
+[secrets repository](secrets.md). On a host with secrets, SSH login and sudo
+keys come from there only, so the only key material in the inventory is
+`fleet/allowed_signers`.
 
 Your signature on that commit vouches for the fleet-manager it pins, so pin a
 commit whose signature you have checked, by its hash. Check it in a
@@ -44,6 +60,11 @@ nix flake lock --override-input fleet-manager \
 The input is `git+https://`, not `github:`. With git, the files Nix gets are
 the ones the commit's hash names. A `github:` input is a tarball that GitHub
 makes, and nothing checks it against the commit.
+
+Give the tools a clone of the inventory of their own, with `fleet repo add`
+([The tools' own clones](signing-and-trust.md#the-tools-own-clones)). The
+commands below then take its name for `--flake`, such as `--flake inventory`;
+a path to a checkout works as well.
 
 ## The configuration key
 
@@ -93,8 +114,27 @@ its configuration key to fetch the other branches, since GitHub's deploy keys
 cannot be limited to a branch.
 
 To sync a host right away, instead of at its next sync, run
-`fleet host sync <host>`; `fleet inventory publish --flake <checkout> --sync`
-publishes and then syncs every host whose branch changed.
+`fleet host sync <host>`: it starts the host's sync, waits, and shows what the
+host runs, its secrets and its health.
+`fleet inventory publish --flake <checkout> --sync` publishes and then syncs
+every host whose branch changed, one after another, and checks that each runs
+the commit just pushed.
+
+## What a host fetches
+
+Its own branch of the inventory, `host/<host>`, and its own branch `host/<host>`
+in the secrets repository, plus the branches `user/<u>` there of the users its
+secrets file lists. It verifies the newest commit of each against
+`fleet/allowed_signers` of the configuration it runs, and a user's branch also
+against that user's own key. It builds with the fleet-manager that
+`flake.lock` pins, by its hash.
+
+## Its own CI
+
+fleet-manager's CI evaluates only its own example and test hosts, and never
+sees an inventory's. So the inventory needs a check of its own:
+`nix run .#check-purity` evaluates every host, and CI should run it on every
+push and pull request.
 
 ## Moving to a newer fleet-manager
 
@@ -103,32 +143,59 @@ commit of fleet-manager in its `flake.lock`. To move it, run
 `fleet inventory pin --flake inventory` (the name of the clone, or a checkout),
 then publish as above. It takes fleet-manager's newest main, or the commit
 you give with `--to`, only if a key you trust signed it. It shows the commits
-the pin moves over, locks the new commit, and checks that every host still
-evaluates. Then it commits `flake.lock`, signed, and pushes it once you
-approve. Hosts take the new fleet-manager when you publish.
+the pin moves over, and pins only if each is signed by a key you trust. It
+evaluates every host before and after, and names the hosts whose system
+changes. Then it commits `flake.lock`, signed, and pushes it once you
+approve. Hosts take the new fleet-manager when you publish, not with the
+commit on main. `publish`, `install prep` and `host enroll` check the pin the
+same way, so an unsigned or older commit is never pinned by mistake.
 
 ## Installing a host from it
 
-Run `fleet install prep <host> --flake
-<checkout of it>` on your machine, and the line it prints on the installer
+Run `fleet install prep <host> --flake <checkout of it>` on your machine, and
+the line it prints on the installer
 (see [First run](../README.md#first-run)). It sets
 `FLAKE=git+ssh://git@github.com/example-org/inventory?ref=host/<host>&rev=<commit>`,
 and `os-install` installs exactly that commit of the host's branch. With
 host branches, prep also checks that the branch was published from main's
 newest commit. `os-install --flake git+ssh://…?ref=…&rev=<commit> -H <host>`
-does the same by hand. The host can't read the
-repository yet, so the identity comes first. The install shows the
-enrollment file and waits while you enroll the host and register both of its
-keys. Then it clones the private flake with the configuration key and
-installs. The diagram under
-[Installing a machine](installing.md) shows what moves where.
+does the same by hand. An install of a private host without the pins is
+refused. The diagram under
+[Installing a machine](installing.md#enrolling-during-the-install) shows what
+moves where.
+
+The host can't read the repository before it is enrolled, so the install does
+things in this order:
+
+1. It makes the host's identity, in memory, and shows the enrollment file and
+   a QR code of it.
+2. On your machine, in the secrets repository, set up what the host needs
+   before it boots:
+   - `fleet secrets host-enroll <host> --from <the file>` (does not push);
+   - support's keys, `fleet secrets user-keys support <host>
+     --authorized-keys support.keys` (pushes). Without them the host has no
+     way in until they are added and it syncs;
+   - each user's password, `fleet secrets user-password <user> <host>` (does
+     not push);
+   - then push the host's branch: `git push origin host/<host>`.
+
+   Register the host's deploy key read-only on the secrets repository, and its
+   configuration key read-only on the inventory.
+3. Back at the machine, press Enter. It clones the inventory with the new
+   key and installs. The identity goes onto the new disk.
+
+The whole flow, step by step, is under
+[Onboarding a machine](secrets-runbooks.md#onboarding-a-machine).
+
+The Raspberry Pi card (`rpi-image`) does not set a private host up by itself
+yet. Bring a Pi in once it runs, as in the next section.
 
 ## Bringing in a running NixOS machine
 
-Add its folder
-there, push, publish its branch, then run `fleet host enroll <host> --flake
-<checkout of it>`. For a machine that does not run a fleet configuration
-yet, enroll does this in order:
+Add its folder to the inventory, push, publish its branch, then run
+`fleet host enroll <host> --flake <checkout of it>`. For a machine that does
+not run a fleet configuration yet, enroll does this in order:
+
 1. Checks the commit to install, as `fleet install prep` does.
 2. Makes the host's identity with `fleet-secrets-sync` from the checked
    fleet-manager commit.
@@ -147,6 +214,7 @@ yet, enroll does this in order:
 
 The configuration has to describe the machine as it is, since nothing is
 reinstalled:
+
 - `conf.hardware.disk.enable = false` and the machine's own
   `hardware-configuration.nix`, from the machine. Copy it into the host's
   folder before you enroll, since `/etc/nixos` is deleted after the switch;
@@ -167,13 +235,15 @@ A host that fleet-manager defines already moves into an inventory with
 folder and its users' folders from a commit of fleet-manager, changes only
 the path to `fleet/allowed_signers` and the address the host fetches from,
 checks the host in the inventory, commits, pushes and publishes its branch.
-It ends by listing the commands that finish the move: `fleet host enroll`,
-`fleet host check`, and removing the host from fleet-manager.
+It refuses a host without secrets, and says what to set in fleet-manager
+first. It ends by listing the commands that finish the move:
+`fleet host enroll`, `fleet host check`, and removing the host from
+fleet-manager.
 
 ## Moving a running host to it
 
-1. Copy the host's folder there, with `repo.url` set to the private
-   repository's SSH address, and push. With host branches, publish its
+1. Copy the host's folder to the inventory, with `repo.url` set to the
+   inventory's SSH address, and push. With host branches, publish its
    branch too: `fleet inventory publish <host> --flake <checkout of it>`.
 2. Run `fleet host enroll <host> --flake <checkout of it>`. It sees that
    the host runs a configuration from another repository, and:
@@ -187,7 +257,7 @@ It ends by listing the commands that finish the move: `fleet host enroll`,
    6. syncs the host and runs `fleet host check`, unless `--sync=false`.
 
    The first-boot clone records the commit it checks out as the first the
-   host accepted from there, so the sync goes on from it. Nothing in this
-   repository names the private one; the host learns it from the
+   host accepted from there, so the sync goes on from it. Nothing in
+   fleet-manager names the private repository; the host learns it from the
    configuration it switches to.
-3. Delete the host's folder here.
+3. Delete the host's folder from the repository it came from.
