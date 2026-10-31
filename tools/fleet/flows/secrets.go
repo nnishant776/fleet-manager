@@ -181,16 +181,25 @@ var SecretsHostRetire = &engine.Flow{
 
 func userFile() string { return "users/{{.user}}/{{.host}}.yaml" }
 
+// shadowHash is what a password hash looks like, the same as the host's check
+// of the secrets it applies (lib/secrets-sync.nix): $id$…, or ! and the like
+// for a locked account.
+const shadowHash = `^(\$[0-9a-z]+\$[^[:space:]]+|![^[:space:]]*)$`
+
 // SecretsUserPassword sets a user's password on a host.
 var SecretsUserPassword = &engine.Flow{
 	Path:    []string{"secrets", "user-password"},
 	Title:   "Set a user's password on a host",
 	Short:   "Set the user's password on that host",
-	Long:    "Hashes the password (yescrypt) and stores the hash in users/<user>/<host>.yaml on the host's\nbranch, host/<host>, encrypted to that host and your recovery recipient. Hosts apply it at every\nactivation. For a user the host's file lists (fleet secrets user-enroll) it works on the user's branch,\nuser/<user>, instead, and a new file is encrypted to the user too. Push the branch after.",
-	Example: "  fleet secrets user-password alice laptop1\n  printf %s \"$pw\" | fleet secrets user-password alice laptop1 --password-stdin --yes",
+	Long:    "Hashes the password (yescrypt) and stores the hash in users/<user>/<host>.yaml on the host's\nbranch, host/<host>, encrypted to that host and your recovery recipient. Hosts apply it at every\nactivation. For a user the host's file lists (fleet secrets user-enroll) it works on the user's branch,\nuser/<user>, instead, and a new file is encrypted to the user too. Push the branch after.\n--hash-stdin reads a hash that exists already (as /etc/shadow has it: $y$…, $6$…) from standard input and\nstores it as it is, instead of hashing a password; the person keeps the password they have.",
+	Example: "  fleet secrets user-password alice laptop1\n  printf %s \"$pw\" | fleet secrets user-password alice laptop1 --password-stdin --yes\n  printf %s \"$hash\" | fleet secrets user-password alice laptop1 --hash-stdin --yes",
 	Args:    []string{"user", "host"},
 	Inputs: []engine.Input{secrets.RepoInput, secrets.RecoveryInput, secrets.UserName(), knownHost(),
-		{Name: "password", Prompt: "Password for {{.user}}", Help: "Hidden as you type", Secret: true, Twice: true}},
+		// Not asked for: only --hash-stdin gives it. It comes before the
+		// password, which is left out when a hash is given.
+		{Name: "hash", Prompt: "Password hash", Help: "A password hash as /etc/shadow has it, such as $y$… or $6$…", Secret: true, Optional: true, Pattern: shadowHash},
+		{Name: "password", Prompt: "Password for {{.user}}", Help: "Hidden as you type", Secret: true, Twice: true,
+			Skip: func(x *engine.Ctx) bool { return x.Value("hash") != "" }}},
 	Needs: []string{"git", "yq", "sops", "age", "mkpasswd"},
 	Steps: []engine.Step{
 		secrets.Open(true),
@@ -200,6 +209,12 @@ var SecretsUserPassword = &engine.Flow{
 		{
 			Title: "Hash the password",
 			Why:   "Only the yescrypt hash is stored; the password itself goes nowhere.",
+			When: func(x *engine.Ctx) (bool, string) {
+				if x.Value("hash") != "" {
+					return false, "a hash was given with --hash-stdin; it is stored as it is"
+				}
+				return true, ""
+			},
 			Do: engine.Cmd("mkpasswd", "-m", "yescrypt", "--stdin").ReadOnly().
 				StdinFrom("password").StdinNote("the password").CaptureSecret("hash").OK("hashed"),
 		},

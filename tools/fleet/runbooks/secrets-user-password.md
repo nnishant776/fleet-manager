@@ -8,12 +8,15 @@ Hashes the password (yescrypt) and stores the hash in users/\<user>/\<host>.yaml
 branch, host/\<host>, encrypted to that host and your recovery recipient. Hosts apply it at every
 activation. For a user the host's file lists (fleet secrets user-enroll) it works on the user's branch,
 user/\<user>, instead, and a new file is encrypted to the user too. Push the branch after.
+--hash-stdin reads a hash that exists already (as /etc/shadow has it: $y$…, $6$…) from standard input and
+stores it as it is, instead of hashing a password; the person keeps the password they have.
 
 ```
 fleet secrets user-password [USER] [HOST] [flags]
 
 fleet secrets user-password alice laptop1
 printf %s "$pw" | fleet secrets user-password alice laptop1 --password-stdin --yes
+printf %s "$hash" | fleet secrets user-password alice laptop1 --hash-stdin --yes
 ```
 
 ## Flags
@@ -24,6 +27,7 @@ printf %s "$pw" | fleet secrets user-password alice laptop1 --password-stdin --y
 | `--recovery` | Your passphrase-encrypted age identity (age -p). Empty: sops uses SOPS_AGE_KEY_FILE or SOPS_AGE_KEY |
 | `--user` | The user's name: lowercase letters, digits and '-' |
 | `--host` | The host's name: lowercase letters, digits and '-' |
+| `--hash-stdin` | read the hash from standard input, instead of being asked. A password hash as /etc/shadow has it, such as $y$… or $6$… |
 | `--password-stdin` | read the password from standard input, instead of being asked. Hidden as you type |
 
 Every command also takes `--dry-run` (show every step and command; look, but
