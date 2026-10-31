@@ -1204,9 +1204,39 @@ default `""`); no module reads them yet.
 | `fleet.autoUpdate.resetLocalChanges` | bool | `true` | Discard local edits and local branches in the checkout before building |
 | `fleet.logs.lokiUrl` | nullOr str | `null` | Push URL of the fleet's Loki (`http://loki.lan:3100/loki/api/v1/push`). When set, Grafana Alloy sends the journal there, audit records included, labelled `host`, `unit`, `level` and `transport` |
 | `fleet.autoUpdate.rollbackOnFailure` | bool | `true` | Return to the previous generation if activation fails |
+| `fleet.personal.enable` | bool | `false` | A host handed out to one person, who makes their own account at the first boot. Accounts become mutable. See [Personal machines](#personal-machines). Needs the NetworkManager backend; NixOS only |
+| `fleet.personal.ownerPrivileged` | bool | `true` | Make the owner an administrator, with root. `false` gives an ordinary account that can only join and switch networks |
 
 Point a canary group of machines at one `ref` and the rest at another, then
 promote a release by moving the slower ref.
+
+#### Personal machines
+
+A personal machine is handed out to one person, who makes their own account at
+the first boot, with no help from the maintainer. Set
+`conf.fleet.personal.enable = true` on a host that has `conf.fleet.repo.url`.
+
+At the first boot the console shows a short setup instead of the login prompt.
+It says what the machine is, offers to join a Wi-Fi network if there is none,
+and asks for a username, a full name and a password (twice). It makes the
+account, writes the name to `/var/lib/fleet/owner`, and the login prompt
+follows. It does not run again, after a reboot or a sync.
+
+The owner manages their own account and their network: Wi-Fi goes through
+NetworkManager, and the passwords stay on the machine. The owner does not manage
+the host's secrets. The maintainer keeps the system updated, through signed
+commits as on any fleet host, and keeps the support account. By default the
+owner is an administrator (`ownerPrivileged`), which means the account has root
+and can change anything on the machine, support access included; every sync
+repairs it. With `ownerPrivileged = false` the owner has an ordinary account
+that can join and switch networks and nothing more.
+
+Accounts on a personal machine are mutable: a password declared in the
+configuration applies only when its account is created, and an account made by
+hand stays. SSH logins of accounts the configuration declares still use only
+their keys from the secrets repository; the owner's account also reads
+`~/.ssh/authorized_keys`. The owner's account is not in the inventory. Later the
+maintainer can adopt the owner into it; that is a separate step.
 
 ### `conf.secrets`
 
