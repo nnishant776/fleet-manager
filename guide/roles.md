@@ -1,5 +1,13 @@
 # Roles and machine types
 
+Two options decide most of a machine's defaults: `conf.role`, what it is for,
+and `conf.machineType`, what it physically is. This chapter lists what each
+sets, the defaults worked out from other options, what turning an option on
+brings with it, and how a host overrides any of it. Every option itself is in
+the [Configuration reference](configuration.md).
+
+## Roles
+
 A role is what the machine is for. Every value it sets uses `lib.mkDefault`, so
 a plain assignment in a host configuration always wins without any special
 syntax. Roles inherit from one another using `lib.recursiveUpdate`; `developer`

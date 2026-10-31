@@ -1,6 +1,12 @@
 # Accounts and homes
 
-Accounts, sudo with an SSH key, homes, and personal machines whose owner makes their own account.
+Who can log in, and how their homes are built: sudo with an SSH key instead of
+a password, how a user's home is assembled, personal machines whose owner
+makes their own account at the first boot, and what to know about accounts on
+NixOS and macOS. The account options are under
+[`conf.users`](configuration.md#confusers) in *Configuration reference*. On a
+host with secrets, passwords and keys come from the secrets repository, as
+[Secrets](secrets.md) explains.
 
 ## Sudo with an SSH key
 

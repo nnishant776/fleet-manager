@@ -1,6 +1,11 @@
 # Networking
 
-What `conf.networking` does beyond its options table in the [configuration reference](configuration.md).
+What `conf.networking` does beyond its options: the firewall and where a
+host's own rules go, stable interface names, Wi-Fi networks kept on the
+machine with networkd, and hotspots that share the machine's connection. The
+options are under
+[`conf.networking` and `conf.sharing`](configuration.md#confnetworking-and-confsharing)
+in *Configuration reference*.
 
 ## The firewall
 

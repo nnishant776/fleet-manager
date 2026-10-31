@@ -1,10 +1,15 @@
 # Installing a machine
 
-[First run](../README.md#first-run) gives the one command that installs or switches a machine. This page has the rest: checked installs, macOS, `os-install`, the disk layout and enrollment.
+How a machine gets its first system. [First run](../README.md#first-run) in
+the README gives the one command; this chapter has the rest: installing only
+commits you have checked, a Mac, `os-install` and the disk layout it makes,
+adding a disk later, and enrolling a host with secrets while it installs. It
+assumes the overview in [How it works](how-it-works.md); what enrollment is
+for is explained in [Secrets](secrets.md).
 
 ## From checked commits
 
-The `bootstrap` command in [First run](../README.md#first-run) takes whatever `main`
+The `bootstrap` command of the README's [First run](../README.md#first-run) takes whatever `main`
 has at that moment, which anyone who can push could have changed. To install
 only commits whose signatures you have checked, run this on your own machine,
 in a checkout of the configuration:
@@ -17,7 +22,7 @@ It checks that the checkout's newest commit is signed by a key you trust and
 pushed, and so is the fleet-manager commit the installer comes from. The keys
 you trust are your own copy of each repository's `fleet/allowed_signers`, kept
 by `fleet trust signers` (see
-[Signing commits for a fleet](signing-and-trust.md)). Then it prints a line to run on the new machine instead.
+[Signing commits and trusting them](signing-and-trust.md)). Then it prints a line to run on the new machine instead.
 That line fetches `bootstrap` by that commit, checks it against a SHA-256
 worked out on your machine, and runs it with `REV` and `FLAKE` pinned to those
 two commits. Everything after that is fetched with git, by hash. On the
@@ -144,7 +149,7 @@ simply the only method; the TPM option falls through to it at boot.
 ## Enrolling during the install
 
 A host with `conf.secrets.repo.url` also needs to be enrolled, which happens
-during the install (the full flow is in [Secrets runbooks](secrets-runbooks.md#onboarding-a-machine)).
+during the install (the full flow is under [Onboarding a machine](secrets-runbooks.md#onboarding-a-machine) in *Secrets runbooks*).
 After `nixos-install`, `os-install` creates the host's identity under
 `/mnt/var/lib/fleet`, prints the enrollment file and a QR code of it, and
 waits. On the maintainer's machine, `fleet-secrets host-enroll <host> --from
