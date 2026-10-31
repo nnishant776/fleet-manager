@@ -61,6 +61,7 @@ written from the command itself.
 - [1. How it works](how-it-works.md)
   - [The pieces](how-it-works.md#the-pieces)
   - [From `conf.*` to a system](how-it-works.md#from-conf-to-a-system)
+  - [A fleet host up close](how-it-works.md#a-fleet-host-up-close)
   - [Every flow at a glance](how-it-works.md#every-flow-at-a-glance)
   - [A change reaches a host](how-it-works.md#a-change-reaches-a-host)
   - [What a NixOS host does at each sync](how-it-works.md#what-a-nixos-host-does-at-each-sync)

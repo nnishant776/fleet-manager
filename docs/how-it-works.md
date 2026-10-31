@@ -21,6 +21,7 @@ In this chapter:
 
 - [The pieces](#the-pieces)
 - [From `conf.*` to a system](#from-conf-to-a-system)
+- [A fleet host up close](#a-fleet-host-up-close)
 - [Every flow at a glance](#every-flow-at-a-glance)
 - [A change reaches a host](#a-change-reaches-a-host)
 - [What a NixOS host does at each sync](#what-a-nixos-host-does-at-each-sync)
@@ -83,7 +84,7 @@ flowchart TB
     inv -- "its own branch, read-only key" --> host
     sec -- "its own branch and its users' branches" --> host
     up -- "sources and builds" --> host
-    maint -- "SSH as support: check, sync, enroll, adopt" --> host
+    maint -- "SSH: check, sync, secret, key rotation, adopt, enroll" --> host
     owner -- "makes their account at first boot" --> host
     host -- "the journal and audit records" --> loki
     mdm -- "runs bootstrap" --> mac
@@ -146,6 +147,126 @@ its own `mkIf`, so turning an option on in a host is all it takes. Each account
 in `conf.users.accounts` gets a Home Manager home assembled from the baseline in
 `modules/user/` and the user's own folder ([Accounts and homes](accounts.md)).
 Every option is in the [Configuration reference](configuration.md).
+
+## A fleet host up close
+
+The overview shows a host as one box. This is what is inside it: the parts of
+a NixOS fleet host, every flow that configures it, and every flow that
+manages it.
+
+```mermaid
+flowchart TB
+    subgraph outside["Outside the host"]
+        inv[("Configuration<br/>the host's branch")]
+        sec[("Secrets<br/>the host's and its users' branches")]
+        up[("Upstream inputs<br/>and binary caches")]
+        maint["Maintainer's machine<br/>fleet"]
+    end
+    loki[("Log server")]
+    subgraph host["A NixOS fleet host"]
+        timer["config-auto-update.timer<br/>daily; fleet-sync-now at once"]
+        boot["fleet-bootstrap<br/>first boot, or a missing checkout"]
+        ownersetup["fleet-owner-setup<br/>personal machines, on tty1"]
+        sync["config-auto-update<br/>the sync"]
+        state[("/var/lib/fleet<br/>identity, secrets snapshot,<br/>accepted records")]
+        checkout[("/etc/nixos<br/>the checked checkout")]
+        store[("Nix store<br/>system generations")]
+        act["Activation<br/>a switch, or a rollback"]
+        run[("/run/secrets<br/>in memory")]
+        accounts["Accounts, sshd, sudo"]
+        homes["Homes<br/>Home Manager"]
+        status[("/var/lib/fleet-sync<br/>status, user problems")]
+        people["People at the machine<br/>login lines, notifications"]
+        support["support account"]
+        journal[("Journal<br/>with audit records")]
+    end
+
+    timer -- "starts" --> sync
+    sec -- "fetch: signature, no going back" --> sync
+    inv -- "fetch: signature, no going back" --> sync
+    boot -- "secrets first" --> state
+    boot -- "then the clone" --> checkout
+    sync -- "this host's files" --> state
+    sync -- "the verified commit" --> checkout
+    checkout -- "nix build" --> store
+    up -- "inputs by hash, prebuilt paths" --> store
+    store --> act
+    state -- "age key and snapshot" --> act
+    act -- "sops-nix decrypts" --> run
+    act --> accounts
+    act --> homes
+    run -- "password hashes, login and sudo keys" --> accounts
+    ownersetup -- "the owner's account" --> accounts
+    sync -- "why it stopped" --> status
+    status --> people
+    homes -- "a self-managed home behind" --> people
+    sync -- "repairs on a quiet run" --> support
+    maint -- "SSH as support: check, sync, secret, key rotation, adopt" --> support
+    support -- "sudo -n: starts the sync, reads" --> sync
+    maint -- "SSH as an admin: enroll" --> act
+    journal -- "Grafana Alloy" --> loki
+```
+
+### What configures it
+
+- **The first boot.** `fleet-bootstrap` completes the host's identity in
+  `/var/lib/fleet` if a key is missing, syncs the secrets, and only then
+  clones the configuration into `/etc/nixos`, at the commit the system was
+  built from. It runs again whenever the checkout goes missing.
+- **The sync.** The timer starts `config-auto-update` daily, and
+  `fleet-sync-now` or the maintainer's commands start it at once. It fetches
+  the secrets and the configuration, checks each, keeps a snapshot of the
+  host's own secrets in `/var/lib/fleet` and moves `/etc/nixos` to the verified
+  commit. Then it builds the system into the Nix store, with inputs fetched by
+  their hashes and prebuilt paths from the binary caches. Every step is under
+  [What a NixOS host does at each sync](#what-a-nixos-host-does-at-each-sync).
+- **Activation** switches to the new system, or back to the previous
+  generation if the switch fails. It configures the rest:
+  - sops-nix decrypts the snapshot with the host's age key into
+    `/run/secrets`, kept in memory;
+  - accounts are made exactly as the configuration declares, each password
+    from its hash in `/run/secrets` (on a personal machine they stay
+    mutable instead);
+  - sshd reads each account's login keys from
+    `/run/secrets/users/<name>/authorized_keys`, and sudo its keys from
+    `sudo_keys` beside them;
+  - Home Manager activates every home the system manages.
+
+  A run whose system did not change, but whose secrets did, activates the
+  running system again, so the new secrets reach `/run/secrets`.
+- **The owner's setup**, on a personal machine. `fleet-owner-setup` takes tty1
+  at the first boot, before the login prompt, and makes the owner's account. It
+  does not run again once the account exists; see
+  [Personal machines and adoption](#personal-machines-and-adoption).
+
+### What manages it
+
+- **The support account** is the maintainer's way in. On a run that changes
+  nothing, the sync checks that `support` still works, its keys, its sudo rule
+  and sshd, and activates the system again to repair it.
+- **The maintainer's commands** reach the host over SSH:
+
+  | Command | Logs in as | On the host |
+  |---|---|---|
+  | `fleet host check` | `support` | reads the running revision, the checkout, how and when the last sync ended, the timer, the secrets snapshot, `/run/secrets` and failed units; changes nothing |
+  | `fleet host sync` | `support` | starts the sync with `sudo -n systemctl start config-auto-update`, shows its log if it fails, then checks as `host check` does |
+  | `fleet inventory publish --sync` | `support` | the same, for each host whose branch changed |
+  | `fleet host secret --from-host` | `support` | reads a secret's current value with `sudo -n cat`; with `--sync`, starts the sync and checks the secret arrived |
+  | `fleet support-key rotate` | `support`, with the old key, then the new one | starts the sync with each key, and checks the old key is refused |
+  | `fleet host adopt` | `support` | reads the owner's marker, account, password hash (with sudo) and login keys |
+  | `fleet host enroll` | an administrator account, through a one-key agent | makes the host's identity, copies its enrollment file back, switches with `systemd-run nixos-rebuild switch`, replaces `/etc/nixos` and starts the first-boot clone |
+
+- **`fleet-sync-now`** lets a privileged account at the machine start the sync
+  at once, with no `sudo` and no password.
+- **Notices.** When the sync stops on something a person has to fix, it
+  writes why to `/var/lib/fleet-sync/status`. Every shell login prints it; in
+  a graphical session a notification shows it, again each time the file
+  changes; `fleet-sync-status` prints it on demand. Users whose own branch
+  failed a check are listed beside it. A self-managed home that falls behind
+  the system gets a notice of its own.
+- **Logs and audit.** The journal holds the audit records. With a log server
+  named, Grafana Alloy sends the journal there; see
+  [Logs and audit](#logs-and-audit).
 
 ## Every flow at a glance
 
@@ -498,23 +619,12 @@ comparing the fingerprint. `fleet host enroll`, on a machine that does not run
 a fleet configuration yet, logs in as an administrator account instead, as
 described above.
 
-**The commands.**
-
-- `fleet host check` reads, without changing anything, whether the host runs
-  the revision its checkout holds, how its last sync ended and when, what its
-  secrets snapshot holds, and whether any unit failed.
-- `fleet host sync` compares what the host runs with what is published,
-  starts its sync with `sudo`, and shows the sync's log if it fails.
-- `fleet host secret --from-host` reads a secret's current value off the host,
-  to keep it in the secrets.
-- `fleet support-key rotate` makes a new key and adds it next to the old one.
-  It syncs with the old key, tests the new one, removes the old one, syncs
-  again, and checks that the old key is refused.
-- At the machine, a privileged account runs `fleet-sync-now` to sync at once,
-  without sudo or a password.
-
-The commands are in [The fleet tool](fleet-tool.md), with a page each in the
-[runbooks](../tools/fleet/runbooks/README.md).
+**The commands.** What each command does on the host, and as whom, is in the
+table under [What manages it](#what-manages-it). Rotating support's key is the
+one with more steps: `fleet support-key rotate` makes a new key and adds it
+next to the old one, syncs with the old key, tests the new one, removes the old
+one, syncs again, and checks that the old key is refused. The commands are in
+[The fleet tool](fleet-tool.md), with a page each in the [runbooks](../tools/fleet/runbooks/README.md).
 
 ## A newer fleet-manager, CI and releases
 
