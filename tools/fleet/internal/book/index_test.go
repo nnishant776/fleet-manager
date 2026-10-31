@@ -47,34 +47,35 @@ func TestIndexTakesItsTermsFromTheGlossaryTheOptionsAndTheCommands(t *testing.T)
 	if err != nil || len(b.Errors) > 0 {
 		t.Fatal(err, b.Errors)
 	}
-	body := "\n\n" + indexIntro + "\n\n" + strings.Join([]string{
-		"## Symbols\n",
-		"- `~/.ssh`: **[elsewhere](../README.md#keys)**\n",
-		"## C\n",
-		"- `conf.homebrew.brews`: **[A › `conf.homebrew`](configuration.md#confhomebrew)**",
-		"- `conf.homebrew.casks`: **[A › `conf.homebrew`](configuration.md#confhomebrew)**",
-		"- `conf.host.name`: **[A › `conf.host`](configuration.md#confhost)**, [1 › Branches](hosts.md#branches)",
-		"- `conf.users.accounts`: **[A › `conf.users`](configuration.md#confusers)**",
-		"- `conf.users.accounts.<name>.email`: **[A › `conf.users`](configuration.md#confusers)**, [3 › Mail](accounts.md#mail)\n",
-		"## E\n",
-		"- `/etc/nixos`: **[1 › Hosts](hosts.md)**\n",
-		"## F\n",
-		"- `fleet`: **[2 › Tools](tools.md)**, [2 › Help](tools.md#help)",
-		"- fleet host: **[1 › Branches](hosts.md#branches)**, [1 › Hosts](hosts.md)",
-		"- `fleet host check`: **[runbook](../tools/fleet/runbooks/host-check.md)**, [2 › Checking](tools.md#checking)",
-		"- `fleet install`: **[2 › Installing](tools.md#installing)**, [2 › Both](tools.md#both), [2 › Spans](tools.md#spans)",
-		"- `fleet install prep`: **[runbook](../tools/fleet/runbooks/install-prep.md)**, [2 › Installing](tools.md#installing)\n",
-		"## H\n",
-		"- host branch: **[1 › Branches](hosts.md#branches)**, [1 › Hosts](hosts.md), [1 › Plurals](hosts.md#plurals)\n",
-		"## O\n",
-		"- `os-install`: **[B › O](glossary.md#o)**, [1 › Code](hosts.md#code)",
-	}, "\n") + "\n\n" + bottomStart
+	body := "\n\n" + indexIntro + "\n\n" +
+		sectionsStart + "\nIn this chapter: [Symbols](#symbols) · [C](#c) · [E](#e) · [F](#f) · [H](#h) · [O](#o)\n" + sectionsEnd + "\n\n" +
+		strings.Join([]string{
+			"## Symbols\n",
+			"- `~/.ssh`: **[elsewhere](../README.md#keys)**\n",
+			"## C\n",
+			"- `conf.homebrew.brews`: **[A › `conf.homebrew`](configuration.md#confhomebrew)**",
+			"- `conf.homebrew.casks`: **[A › `conf.homebrew`](configuration.md#confhomebrew)**",
+			"- `conf.host.name`: **[A › `conf.host`](configuration.md#confhost)**, [1 › Branches](hosts.md#branches)",
+			"- `conf.users.accounts`: **[A › `conf.users`](configuration.md#confusers)**",
+			"- `conf.users.accounts.<name>.email`: **[A › `conf.users`](configuration.md#confusers)**, [3 › Mail](accounts.md#mail)\n",
+			"## E\n",
+			"- `/etc/nixos`: **[1 › Hosts](hosts.md)**\n",
+			"## F\n",
+			"- `fleet`: **[2 › Tools](tools.md)**, [2 › Help](tools.md#help)",
+			"- fleet host: **[1 › Branches](hosts.md#branches)**, [1 › Hosts](hosts.md)",
+			"- `fleet host check`: **[runbook](../tools/fleet/runbooks/host-check.md)**, [2 › Checking](tools.md#checking)",
+			"- `fleet install`: **[2 › Installing](tools.md#installing)**, [2 › Both](tools.md#both), [2 › Spans](tools.md#spans)",
+			"- `fleet install prep`: **[runbook](../tools/fleet/runbooks/install-prep.md)**, [2 › Installing](tools.md#installing)\n",
+			"## H\n",
+			"- host branch: **[1 › Branches](hosts.md#branches)**, [1 › Hosts](hosts.md), [1 › Plurals](hosts.md#plurals)\n",
+			"## O\n",
+			"- `os-install`: **[B › O](glossary.md#o)**, [1 › Code](hosts.md#code)",
+		}, "\n") + "\n\n" + bottomStart
 	page := b.Pages["index.md"]
 	if !strings.Contains(page, topEnd+body) {
 		t.Errorf("index:\n%s\nwant, after the top:%s", page, body)
 	}
-	if !strings.HasPrefix(page, "# Appendix C. Index\n\n") ||
-		!strings.Contains(page, "\n\nIn this chapter: [Symbols](#symbols) · [C](#c) · [E](#e) · [F](#f) · [H](#h) · [O](#o)\n"+topEnd) {
+	if !strings.HasPrefix(page, "# Appendix C. Index\n\n"+topStart+"\n[← Appendix B. Glossary](glossary.md) · [Contents](README.md)\n"+topEnd+"\n\n") {
 		t.Errorf("index's top:\n%s", page)
 	}
 	// The contents list neither the glossary's letters nor the index's.

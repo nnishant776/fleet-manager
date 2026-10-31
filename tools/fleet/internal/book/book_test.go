@@ -120,9 +120,10 @@ func TestChaptersAreNumberedAcrossPartsAndAppendicesLettered(t *testing.T) {
 func TestEachChapterGetsItsNumberLinksAndSections(t *testing.T) {
 	b := makeBook(t, writeGuide(t, smallBook()))
 	nav := "[← Preface](README.md) · [Contents](README.md) · [2. Second →](second.md)"
-	want := "# 1. First\n\n" + topStart + "\n" + nav + "\n\nIn this chapter:\n\n" +
-		"- [The pieces](#the-pieces)\n- [The pieces](#the-pieces-1)\n" + topEnd + "\n\n" +
-		"The opening.  \n\n## The pieces\n\nText.\n\n```\n## not a section\n<!-- book:top -->\n```\n\n" +
+	want := "# 1. First\n\n" + topStart + "\n" + nav + "\n" + topEnd + "\n\n" +
+		"The opening.  \n\n" +
+		sectionsStart + "\nIn this chapter:\n\n- [The pieces](#the-pieces)\n- [The pieces](#the-pieces-1)\n" + sectionsEnd + "\n\n" +
+		"## The pieces\n\nText.\n\n```\n## not a section\n<!-- book:top -->\n```\n\n" +
 		"### Deeper\n\n## The pieces\n\nMore.\n\n" +
 		bottomStart + "\n---\n\n" + nav + "\n" + bottomEnd + "\n"
 	if got := b.Pages["first.md"]; got != want {
@@ -143,12 +144,14 @@ func TestEachChapterGetsItsNumberLinksAndSections(t *testing.T) {
 		"[← 3. Third](third.md) · [Contents](README.md) · [Appendix B. Words →](words.md)\n") {
 		t.Errorf("reference.md:\n%s", got)
 	}
-	if got := b.Pages["third.md"]; !strings.Contains(got, "- [`conf.*`, and more](#conf-and-more)\n") {
+	// Without an opening, the sections come right after the links.
+	if got := b.Pages["third.md"]; !strings.Contains(got, topEnd+"\n\n"+sectionsStart+"\nIn this chapter:\n\n"+
+		"- [`conf.*`, and more](#conf-and-more)\n"+sectionsEnd+"\n\n## `conf.*`, and more\n") {
 		t.Errorf("third.md:\n%s", got)
 	}
 
 	// Sections of single letters go on one line; the last page has no next.
-	if got := b.Pages["words.md"]; !strings.Contains(got, "\n\nIn this chapter: [A](#a) · [B](#b)\n"+topEnd+"\n") {
+	if got := b.Pages["words.md"]; !strings.Contains(got, topEnd+"\n\n"+sectionsStart+"\nIn this chapter: [A](#a) · [B](#b)\n"+sectionsEnd+"\n\n## A\n") {
 		t.Errorf("words.md:\n%s", got)
 	}
 	if got := b.Pages["index.md"]; !strings.Contains(got, "\n---\n\n[← Appendix B. Words](words.md) · [Contents](README.md)\n"+bottomEnd+"\n") {
@@ -202,9 +205,20 @@ func TestWritingTwiceChangesNothing(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "second.md"), []byte(stale), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// A page written before the sections had a block of their own, with
+	// them in its top block.
+	old := "# 1. First\n\n" + topStart + "\n[← Preface](README.md) · [Contents](README.md) · [2. Second →](second.md)\n\n" +
+		"In this chapter:\n\n- [The pieces](#the-pieces)\n- [The pieces](#the-pieces-1)\n" + topEnd + "\n\n" +
+		strings.SplitN(smallBook()["first.md"], "\n\n", 2)[1] + "\n" +
+		bottomStart + "\n---\n\n[← Preface](README.md) · [Contents](README.md) · [2. Second →](second.md)\n" + bottomEnd + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "first.md"), []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	third := makeBook(t, dir)
-	if got := third.Pages["second.md"]; got != first.Pages["second.md"] {
-		t.Errorf("rewritten:\n%s\nwant:\n%s", got, first.Pages["second.md"])
+	for _, name := range []string{"first.md", "second.md"} {
+		if got := third.Pages[name]; got != first.Pages[name] {
+			t.Errorf("%s rewritten:\n%s\nwant:\n%s", name, got, first.Pages[name])
+		}
 	}
 }
 

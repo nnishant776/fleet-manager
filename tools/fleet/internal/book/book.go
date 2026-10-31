@@ -31,6 +31,8 @@ const (
 const (
 	topStart      = "<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->"
 	topEnd        = "<!-- /book:top -->"
+	sectionsStart = "<!-- book:sections -->"
+	sectionsEnd   = "<!-- /book:sections -->"
 	bottomStart   = "<!-- book:bottom -->"
 	bottomEnd     = "<!-- /book:bottom -->"
 	contentsStart = "<!-- book:contents -->"
@@ -271,9 +273,9 @@ func readPage(ch *Chapter, path, text string, isPreface bool) (*page, []Problem)
 	return p, nil
 }
 
-// withoutBlocks is a page's lines without its book:top and book:bottom
-// blocks, and without the blank lines at either end. The first line of a
-// chapter, its heading, is not among them, so off counts it.
+// withoutBlocks is a page's lines without its book:top, book:sections and
+// book:bottom blocks, and without the blank lines at either end. The first
+// line of a chapter, its heading, is not among them, so off counts it.
 func withoutBlocks(path string, ls []string, chapter bool) ([]string, []Problem) {
 	off := 1
 	if chapter {
@@ -288,6 +290,8 @@ func withoutBlocks(path string, ls []string, chapter bool) ([]string, []Problem)
 		case code[i]:
 		case strings.HasPrefix(t, "<!-- book:top"):
 			end = topEnd
+		case strings.HasPrefix(t, "<!-- book:sections"):
+			end = sectionsEnd
 		case strings.HasPrefix(t, "<!-- book:bottom"):
 			end = bottomEnd
 		}
@@ -307,18 +311,25 @@ func withoutBlocks(path string, ls []string, chapter bool) ([]string, []Problem)
 	return trimBlank(out), nil
 }
 
-// render writes a chapter: its heading, the links at its top, its text, and
-// the links at its bottom.
+// render writes a chapter: its heading, the links at its top, its opening,
+// its sections listed before the first of them, the rest of its text, and the
+// links at its bottom.
 func (p *page) render(prev, next *Chapter) string {
 	links := nav(prev, next, true)
-	var b strings.Builder
-	b.WriteString(p.h1 + "\n\n")
-	b.WriteString(top(links, sections(p.heads)) + "\n\n")
-	if len(p.body) > 0 {
-		b.WriteString(strings.Join(p.body, "\n") + "\n\n")
+	parts := []string{p.h1, top(links)}
+	text := p.body
+	if secs := sections(p.heads); len(secs) > 0 {
+		first := secs[0].line - 1 // in the body, which is after the heading
+		if opening := trimBlank(p.body[:first]); len(opening) > 0 {
+			parts = append(parts, strings.Join(opening, "\n"))
+		}
+		parts = append(parts, listed(secs))
+		text = p.body[first:]
 	}
-	b.WriteString(bottom(links) + "\n")
-	return b.String()
+	if len(text) > 0 {
+		parts = append(parts, strings.Join(text, "\n"))
+	}
+	return strings.Join(append(parts, bottom(links)), "\n\n") + "\n"
 }
 
 // nav is the line of links to the chapters before and after, and to the
@@ -337,24 +348,26 @@ func nav(prev, next *Chapter, contents bool) string {
 	return strings.Join(items, " · ")
 }
 
-// top is the block under a chapter's heading: the links, and its sections.
-func top(links string, secs []head) string {
-	ls := []string{topStart, links}
-	switch {
-	case len(secs) == 0:
-	case letters(secs):
+// top is the block under a chapter's heading, the links.
+func top(links string) string { return strings.Join([]string{topStart, links, topEnd}, "\n") }
+
+// listed is the block before a chapter's first section, which lists them;
+// sections of single letters go on one line.
+func listed(secs []head) string {
+	ls := []string{sectionsStart}
+	if letters(secs) {
 		var items []string
 		for _, s := range secs {
 			items = append(items, "["+s.text+"](#"+s.anchor+")")
 		}
-		ls = append(ls, "", "In this chapter: "+strings.Join(items, " · "))
-	default:
-		ls = append(ls, "", "In this chapter:", "")
+		ls = append(ls, "In this chapter: "+strings.Join(items, " · "))
+	} else {
+		ls = append(ls, "In this chapter:", "")
 		for _, s := range secs {
 			ls = append(ls, "- ["+s.text+"](#"+s.anchor+")")
 		}
 	}
-	return strings.Join(append(ls, topEnd), "\n")
+	return strings.Join(append(ls, sectionsEnd), "\n")
 }
 
 // bottom is the block at the end of a page, the links again.

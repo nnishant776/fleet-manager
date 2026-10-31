@@ -8,10 +8,11 @@ Every command's page says what it is for, lists its flags, and walks through
 its steps with the commands they run, all taken from the command's definition.
 
 The guide, in guide/, is written by hand in the order its SUMMARY.md gives.
-This numbers its chapters, puts links to the pages before and after and to
-each chapter's sections at the top and bottom of every page, writes the
-contents into the preface, README.md, and writes the index, index.md, from
-the glossary, the configuration reference and the commands.
+This numbers its chapters, puts links to the pages before and after at the
+top and bottom of every page, lists each chapter's sections before the first
+of them, writes the contents into the preface, README.md, and writes the
+index, index.md, from the glossary, the configuration reference and the
+commands.
 
 Run it after changing a flow or the guide, and commit the pages with the
 change; the tests fail while the runbooks are out of date, and --check fails
@@ -39,5 +40,5 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 ## Steps
 
-1. **Write the pages, or check them.** The runbooks, one page per command and an index, README.md, and the guide's generated parts: each chapter's number, the links at its top and bottom, the contents and the index. Pages that would not change are left alone, and pages of commands that no longer exist are removed. With --check nothing is written: it fails if a page would change, a page and SUMMARY.md disagree, or a link points at a file or a heading that does not exist.
+1. **Write the pages, or check them.** The runbooks, one page per command and an index, README.md, and the guide's generated parts: each chapter's number, the links at its top and bottom, the list of its sections, the contents and the index. Pages that would not change are left alone, and pages of commands that no longer exist are removed. With --check nothing is written: it fails if a page would change, a page and SUMMARY.md disagree, or a link points at a file or a heading that does not exist.
 

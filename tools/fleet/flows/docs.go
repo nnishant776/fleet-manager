@@ -25,10 +25,11 @@ var Docs = &engine.Flow{
 	Long: "Every command's page says what it is for, lists its flags, and walks through\n" +
 		"its steps with the commands they run, all taken from the command's definition.\n\n" +
 		"The guide, in " + GuideDir + "/, is written by hand in the order its SUMMARY.md gives.\n" +
-		"This numbers its chapters, puts links to the pages before and after and to\n" +
-		"each chapter's sections at the top and bottom of every page, writes the\n" +
-		"contents into the preface, README.md, and writes the index, index.md, from\n" +
-		"the glossary, the configuration reference and the commands.\n\n" +
+		"This numbers its chapters, puts links to the pages before and after at the\n" +
+		"top and bottom of every page, lists each chapter's sections before the first\n" +
+		"of them, writes the contents into the preface, README.md, and writes the\n" +
+		"index, index.md, from the glossary, the configuration reference and the\n" +
+		"commands.\n\n" +
 		"Run it after changing a flow or the guide, and commit the pages with the\n" +
 		"change; the tests fail while the runbooks are out of date, and --check fails\n" +
 		"while any page is, or a link leads nowhere.",
@@ -44,7 +45,7 @@ var Docs = &engine.Flow{
 	Steps: []engine.Step{{
 		Title: "Write the pages, or check them",
 		Why: "The runbooks, one page per command and an index, README.md, and the guide's generated parts: each chapter's number, " +
-			"the links at its top and bottom, the contents and the index. Pages that would not change are left alone, and pages of " +
+			"the links at its top and bottom, the list of its sections, the contents and the index. Pages that would not change are left alone, and pages of " +
 			"commands that no longer exist are removed. With --check nothing is written: it fails if a page would change, a page and " +
 			"SUMMARY.md disagree, or a link points at a file or a heading that does not exist.",
 	}},
