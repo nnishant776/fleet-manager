@@ -77,6 +77,56 @@ let
       stop() {  # stop KIND MESSAGE: record the problem and end the run
         record "$@"
         exit 1
+      }
+
+      # logind stops a user's systemd (user@<uid>.service) ten seconds after
+      # their last session ends. An activation that reaches it while it stops
+      # fails, though nothing is wrong with the configuration: home-manager
+      # cannot switch the user's units, and switch-to-configuration cannot
+      # reload them. So an activation first waits for those to stop, and one
+      # that fails while one stopped is tried once more before it counts.
+      # A user's systemd has a session of its own, and some sessions do not
+      # keep it running either; the user's other sessions do.
+      pinned() {  # pinned UID: whether a session keeps the user's systemd running
+        for s in $(loginctl show-user "$1" -p Sessions --value 2>/dev/null); do
+          case "$(loginctl show-session "$s" -p Class --value 2>/dev/null)" in
+            manager | manager-early | background-light | none | "") ;;
+            *) return 0 ;;
+          esac
+        done
+        return 1
+      }
+      stopping() {  # the users whose systemd is stopping or about to
+        loginctl list-users --no-legend 2>/dev/null | while read -r uid name _; do
+          systemctl is-active --quiet "user@$uid.service" || continue
+          [ "$(loginctl show-user "$uid" -p Linger --value 2>/dev/null)" = no ] || continue
+          pinned "$uid" && continue
+          echo "$name"
+        done
+        systemctl list-units --plain --no-legend --state=deactivating 'user@*.service' | cut -d' ' -f1
+      }
+      settle() {  # wait, for two minutes at most, until none is
+        waited=0
+        while users="$(stopping | tr '\n' ' ')" && [ -n "$users" ]; do
+          if [ "$waited" -ge 120 ]; then
+            log "activating while the systemd of ''${users% } still stops"
+            return 0
+          fi
+          [ "$waited" -gt 0 ] || log "waiting for the systemd of ''${users% } to stop, after the last session ended"
+          sleep 2
+          waited=$((waited + 2))
+        done
+      }
+      managers() { systemctl list-units --plain --no-legend --state=active 'user@*.service' | cut -d' ' -f1 | sort; }
+      activate() {  # activate COMMAND...: run an activation, again once if a user's systemd stopped under it
+        settle
+        before="$(managers)"
+        "$@" && return 0
+        gone="$(comm -23 <(printf '%s\n' "$before") <(managers) | tr '\n' ' ')"
+        [ -n "''${gone// }" ] || return 1
+        log "the activation failed while ''${gone% } stopped; activating again"
+        settle
+        "$@"
       }${lib.optionalString supportOn ''
 
         # Whether the maintainer can still log in: the account and its keys, the
@@ -300,7 +350,7 @@ let
           # system is activated again, so they reach /run/secrets and the units
           # that use them restart. test, not switch: the boot entry is right.
           log "secrets changed to $(snapshot); activating the running system again"
-          if ! "$running/bin/switch-to-configuration" test; then
+          if ! activate "$running/bin/switch-to-configuration" test; then
             log "activation with the new secrets failed"
             stop activation "This machine could not start with its new secrets, so some services may still use the old ones. It keeps running its current configuration."
           fi
@@ -327,11 +377,11 @@ let
       previousGen="''${previousGen%-link}"
       log "activating $newSystem (current generation $previousGen)"
 
-      if ! nixos-rebuild switch --flake "$repo#$host"; then
+      if ! activate nixos-rebuild switch --flake "$repo#$host"; then
         ${if au.rollbackOnFailure then ''
           log "activation failed — returning to generation $previousGen"
           if nix-env -p "$systemProfile" --switch-generation "$previousGen" \
-             && "$systemProfile/bin/switch-to-configuration" switch; then
+             && activate "$systemProfile/bin/switch-to-configuration" switch; then
             log "rolled back to generation $previousGen; this machine no longer"
             log "matches $after and will show as drift until upstream is fixed"
             stop activation "The latest configuration failed to start, so this machine went back to its previous one."
