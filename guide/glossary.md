@@ -20,6 +20,9 @@ In this chapter: [A](#a) · [B](#b) · [C](#c) · [D](#d) · [E](#e) · [F](#f) 
 - **activation**: Switching a machine to a built system. sops-nix decrypts the
   secrets into `/run/secrets` at activation. See
   [On the host](secrets.md#on-the-host).
+- **adoption**: Bringing a personal machine's owner into the fleet: their
+  password and keys go into the secrets, and their account into the host's
+  configuration. See [Personal machines](accounts.md#personal-machines).
 - **age**: The encryption tool behind the secrets. Each host, each user with a
   branch of their own, and the maintainer have an age key. See
   [Trust model](secrets.md#trust-model).
