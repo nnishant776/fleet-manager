@@ -92,6 +92,16 @@ pkgs.testers.runNixOSTest {
         m.wait_until_tty_matches("1", "Your account ann is ready")
         m.wait_until_tty_matches("1", "login: ")
 
+    with subtest("an activation while the setup waits does not wait for the owner"):
+        # As the first sync would do on a machine nobody has set up yet: the
+        # setup holds the boot until the owner is done, and activation must
+        # not hang on that.
+        owner.wait_until_tty_matches("1", "Username: ")
+        status, out = owner.execute("timeout 300 /run/current-system/bin/switch-to-configuration test 2>&1")
+        assert status == 0, f"activation while the setup waits exited {status}:\n{out}"
+        owner.succeed("systemctl show -p ActiveState --value fleet-owner-setup.service | grep -qx activating")
+        assert "Username: " in owner.get_tty_text("1")
+
     with subtest("the first boot asks for the owner's account"):
         setup(owner, True)
         setup(plain, False)
