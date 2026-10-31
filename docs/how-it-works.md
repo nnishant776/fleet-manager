@@ -367,7 +367,10 @@ Each run goes through these steps, and stops at the first that fails:
    does not build leaves the running system untouched.
 9. **Activate.** A new system is switched to. If its activation fails, the host
    returns to the previous generation. A system that is the same, with new
-   secrets, is activated again so they reach `/run/secrets`.
+   secrets, is activated again so they reach `/run/secrets`. Before each
+   activation, it waits up to two minutes for a user's systemd that is
+   stopping after their last session, and an activation that fails while a
+   user's systemd stops under it is tried once more before it counts.
 10. **Repair**, where the support account is on. On a run that changes
     nothing, the sync checks that the maintainer can still log in as
     `support` (the account, its keys, its sudo rule and sshd), and activates
