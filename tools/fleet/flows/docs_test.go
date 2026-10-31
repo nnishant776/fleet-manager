@@ -1,6 +1,9 @@
 package flows
 
 import (
+	"maps"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -51,6 +54,112 @@ func TestMenuListsEveryFlowOnce(t *testing.T) {
 		}
 		if seen[f] != want {
 			t.Errorf("fleet %s is on the menu %d times, want %d", strings.Join(f.Path, " "), seen[f], want)
+		}
+	}
+}
+
+// docsCheckout is a checkout with a small guide and no runbooks yet.
+func docsCheckout(t *testing.T) (top string, flags map[string]string) {
+	top = t.TempDir()
+	for name, text := range map[string]string{
+		"README.md":          "[The guide](guide/README.md)\n",
+		"guide/SUMMARY.md":   "[Preface](README.md)\n- [One](one.md)\n[Index](index.md)\n",
+		"guide/README.md":    "# Guide\n\n<!-- book:contents -->\n<!-- /book:contents -->\n",
+		"guide/one.md":       "# One\n\nRun `fleet docs` after a change.\n",
+		RunbookDir + "/x.md": "a page of a command that is gone\n",
+	} {
+		path := filepath.Join(top, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return top, map[string]string{"out": filepath.Join(top, RunbookDir), "guide": filepath.Join(top, GuideDir)}
+}
+
+func runDocs(t *testing.T, flags map[string]string, check bool) (string, error) {
+	t.Helper()
+	x, _, out := newFakeCtx(nil)
+	given := maps.Clone(flags)
+	if check {
+		given["check"] = "true"
+	}
+	err := engine.RunWith(x, Docs, given)
+	return out.String(), err
+}
+
+func TestDocsCheckFailsUntilThePagesAreWritten(t *testing.T) {
+	top, flags := docsCheckout(t)
+	out, err := runDocs(t, flags, true)
+	if err == nil {
+		t.Fatalf("the check passed:\n%s", out)
+	}
+	for _, want := range []string{
+		"✗ tools/fleet/runbooks/docs.md:1: missing; fleet docs writes it",
+		"✗ tools/fleet/runbooks/x.md:1: no command writes it; fleet docs removes it",
+		"✗ guide/README.md:4: out of date; fleet docs rewrites it",
+		"✗ guide/one.md:1: out of date; fleet docs rewrites it",
+		"✗ guide/index.md:1: missing; fleet docs writes it",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("no %q in:\n%s", want, out)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(top, "guide", "index.md")); err == nil {
+		t.Error("the check wrote the index")
+	}
+
+	if out, err := runDocs(t, flags, false); err != nil {
+		t.Fatalf("%v:\n%s", err, out)
+	}
+	if _, err := os.Stat(filepath.Join(top, RunbookDir, "x.md")); err == nil {
+		t.Error("the page of a command that is gone is still there")
+	}
+	if out, err := runDocs(t, flags, true); err != nil || !strings.Contains(out, "every link leads somewhere") {
+		t.Fatalf("after writing, the check: %v\n%s", err, out)
+	}
+	index, _ := os.ReadFile(filepath.Join(top, "guide", "index.md"))
+	if !strings.Contains(string(index), "- `fleet docs`: **[runbook](../tools/fleet/runbooks/docs.md)**, [1 › One](one.md)\n") {
+		t.Errorf("index:\n%s", index)
+	}
+
+	// A link that leads nowhere and a page the book does not list fail the
+	// check, and are only shown when the pages are written.
+	one := filepath.Join(top, "guide", "one.md")
+	text, _ := os.ReadFile(one)
+	broken := strings.Replace(string(text), "after a change.", "after a change; see [gone](gone.md).", 1)
+	if err := os.WriteFile(one, []byte(broken), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(top, "guide", "stray.md"), []byte("# Stray\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err = runDocs(t, flags, true)
+	if err == nil || !strings.Contains(out, "✗ guide/one.md:7: links to gone.md, which does not exist") ||
+		!strings.Contains(out, "✗ guide/stray.md:1: not in SUMMARY.md") || strings.Contains(out, "out of date") {
+		t.Errorf("the check: %v\n%s", err, out)
+	}
+	if out, err := runDocs(t, flags, false); err != nil || !strings.Contains(out, "guide/one.md:7: links to gone.md") {
+		t.Errorf("writing: %v\n%s", err, out)
+	}
+}
+
+// A preface without the contents' markers stops it before anything is
+// written, runbooks or pages.
+func TestDocsWritesNothingWhileAPageCannotBeWritten(t *testing.T) {
+	top, flags := docsCheckout(t)
+	if err := os.WriteFile(filepath.Join(top, "guide", "README.md"), []byte("# Guide\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runDocs(t, flags, false)
+	if err == nil || !strings.Contains(out, "✗ guide/README.md:1: no <!-- book:contents --> and <!-- /book:contents --> lines") {
+		t.Errorf("%v:\n%s", err, out)
+	}
+	for _, name := range []string{RunbookDir + "/docs.md", "guide/index.md"} {
+		if _, err := os.Stat(filepath.Join(top, name)); err == nil {
+			t.Errorf("%s was written", name)
 		}
 	}
 }
