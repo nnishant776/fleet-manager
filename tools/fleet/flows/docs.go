@@ -15,7 +15,7 @@ import (
 const RunbookDir = "tools/fleet/runbooks"
 
 // GuideDir is where the guide lives, from the top of the checkout.
-const GuideDir = "guide"
+const GuideDir = "docs"
 
 // Docs writes the runbooks from the flows, and the guide's generated parts.
 var Docs = &engine.Flow{
@@ -33,7 +33,7 @@ var Docs = &engine.Flow{
 		"Run it after changing a flow or the guide, and commit the pages with the\n" +
 		"change; the tests fail while the runbooks are out of date, and --check fails\n" +
 		"while any page is, or a link leads nowhere.",
-	Example: "  fleet docs\n  fleet docs --check\n  fleet docs --out /tmp/runbooks --guide /tmp/guide",
+	Example: "  fleet docs\n  fleet docs --check\n  fleet docs --out /tmp/runbooks --guide /tmp/docs",
 	Inputs: []engine.Input{
 		{Name: "out", Prompt: "Directory for the pages", Help: "Where the pages go; " + RunbookDir + " in the checkout this is run in by default",
 			Default: atTop(RunbookDir)},

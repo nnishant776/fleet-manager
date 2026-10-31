@@ -3,7 +3,7 @@
 A multi-platform configuration flake for NixOS, macOS and Home Manager
 environments. Machines are declared under `hosts/`, per-user configuration under
 `users/`, and behaviour is driven by the `conf.*` option tree. A machine's
-[role](guide/roles.md) sets defaults that any host can override. The `conf.*`
+[role](docs/roles.md) sets defaults that any host can override. The `conf.*`
 option tree is a generalised group of simple toggles for most common config
 recipes that can be applied on hosts without hardcoding. It is also toggleable
 which helps move more of the logic to a common configuration module rather than
@@ -12,20 +12,20 @@ being per host.
 It also runs a fleet. Each machine pulls its configuration from git on a timer,
 builds only commits signed by a trusted key, and decrypts its own secrets from
 a separate private repository. A real fleet keeps its hosts in a private
-inventory that pins this repository. [How it works](guide/how-it-works.md)
-explains the pieces, and the [guide](guide/README.md) has the rest.
+inventory that pins this repository. [How it works](docs/how-it-works.md)
+explains the pieces, and the [guide](docs/README.md) has the rest.
 
 ## Repository Layout
 
 ```
 ├── flake.nix                        # entry point; discovers hosts/
-├── guide/                           # the guide: how it works, installing, configuration, secrets
+├── docs/                            # the guide, a book: how it works, installing, configuration, secrets
 ├── bootstrap                        # first-run script; see First run below
 ├── fleet/
-│   └── allowed_signers              # keys the fleet accepts on commits; see guide/signing-and-trust.md
+│   └── allowed_signers              # keys the fleet accepts on commits; see docs/signing-and-trust.md
 ├── lib/
 │   ├── apps/                        # os-install, system-switch, home-switch, check-purity, fleet-secrets, fleet; rpi-image and secrets-harness on Linux; darwin-rebuild on macOS
-│   ├── mkFleet.nix                  # lib.mkFleet: a fleet's systems, homes and apps from its host folders; see guide/private-fleet.md
+│   ├── mkFleet.nix                  # lib.mkFleet: a fleet's systems, homes and apps from its host folders; see docs/private-fleet.md
 │   ├── mkHost.nix                   # host factory (NixOS / nix-darwin)
 │   ├── secrets-sync.nix             # fleet-secrets-sync and fleet-identity, used by the sync and os-install
 │   ├── clone-flake.nix              # fleet-clone-flake: clones a private flake for an install, at an exact commit
@@ -84,7 +84,7 @@ the same command on a new Mac.
 
 To install only commits whose signatures you have checked, to set up a Mac,
 or to install without `bootstrap`, see
-[Installing a machine](guide/installing.md).
+[Installing a machine](docs/installing.md).
 
 ### Adding a machine
 
@@ -137,7 +137,7 @@ An example host:
 }
 ```
 
-Every option is in the [configuration reference](guide/configuration.md).
+Every option is in the [configuration reference](docs/configuration.md).
 
 ### Building and switching a system
 
@@ -186,7 +186,7 @@ nix profile upgrade fleet                   # later, for a newer version
 ```
 
 Install it from a checkout you have checked, not with `github:` straight from
-main; [The fleet tool](guide/fleet-tool.md) says why, and how it runs. Each
+main; [The fleet tool](docs/fleet-tool.md) says why, and how it runs. Each
 command has a page in the [runbooks](tools/fleet/runbooks/README.md).
 
 ### Checking the flake
@@ -198,8 +198,8 @@ nix eval .#nixosConfigurations.<host>.config.conf.hardware.graphics.vendor
 
 ## Documentation
 
-The [guide](guide/README.md) is a book in three parts: how a fleet fits
+The [guide](docs/README.md) is a book in three parts: how a fleet fits
 together, machines, and running a fleet, with the configuration reference in
-an appendix. Start with [How it works](guide/how-it-works.md), or look things
-up in its [contents](guide/README.md#contents), [glossary](guide/glossary.md)
-and [index](guide/index.md).
+an appendix. Start with [How it works](docs/how-it-works.md), or look things
+up in its [contents](docs/README.md#contents), [glossary](docs/glossary.md)
+and [index](docs/index.md).

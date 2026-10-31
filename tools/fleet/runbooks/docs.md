@@ -7,7 +7,7 @@ Write the runbook pages, tools/fleet/runbooks, from the flows themselves, and th
 Every command's page says what it is for, lists its flags, and walks through
 its steps with the commands they run, all taken from the command's definition.
 
-The guide, in guide/, is written by hand in the order its SUMMARY.md gives.
+The guide, in docs/, is written by hand in the order its SUMMARY.md gives.
 This numbers its chapters, puts links to the pages before and after at the
 top and bottom of every page, lists each chapter's sections before the first
 of them, writes the contents into the preface, README.md, and writes the
@@ -23,7 +23,7 @@ fleet docs [flags]
 
 fleet docs
 fleet docs --check
-fleet docs --out /tmp/runbooks --guide /tmp/guide
+fleet docs --out /tmp/runbooks --guide /tmp/docs
 ```
 
 ## Flags
@@ -31,7 +31,7 @@ fleet docs --out /tmp/runbooks --guide /tmp/guide
 | Flag | |
 |---|---|
 | `--out` | Where the pages go; tools/fleet/runbooks in the checkout this is run in by default |
-| `--guide` | The guide, with its SUMMARY.md; guide in the checkout this is run in by default |
+| `--guide` | The guide, with its SUMMARY.md; docs in the checkout this is run in by default |
 | `--check` | Write nothing; fail if a page would change, a page and SUMMARY.md disagree, or a link leads nowhere |
 
 Every command also takes `--dry-run` (show every step and command; look, but
