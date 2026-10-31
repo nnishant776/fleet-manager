@@ -1,6 +1,12 @@
 # Signing commits and trusting them
 
-Hosts build only signed commits; the maintainer's tools check the same signatures and refuse to go back to older commits.
+A fleet host builds only commits signed by a key it trusts, and never goes
+back to an older one. The maintainer's tools hold themselves to the same
+rules, with their own copy of the keys and of the commits they trusted last.
+This chapter covers the signers file, signing your commits, those copies, the
+tools' own clones, reviewing new commits, and rotating keys. Read it before
+[Secrets](secrets.md) and [A private fleet](private-fleet.md), which build on
+it.
 
 ## The signers file
 

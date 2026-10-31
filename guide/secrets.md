@@ -1,17 +1,20 @@
 # Secrets
 
 How passwords, keys and other secrets reach a host without ever entering
-fleet-manager. What to do, step by step, is in
-[Secrets runbooks](secrets-runbooks.md); the options are in the
-[configuration reference](configuration.md#confsecrets).
+fleet-manager: the secrets repository and its files, who can decrypt what, what
+a host does with its secrets, and the rules for working in it. It builds on
+[Signing commits and trusting them](signing-and-trust.md). What to do, step by
+step, is in [Secrets runbooks](secrets-runbooks.md); the options are under
+[`conf.secrets`](configuration.md#confsecrets) in *Configuration reference*.
 
-Secrets never enter this repository, which is
-public: the ciphertext lives in a separate **private** repository, with branch
-protection and one read-only deploy key per host. It holds sops ciphertext and
-nothing else. Each host has a branch of its own, `host/<name>`, fetches only
-that one with its deploy key, verifies the commit signature, and decrypts the
-files at activation with sops-nix. A user can have a branch of their own too,
-which the hosts that list them read as well.
+Secrets never enter fleet-manager, which is public: the ciphertext lives in a
+separate **private** repository, with one read-only deploy key per host, and
+branch protection where the forge offers it (GitHub does not, for a private
+repository on its free plan). It holds sops ciphertext and nothing else. Each
+host has a branch of its own, `host/<name>`, fetches only that one with its
+deploy key, verifies the commit signature, and decrypts the files at
+activation with sops-nix. A user can have a branch of their own too, which
+the hosts that list them read as well.
 
 ## The secrets repository
 
@@ -242,7 +245,7 @@ There is deliberately no shared file, because one compromised host would then
 expose it for everyone.
 
 How to set one is under
-[Host secrets](secrets-runbooks.md#host-secrets) in the runbooks.
+[Host secrets](secrets-runbooks.md#host-secrets) in *Secrets runbooks*.
 
 ## Rules
 

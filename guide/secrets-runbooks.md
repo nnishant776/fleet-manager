@@ -1,8 +1,10 @@
 # Secrets runbooks
 
-What to do in the secrets repository, and why, with host `laptop1`, users
-`alice` and `bob`, and the maintainer. How it works is in [Secrets](secrets.md).
-Each command also has a page of its own in the
+What to do in the secrets repository, and why: the maintainer's one-time
+setup, onboarding a machine and a user, login and sudo keys, host secrets,
+day-2 work, emergency access and troubleshooting. The examples use host
+`laptop1`, users `alice` and `bob`, and the maintainer. How it all works is in
+[Secrets](secrets.md); each command also has a page of its own in the
 [runbooks](../tools/fleet/runbooks/README.md).
 
 ## Maintainer: one-time setup
@@ -87,9 +89,12 @@ use as `conf.fleet.signing.allowedSignersFile`. It has one line per key,
 not have to be an email address. Adding a key there is itself a signed commit
 to the configuration repository.
 
-**5. Forge settings.** Keep the secrets repository **private**. Protect `main`
-and the `host/*` branches: require signed commits, forbid force pushes and
-deletion (except for you, when you retire a host), and restrict who can push.
+**5. Forge settings.** Keep the secrets repository **private**, and give push
+access to the maintainer alone. Where the forge offers branch protection,
+protect `main` and the `host/*` branches: require signed commits, forbid force
+pushes and deletion (except for you, when you retire a host). GitHub has none
+for a private repository on its free plan; the hosts still refuse an unsigned
+commit, or one that does not follow the one they accepted last.
 Hosts fetch over SSH, so the URL they use has the form
 `git@github.com:example-org/secrets.git`.
 
@@ -113,7 +118,7 @@ a path: `fleet secrets user-password alice laptop1 --repo secrets`. The
 command fetches the clone first. A commit a command does not push stays in that
 clone, and the command says how to push it. A path still works as before. More
 on the clones is in
-[Signing commits and trusting them](signing-and-trust.md#the-tools-own-clones).
+[The tools' own clones](signing-and-trust.md#the-tools-own-clones) in *Signing commits and trusting them*.
 
 ## Onboarding a machine
 
@@ -123,8 +128,7 @@ come from MDM.
 
 ### 1. Declare the host
 
-In the configuration repository (the inventory, for a
-[private fleet](private-fleet.md)):
+In the configuration repository (the inventory, for a private fleet: see [A private fleet](private-fleet.md)):
 
 ```nix
 # hosts/laptop1/default.nix
@@ -167,7 +171,7 @@ After `nixos-install`, the install generates the host identity under
 prints the enrollment file and a QR code of it, and **waits**. Leave it
 waiting. Get the file to the maintainer's machine through a trusted channel:
 scan the QR code, use the stick given to `--enroll-out`, or retype the two
-keys into a file shaped like the [example](secrets.md#trust-model).
+keys into a file shaped like the example under [Trust model](secrets.md#trust-model) in *Secrets*.
 
 ### 3. Enroll the host (maintainer)
 
@@ -417,7 +421,7 @@ mkpasswd -m yescrypt | jq -R . | sops set --value-stdin hosts/laptop1.yaml '["su
 ```
 
 Names, groups and the names that are taken are under
-[Host secrets](secrets.md#host-secrets) in Secrets.
+[Host secrets](secrets.md#host-secrets) in *Secrets*.
 
 ## Day-2 runbooks
 

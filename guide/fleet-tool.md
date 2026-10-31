@@ -6,6 +6,10 @@ what it does and why, shows the exact command, asks before it changes
 anything, and checks the result. `fleet` alone shows a menu, and
 `fleet <command> --help` explains a command.
 
+This chapter covers installing it, running it without prompts, what a run
+that stops leaves behind, and how the installer gets it. Each command has a
+page of its own in the [runbooks](../tools/fleet/runbooks/README.md).
+
 ## Installing it
 
 It is not installed anywhere by default.
@@ -48,8 +52,7 @@ themselves, and the tests fail when they are out of date.
 
 ## On the installer
 
-On the NixOS installer, `bootstrap` runs `fleet install` (see
-[First run](../README.md#first-run)). For that, every push to `main` that changes the tool
+On the NixOS installer, `bootstrap` runs `fleet install` (see [First run](../README.md#first-run) in the README). For that, every push to `main` that changes the tool
 publishes static binaries for Linux and macOS as the latest release, with
 `SHA256SUMS` and an attestation for each; `gh attestation verify <file> --repo
 nnishant776/fleet-manager` checks where a binary came from. `.#fleet-static` builds

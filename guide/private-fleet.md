@@ -1,7 +1,11 @@
 # A private fleet
 
 How a fleet keeps its hosts and users in a private repository, the inventory,
-and works with it from day to day.
+and works with it from day to day: setting one up, the key a host reads it
+with, host branches, moving to a newer fleet-manager, installing hosts and
+bringing running machines in. It builds on
+[Signing commits and trusting them](signing-and-trust.md) and
+[Secrets](secrets.md).
 
 ## Setting one up
 
@@ -41,7 +45,7 @@ lock. A host's folder works the same there; only the path to a signers file
 changes with the depth, as in `../../../fleet/allowed_signers`.
 
 Passwords and keys are not kept in the inventory; they are in the
-[secrets repository](secrets.md). On a host with secrets, SSH login and sudo
+secrets repository (see [Secrets](secrets.md)). On a host with secrets, SSH login and sudo
 keys come from there only, so the only key material in the inventory is
 `fleet/allowed_signers`.
 
@@ -62,7 +66,7 @@ the ones the commit's hash names. A `github:` input is a tarball that GitHub
 makes, and nothing checks it against the commit.
 
 Give the tools a clone of the inventory of their own, with `fleet repo add`
-([The tools' own clones](signing-and-trust.md#the-tools-own-clones)). The
+([The tools' own clones](signing-and-trust.md#the-tools-own-clones) in *Signing commits and trusting them*). The
 commands below then take its name for `--flake`, such as `--flake inventory`;
 a path to a checkout works as well.
 
@@ -154,14 +158,14 @@ same way, so an unsigned or older commit is never pinned by mistake.
 
 Run `fleet install prep <host> --flake <checkout of it>` on your machine, and
 the line it prints on the installer
-(see [First run](../README.md#first-run)). It sets
+(see [First run](../README.md#first-run) in the README). It sets
 `FLAKE=git+ssh://git@github.com/example-org/inventory?ref=host/<host>&rev=<commit>`,
 and `os-install` installs exactly that commit of the host's branch. With
 host branches, prep also checks that the branch was published from main's
 newest commit. `os-install --flake git+ssh://…?ref=…&rev=<commit> -H <host>`
 does the same by hand. An install of a private host without the pins is
 refused. The diagram under
-[Installing a machine](installing.md#enrolling-during-the-install) shows what
+[Enrolling during the install](installing.md#enrolling-during-the-install) in *Installing a machine* shows what
 moves where.
 
 The host can't read the repository before it is enrolled, so the install does
@@ -185,7 +189,7 @@ things in this order:
    key and installs. The identity goes onto the new disk.
 
 The whole flow, step by step, is under
-[Onboarding a machine](secrets-runbooks.md#onboarding-a-machine).
+[Onboarding a machine](secrets-runbooks.md#onboarding-a-machine) in *Secrets runbooks*.
 
 The Raspberry Pi card (`rpi-image`) does not set a private host up by itself
 yet. Bring a Pi in once it runs, as in the next section.
