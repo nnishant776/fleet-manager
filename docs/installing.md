@@ -228,7 +228,7 @@ flowchart TB
 | 2 | Its age key, secrets deploy key and configuration deploy key | Made on the host; the private halves never leave it |
 | 3 | The enrollment file: the age recipient and both deploy public keys | Shown as a QR code, or copied to a USB stick with `--enroll-out` |
 | 4 | The enrollment file | `fleet secrets host-enroll HOST --from FILE` |
-| 5 | A signed commit on the host's own branch, `host/HOST`: its enrollment record, and the host's and its accounts' files, encrypted to the host and the recovery key | `host-enroll`, then `user-password` for each account, then `git push origin host/HOST` |
+| 5 | Signed commits on the host's own branch, `host/HOST`, one per command: its enrollment record, support's keys, and the host's and its accounts' files, encrypted to the host and the recovery key | `host-enroll`, `user-keys support`, then `user-password` for each account, then `git push origin host/HOST` |
 | 6 | Deploy public keys, registered read-only | The secrets deploy key on the secrets repository; the configuration deploy key on the configuration repository, for a private one only |
 | 7 | The host's configuration, at the pinned commit | Cloned with the configuration deploy key when private; a repository without that commit stops the install |
 | 8 | The secrets deploy key, and the configuration deploy key when private | Each fetch uses its own key and offers no other |

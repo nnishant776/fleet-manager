@@ -154,8 +154,9 @@ against that user's own key. It builds with the fleet-manager that
 
 ## Its own CI
 
-fleet-manager's CI evaluates only its own example and test hosts, and never
-sees an inventory's. So the inventory needs a check of its own:
+fleet-manager's CI never sees an inventory's hosts: it tests the `fleet` tool,
+and its weekly flake update evaluates only fleet-manager's own example and test
+hosts. So the inventory needs a check of its own:
 `nix run .#check-purity` evaluates every host, and CI should run it on every
 push and pull request.
 

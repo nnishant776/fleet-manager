@@ -294,11 +294,15 @@ the TPM as `os-install` printed.
 
 ### Variants
 
-- **Enroll later.** With `--no-enroll` at the end of the prep line, the install doesn't wait. The host boots with
-  locked accounts and retries the fetch until it is enrolled. Fetch its
-  enrollment file over SSH and pipe it in:
-  `ssh support@laptop1 sudo cat /var/lib/fleet/laptop1.enroll | fleet secrets host-enroll laptop1 --from -`,
-  then continue with step 4. On the host, `sudo fleet-identity --qr` shows the
+- **Enroll later.** With `--no-enroll` at the end of the prep line, the install
+  doesn't wait. The host boots with locked accounts and retries the fetch until
+  it is enrolled. It still shows the enrollment file and its QR code, and
+  copies it with `--enroll-out`: keep it. Nobody can log in to the host before
+  it is enrolled, since support's keys come from the secrets it does not have
+  yet. Enroll it with `fleet secrets host-enroll laptop1 --from laptop1.enroll`,
+  then continue with step 4. If the file is lost, boot the installer, unlock
+  the disk, mount the `fleet` volume and read `laptop1.enroll` from it. Once
+  the host is enrolled and synced, `sudo fleet-identity --qr` on it shows the
   file again.
 - **Reinstall, identity kept.** After a manual reinstall that kept the `fleet`
   volume, nothing changes. `os-install` erases it, so to carry the identity
