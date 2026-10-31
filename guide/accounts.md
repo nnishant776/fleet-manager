@@ -101,8 +101,25 @@ Accounts on a personal machine are mutable: a password declared in the
 configuration applies only when its account is created, and an account made by
 hand stays. SSH logins of accounts the configuration declares still use only
 their keys from the secrets repository; the owner's account also reads
-`~/.ssh/authorized_keys`. The owner's account is not in the inventory. Later the
-maintainer can adopt the owner into it; that is a separate step.
+`~/.ssh/authorized_keys`. The owner's account is not in the inventory until the
+maintainer adopts it.
+
+Adoption brings the owner into the fleet, in two parts. Run
+`fleet host adopt laptop1 --flake inventory --repo secrets`. It logs in to the
+host as support and reads who the owner is, their full name and home, their
+password hash (never shown, and passed on standard input only) and the keys in
+their `~/.ssh/authorized_keys`, and stores the hash and the keys in the
+secrets. It changes nothing in the inventory. It prints the declaration to add
+to the host's own `default.nix` (the account, with its password and keys taken
+from the secrets), tells you to remove `conf.fleet.personal.enable = true`, and
+shows the commands that finish: `fleet inventory publish laptop1 --sync` and
+`fleet host check laptop1`. The owner keeps their uid, their files and their
+password: NixOS keeps an existing account's ids when the account becomes
+declared. From then on the host is an ordinary managed fleet host: accounts are
+exactly what the configuration declares, so `passwd` and `~/.ssh/authorized_keys`
+no longer stick. An owner who gave their enrollment file (`--from ann.enroll`,
+made by `fleet user init`) changes the password and keys themselves with
+`fleet user`; otherwise they ask the maintainer.
 
 ## Things to know
 
