@@ -198,17 +198,8 @@ nix eval .#nixosConfigurations.<host>.config.conf.hardware.graphics.vendor
 
 ## Documentation
 
-The [guide](guide/README.md):
-
-- [How it works](guide/how-it-works.md): the pieces of a fleet, and what a host does at each sync
-- [Installing a machine](guide/installing.md): checked installs, macOS, `os-install`, disks and enrollment
-- [Building a Raspberry Pi image](guide/raspberry-pi.md)
-- [Configuration reference](guide/configuration.md): every `conf.*` option
-- [Roles and machine types](guide/roles.md): the defaults they set, and how to override them
-- [Accounts and homes](guide/accounts.md): sudo with an SSH key, homes, personal machines
-- [Networking](guide/networking.md): the firewall, interface names, Wi-Fi and hotspots
-- [Signing commits and trusting them](guide/signing-and-trust.md)
-- [A private fleet](guide/private-fleet.md): an inventory of your own, host branches, bringing machines in
-- [Secrets](guide/secrets.md) and [Secrets runbooks](guide/secrets-runbooks.md)
-- [The fleet tool](guide/fleet-tool.md), and its [runbooks](tools/fleet/runbooks/README.md), one page per command
-- [Things to know](guide/things-to-know.md): behaviour that surprises people
+The [guide](guide/README.md) is a book in three parts: how a fleet fits
+together, machines, and running a fleet, with the configuration reference in
+an appendix. Start with [How it works](guide/how-it-works.md), or look things
+up in its [contents](guide/README.md#contents), [glossary](guide/glossary.md)
+and [index](guide/index.md).
