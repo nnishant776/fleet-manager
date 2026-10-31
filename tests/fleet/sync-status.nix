@@ -29,7 +29,10 @@
 #   cannot, and the rule allows nothing else;
 # - a missing checkout stops the sync, which starts the first-boot clone;
 # - a run that finds nothing new repairs support's access: its keys file, its
-#   account, /etc/sudoers, /etc/ssh/sshd_config and sshd, whichever was broken.
+#   account, /etc/sudoers, /etc/ssh/sshd_config and sshd, whichever was broken;
+# - an activation waits for a user's systemd to stop after their last session
+#   ends, and one that fails while a user's systemd stops under it is tried
+#   once more; one that fails with none stopping is rolled back at once.
 # The graphical notification is not covered: the VM has no session.
 # Run it with `nix build .#checks.x86_64-linux.fleet-sync-status`.
 { pkgs, inputs }:
@@ -95,6 +98,25 @@ let
     c=${pkgs.coreutils}/bin
     "$c/ln" -sfn "$("$c/dirname" "$("$c/dirname" "$("$c/readlink" -f "$0")")")" /run/current-system
   '';
+  # A configuration whose activation notes its action, its commit (the file n)
+  # and whether ann's systemd runs. With /srv/race it fails as when that
+  # systemd stops under it: it stops it and fails, once. A system with the
+  # file broken fails every time. Otherwise it stands for the running system.
+  raced = pkgs.writeScript "switch-to-configuration" ''
+    #!/bin/sh
+    c=${pkgs.coreutils}/bin
+    s=${pkgs.systemd}/bin
+    here="$("$c/dirname" "$("$c/dirname" "$("$c/readlink" -f "$0")")")"
+    manager="user@$("$c/id" -u ann).service"
+    echo "$1 $("$c/cat" "$here/n") $("$s/systemctl" is-active "$manager")" >> /srv/activations
+    if [ -e /srv/race ]; then
+      "$c/rm" /srv/race
+      "$s/systemctl" stop "$manager"
+      exit 4
+    fi
+    [ ! -e "$here/broken" ] || exit 4
+    "$c/ln" -sfn "$here" /run/current-system
+  '';
 in
 pkgs.testers.runNixOSTest {
   name = "fleet-sync-status";
@@ -121,6 +143,9 @@ pkgs.testers.runNixOSTest {
       # A privileged account with no password, as on a fleet host where sudo
       # works only by a forwarded SSH agent.
       conf.users.accounts.ann = { fullName = "Ann"; privileged = true; };
+      # Her systemd outlives her last session by a minute, not ten seconds, so
+      # that a sync started after it ends surely finds it still running.
+      services.logind.settings.Login.UserStopDelaySec = 60;
 
       # The test makes the checkout and runs the sync itself.
       systemd.services.fleet-bootstrap.enable = false;
@@ -423,5 +448,56 @@ pkgs.testers.runNixOSTest {
     with subtest("a stopped sshd is started again"):
         repaired("systemctl stop sshd.service")
         checkout.succeed("systemctl is-active sshd.service")
+
+    def push_raced(n, *extra):
+        checkout.succeed(
+            f"echo {n} > /srv/work/system3/n",
+            *extra,
+            "${upstream} signed add -A flake.nix system3",
+            f"${upstream} signed commit -q -m {n}",
+            "${upstream} signed push -q origin HEAD:main",
+        )
+
+    def activations():
+        return checkout.succeed("cat /srv/activations").strip().split("\n")
+
+    def journal_count(text):
+        return int(checkout.execute(f"journalctl -u config-auto-update | grep -c '{text}'")[1].strip())
+
+    with subtest("an activation waits for a user's systemd to stop after her last session"):
+        checkout.succeed(
+            "sed 's|./system|./system3|g' ${buildable} > /srv/work/flake.nix",
+            "install -D -m 0755 ${raced} /srv/work/system3/bin/switch-to-configuration",
+            "for f in \"$(cat /srv/real-system)\"/*; do [ \"''${f##*/}\" = bin ] || ln -s \"$f\" /srv/work/system3/; done",
+        )
+        push_raced("eight")
+        # A session of hers that ends; logind stops her systemd a minute later.
+        checkout.succeed("systemd-run --wait --quiet -p PAMName=login -p User=ann true")
+        checkout.succeed("systemctl is-active user@$(id -u ann).service")
+        checkout.succeed("systemctl start config-auto-update.service")
+        checkout.fail("test -e /var/lib/fleet-sync/status")
+        assert activations() == ["switch eight inactive"], activations()
+        assert journal_count("waiting for the systemd of ann to stop") == 1
+
+    with subtest("an activation that fails while a user's systemd stops is tried once more"):
+        # Lingering, her systemd runs with no session, and is not waited for.
+        checkout.succeed("loginctl enable-linger ann")
+        checkout.wait_until_succeeds("systemctl is-active user@$(id -u ann).service")
+        checkout.succeed("touch /srv/race")
+        push_raced("nine")
+        checkout.succeed("systemctl start config-auto-update.service")
+        checkout.fail("test -e /var/lib/fleet-sync/status")
+        assert activations()[1:] == ["switch nine active", "switch nine inactive"], activations()
+        assert journal_count("activating again") == 1
+        checkout.succeed("loginctl disable-linger ann")
+
+    with subtest("an activation that fails with no user's systemd stopping is rolled back at once"):
+        push_raced("ten", "touch /srv/work/system3/broken")
+        checkout.fail("systemctl start config-auto-update.service")
+        assert field("kind") == "activation", field("kind")
+        # Ten once, then nine again for the rollback.
+        assert activations()[3:] == ["switch ten inactive", "switch nine inactive"], activations()
+        assert journal_count("activating again") == 1
+        checkout.succeed("journalctl -u config-auto-update | grep -q 'rolled back to generation'")
   '';
 }
