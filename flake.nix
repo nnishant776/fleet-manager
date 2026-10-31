@@ -156,6 +156,10 @@
         inherit inputs;
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
       };
+      fleet-personal = import ./tests/fleet/personal.nix {
+        inherit inputs;
+        pkgs = nixpkgs.legacyPackages.x86_64-linux;
+      };
       # The journal, audit records included, sent to Loki.
       fleet-logs = import ./tests/fleet/logs.nix {
         inherit inputs;
