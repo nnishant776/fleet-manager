@@ -23,8 +23,8 @@ var HostSecret = &engine.Flow{
 		"is kept today, so it never appears on screen. Then it shows the lines that\n" +
 		"make the host's configuration use it, and with --sync syncs the host and\n" +
 		"checks the secret arrived.",
-	Example: "  fleet host secret neerajpinew wifi/home\n" +
-		"  fleet host secret neerajpinew hotspot/wls2ccf67579ff5 --from-host /var/lib/hotspot/wls2ccf67579ff5\n" +
+	Example: "  fleet host secret pi1 wifi/home\n" +
+		"  fleet host secret pi1 hotspot/wls1a2b3c4d5e6f --from-host /var/lib/hotspot/wls1a2b3c4d5e6f\n" +
 		"  printf %s \"$psk\" | fleet host secret pi-gw wifi/home --value-stdin --yes",
 	Args: []string{"host", "name"},
 	Inputs: []engine.Input{
@@ -35,7 +35,7 @@ var HostSecret = &engine.Flow{
 			Name:   "name",
 			Prompt: "Name of the secret",
 			Help: "Its key in hosts/<host>.yaml, and its file under /run/secrets: letters, digits, - and _, " +
-				"with / to group secrets, as hotspot/wls2ccf67579ff5",
+				"with / to group secrets, as hotspot/wls1a2b3c4d5e6f",
 			Pattern: secrets.KeyPattern,
 		},
 		{

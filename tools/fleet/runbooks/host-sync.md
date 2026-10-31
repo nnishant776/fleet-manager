@@ -15,7 +15,7 @@ It stops at the first step that fails.
 ```
 fleet host sync [HOST] [flags]
 
-fleet host sync neerajpinew
+fleet host sync pi1
 fleet host sync pi-gw --address 192.168.0.9
 ```
 

@@ -129,7 +129,7 @@ pkgs.testers.runNixOSTest {
     forge.wait_for_unit("sshd.service")
     newhost.wait_for_unit("sshd.service")
 
-    # A running host with a checkout, as neerajpinew had: the first-boot
+    # A running host with a checkout, as a Pi host had: the first-boot
     # clone never runs, so no identity exists.
     newhost.succeed(
         "mkdir -p /etc/nixos && git -C /etc/nixos init -q",

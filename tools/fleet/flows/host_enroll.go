@@ -19,7 +19,7 @@ import (
 )
 
 // HostEnroll brings a host that is already running into the secrets setup:
-// what was done by hand for neerajpinew on 2026-10-18. Every step looks first
+// what was once done by hand for a Pi host. Every step looks first
 // and skips what is already done, so it also finishes a half-done enrollment.
 var HostEnroll = &engine.Flow{
 	Path:  []string{"host", "enroll"},
@@ -32,7 +32,7 @@ var HostEnroll = &engine.Flow{
 		"enrolls it in the secrets repository and pushes, registers its deploy key\n" +
 		"read-only, then syncs the host and checks it. Steps that are done already are\n" +
 		"skipped, so it can be run again after a failure.",
-	Example: "  fleet host enroll neerajpinew --key ~/.ssh/home_network_ssh_key --repo ~/Projects/fleet-secrets",
+	Example: "  fleet host enroll pi1 --key ~/.ssh/admin_key --repo ~/Projects/secrets",
 	Args:    []string{"host"},
 	Inputs: []engine.Input{
 		fleet.FlakeInput,

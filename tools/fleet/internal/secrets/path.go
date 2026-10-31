@@ -10,12 +10,12 @@ import (
 
 // KeyPattern is what a secret's name in a host's file may be: parts of
 // letters, digits, - and _, with / between them to nest them, as
-// hotspot/wls2ccf67579ff5. sops-nix reads a / in a secret's name the same
-// way, and decrypts it to /run/secrets/hotspot/wls2ccf67579ff5.
+// hotspot/wls1a2b3c4d5e6f. sops-nix reads a / in a secret's name the same
+// way, and decrypts it to /run/secrets/hotspot/wls1a2b3c4d5e6f.
 const KeyPattern = `^[A-Za-z0-9][A-Za-z0-9_-]*(/[A-Za-z0-9][A-Za-z0-9_-]*)*$`
 
 // KeyPath is a name's place in a sops file, as sops set and --extract take
-// it: hotspot/wls2ccf67579ff5 is ["hotspot"]["wls2ccf67579ff5"].
+// it: hotspot/wls1a2b3c4d5e6f is ["hotspot"]["wls1a2b3c4d5e6f"].
 func KeyPath(name string) string {
 	var b strings.Builder
 	for _, part := range strings.Split(name, "/") {

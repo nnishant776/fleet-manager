@@ -13,7 +13,7 @@
     users.accounts.admin = {
       fullName = "Admin";
       privileged = true;
-      # Key only, as on neerajpinew.
+      # Key only, as on a Pi host.
       secrets.password = false;
     };
   };

@@ -12,7 +12,7 @@ It changes nothing, so it never asks.
 ```
 fleet host check [HOST] [flags]
 
-fleet host check neerajpinew
+fleet host check pi1
 fleet host check pi-gw --address 192.168.0.9
 ```
 

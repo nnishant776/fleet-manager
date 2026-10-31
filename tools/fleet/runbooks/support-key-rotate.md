@@ -18,8 +18,8 @@ apply them without a rebuild.
 ```
 fleet support-key rotate [HOST] [flags]
 
-fleet support-key rotate neerajpinew --old-key ~/.ssh/home_network_ssh_key --new-key ~/.ssh/fleet_support --kind hardware
-fleet support-key rotate neerajpinew --old-key ~/.ssh/home_network_ssh_key --new-key ~/.ssh/fleet_support --from 192.168.0.0/24
+fleet support-key rotate pi1 --old-key ~/.ssh/admin_key --new-key ~/.ssh/fleet_support --kind hardware
+fleet support-key rotate pi1 --old-key ~/.ssh/admin_key --new-key ~/.ssh/fleet_support --from 192.168.0.0/24
 ```
 
 ## Flags

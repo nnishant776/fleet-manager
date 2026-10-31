@@ -14,7 +14,7 @@ run again.
 ```
 fleet setup [flags]
 
-fleet setup --config ~/Projects/nixos-config --repo ~/Projects/fleet-secrets
+fleet setup --config ~/Projects/nixos-config --repo ~/Projects/secrets
 ```
 
 ## Flags

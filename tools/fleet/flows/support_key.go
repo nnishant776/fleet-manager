@@ -37,8 +37,8 @@ var SupportKeyRotate = &engine.Flow{
 		"conf.fleet.support.keysFromSecrets, the keys are changed in the host's secrets\n" +
 		"(fleet secrets user-keys, pushed) instead of its configuration, and the syncs\n" +
 		"apply them without a rebuild.",
-	Example: "  fleet support-key rotate neerajpinew --old-key ~/.ssh/home_network_ssh_key --new-key ~/.ssh/fleet_support --kind hardware\n" +
-		"  fleet support-key rotate neerajpinew --old-key ~/.ssh/home_network_ssh_key --new-key ~/.ssh/fleet_support --from 192.168.0.0/24",
+	Example: "  fleet support-key rotate pi1 --old-key ~/.ssh/admin_key --new-key ~/.ssh/fleet_support --kind hardware\n" +
+		"  fleet support-key rotate pi1 --old-key ~/.ssh/admin_key --new-key ~/.ssh/fleet_support --from 192.168.0.0/24",
 	Args: []string{"host"},
 	Inputs: []engine.Input{
 		fleet.FlakeInput,

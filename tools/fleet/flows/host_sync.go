@@ -23,7 +23,7 @@ var HostSync = &engine.Flow{
 		"and checks that the host now runs the newest commit of its branch. Then it\n" +
 		"reports the same as fleet host check: configuration, secrets and health.\n" +
 		"It stops at the first step that fails.",
-	Example: "  fleet host sync neerajpinew\n  fleet host sync pi-gw --address 192.168.0.9",
+	Example: "  fleet host sync pi1\n  fleet host sync pi-gw --address 192.168.0.9",
 	Args:    []string{"host"},
 	Inputs:  fleet.HostInputs(),
 	Needs:   []string{"ssh", "git", "nix"},

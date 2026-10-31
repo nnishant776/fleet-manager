@@ -25,7 +25,7 @@ var Setup = &engine.Flow{
 		"recipient, cached so that the secrets commands can encrypt to it without asking\n" +
 		"for the passphrase. Each step that is done already is skipped, so it is safe to\n" +
 		"run again.",
-	Example: "  fleet setup --config ~/Projects/nixos-config --repo ~/Projects/fleet-secrets",
+	Example: "  fleet setup --config ~/Projects/nixos-config --repo ~/Projects/secrets",
 	Inputs: []engine.Input{
 		{Name: "config", Prompt: "Configuration checkout", Help: "The fleet-manager checkout; defaults to this directory's flake, then /etc/nixos",
 			Default: func(x *engine.Ctx) (string, error) {

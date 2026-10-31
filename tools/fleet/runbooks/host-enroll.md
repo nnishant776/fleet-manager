@@ -15,7 +15,7 @@ skipped, so it can be run again after a failure.
 ```
 fleet host enroll [HOST] [flags]
 
-fleet host enroll neerajpinew --key ~/.ssh/home_network_ssh_key --repo ~/Projects/fleet-secrets
+fleet host enroll pi1 --key ~/.ssh/admin_key --repo ~/Projects/secrets
 ```
 
 ## Flags

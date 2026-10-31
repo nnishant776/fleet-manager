@@ -727,7 +727,7 @@ Install it yourself where you want it:
 ```bash
 nix profile install /etc/nixos#fleet        # on a NixOS machine of the fleet
 nix profile install .#fleet                 # or from a checkout you have checked
-nix run .#fleet -- host check neerajpinew   # once, without installing
+nix run .#fleet -- host check pi1   # once, without installing
 nix profile upgrade fleet                   # later, for a newer version
 ```
 

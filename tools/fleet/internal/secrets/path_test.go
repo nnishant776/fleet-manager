@@ -9,7 +9,7 @@ import (
 func TestKeyPathNestsOnSlash(t *testing.T) {
 	for name, want := range map[string]string{
 		"wifi_psk":                `["wifi_psk"]`,
-		"hotspot/wls2ccf67579ff5": `["hotspot"]["wls2ccf67579ff5"]`,
+		"hotspot/wls1a2b3c4d5e6f": `["hotspot"]["wls1a2b3c4d5e6f"]`,
 		"wireguard/wg0/private":   `["wireguard"]["wg0"]["private"]`,
 	} {
 		if got := KeyPath(name); got != want {

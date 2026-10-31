@@ -26,7 +26,7 @@ func (h hostAnswers) respond(s engine.Spec) (engine.Result, error) {
 
 func healthyPi() hostAnswers {
 	return hostAnswers{
-		"id -un":                          "support\nneerajpinew\n",
+		"id -un":                          "support\npi1\n",
 		"/etc/org/revision":               "eccde35047cbd3a5a09781db27403c7335d83aa6 eccde35047cbd3a5a09781db27403c7335d83aa6\n",
 		"status --porcelain":              "0\n",
 		"systemctl show -p LoadState":     "loaded\nsuccess\nSun 2026-10-18 18:21:40 IST\nage 50000000000 100000\n",
@@ -34,7 +34,7 @@ func healthyPi() hostAnswers {
 		"fleet-sync/status":               "",
 		"fleet-sync/user-problems":        "",
 		"readlink /var/lib/fleet/secrets": "snapshots/a32bf3e3cc506d937af8934906ba14e80762d028\n",
-		"find -H /run/secrets":            "hotspot/wls2ccf67579ff5\nwifi_psk\n",
+		"find -H /run/secrets":            "hotspot/wls1a2b3c4d5e6f\nwifi_psk\n",
 		"is-system-running":               "running\n",
 	}
 }
@@ -51,7 +51,7 @@ func runHostCheck(t *testing.T, answers hostAnswers) (error, *engine.Fake, strin
 		Stdin:    strings.NewReader(""),
 		LookPath: func(t string) (string, error) { return "/fake/bin/" + t, nil },
 	}
-	err := engine.RunWith(x, HostCheck, map[string]string{"host": "neerajpinew", "flake": "/no/such/flake"})
+	err := engine.RunWith(x, HostCheck, map[string]string{"host": "pi1", "flake": "/no/such/flake"})
 	return err, fake, out.String()
 }
 
@@ -61,7 +61,7 @@ func TestHostCheckOnAHealthyHost(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 	for _, want := range []string{
-		"✓ support at neerajpinew: logged in, hostname neerajpinew",
+		"✓ support at pi1: logged in, hostname pi1",
 		"✓ running revision: eccde35047cb, the same as its checkout",
 		"✓ checkout: no local changes",
 		"✓ last sync: succeeded, at Sun 2026-10-18 18:21:40 IST",
@@ -69,7 +69,7 @@ func TestHostCheckOnAHealthyHost(t *testing.T) {
 		"✓ problems recorded for everyone: none",
 		"✓ secrets snapshot: commit a32bf3e3cc50",
 		"✓ users' own secrets: all up to date",
-		"✓ decrypted secrets: hotspot/wls2ccf67579ff5, wifi_psk",
+		"✓ decrypted secrets: hotspot/wls1a2b3c4d5e6f, wifi_psk",
 		"✓ system state: running, no failed units",
 	} {
 		if !strings.Contains(out, want) {
@@ -79,7 +79,7 @@ func TestHostCheckOnAHealthyHost(t *testing.T) {
 	// Every command goes in as support, forwards nothing, and never prompts.
 	for _, s := range fake.Ran {
 		cmd := s.String()
-		for _, want := range []string{"ssh ", "ForwardAgent=no", "BatchMode=yes", "support@neerajpinew"} {
+		for _, want := range []string{"ssh ", "ForwardAgent=no", "BatchMode=yes", "support@pi1"} {
 			if !strings.Contains(cmd, want) {
 				t.Errorf("%q lacks %q", cmd, want)
 			}
