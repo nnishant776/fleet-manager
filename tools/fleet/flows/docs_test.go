@@ -63,9 +63,9 @@ func docsCheckout(t *testing.T) (top string, flags map[string]string) {
 	top = t.TempDir()
 	for name, text := range map[string]string{
 		"README.md":          "[The guide](docs/README.md)\n",
-		"docs/SUMMARY.md":   "[Preface](README.md)\n- [One](one.md)\n[Index](index.md)\n",
-		"docs/README.md":    "# Guide\n\n<!-- book:contents -->\n<!-- /book:contents -->\n",
-		"docs/one.md":       "# One\n\nRun `fleet docs` after a change.\n",
+		"docs/SUMMARY.md":    "[Preface](README.md)\n- [One](one.md)\n[Index](index.md)\n",
+		"docs/README.md":     "# Guide\n\n<!-- book:contents -->\n<!-- /book:contents -->\n",
+		"docs/one.md":        "# One\n\nRun `fleet docs` after a change.\n",
 		RunbookDir + "/x.md": "a page of a command that is gone\n",
 	} {
 		path := filepath.Join(top, name)
