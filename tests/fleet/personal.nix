@@ -183,14 +183,21 @@ pkgs.testers.runNixOSTest {
             "install -m 0600 -o ann -g users ${keys}/owner.pub /home/ann/.ssh/authorized_keys",
             "install -m 0600 ${keys}/owner /root/key",
         )
-        ssh = "ssh -i /root/key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes"
+        ssh = "ssh -n -i /root/key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes"
         owner.wait_for_unit("sshd.service")
-        assert owner.succeed(f"{ssh} ann@localhost id -un").strip() == "ann"
+        assert owner.succeed(f"{ssh} ann@localhost id -un", timeout=60).strip() == "ann"
+
+        def refused(user):
+            # ssh's own refusal: 255 and "Permission denied", not a timeout,
+            # which fail() would take for a refusal too.
+            status, out = owner.execute(f"{ssh} {user}@localhost true 2>&1", timeout=60)
+            assert status == 255 and "Permission denied" in out, (status, out)
+
         owner.succeed(
             "install -d -m 0700 -o bob -g users /home/bob/.ssh",
             "install -m 0600 -o bob -g users ${keys}/owner.pub /home/bob/.ssh/authorized_keys",
         )
-        owner.fail(f"{ssh} bob@localhost true")
+        refused("bob")
 
     with subtest("an unprivileged owner has no sudo and a narrow NetworkManager"):
         plain.fail("runuser -u ann -- sudo -n true")
@@ -243,7 +250,7 @@ pkgs.testers.runNixOSTest {
         owner.fail("systemctl cat fleet-owner-setup.service")
         owner.fail("getent group fleet-local")
         assert "fleet-local" not in groups, groups
-        owner.fail(f"{ssh} ann@localhost true")
+        refused("ann")
         owner.succeed(f"runuser -u ann -- sh -c 'echo \"{password}\" | sudo -S true'")
 
         # The same password at the console, on a terminal of its own.
