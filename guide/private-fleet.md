@@ -1,4 +1,8 @@
-# A private fleet
+# 9. A private fleet
+
+<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->
+[← 8. Secrets](secrets.md) · [Contents](README.md) · [10. The fleet tool →](fleet-tool.md)
+<!-- /book:top -->
 
 How a fleet keeps its hosts and users in a private repository, the inventory,
 and works with it from day to day: setting one up, the key a host reads it
@@ -6,6 +10,21 @@ with, host branches, moving to a newer fleet-manager, installing hosts and
 bringing running machines in. It builds on
 [Signing commits and trusting them](signing-and-trust.md) and
 [Secrets](secrets.md).
+
+<!-- book:sections -->
+In this chapter:
+
+- [Setting one up](#setting-one-up)
+- [The configuration key](#the-configuration-key)
+- [Each host gets only its own files](#each-host-gets-only-its-own-files)
+- [What a host fetches](#what-a-host-fetches)
+- [Its own CI](#its-own-ci)
+- [Moving to a newer fleet-manager](#moving-to-a-newer-fleet-manager)
+- [Installing a host from it](#installing-a-host-from-it)
+- [Bringing in a running NixOS machine](#bringing-in-a-running-nixos-machine)
+- [Moving a host fleet-manager defines](#moving-a-host-fleet-manager-defines)
+- [Moving a running host to it](#moving-a-running-host-to-it)
+<!-- /book:sections -->
 
 ## Setting one up
 
@@ -265,3 +284,9 @@ fleet-manager.
    fleet-manager names the private repository; the host learns it from the
    configuration it switches to.
 3. Delete the host's folder from the repository it came from.
+
+<!-- book:bottom -->
+---
+
+[← 8. Secrets](secrets.md) · [Contents](README.md) · [10. The fleet tool →](fleet-tool.md)
+<!-- /book:bottom -->

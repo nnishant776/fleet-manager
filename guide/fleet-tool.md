@@ -1,4 +1,8 @@
-# The fleet tool
+# 10. The fleet tool
+
+<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->
+[← 9. A private fleet](private-fleet.md) · [Contents](README.md) · [11. Secrets runbooks →](secrets-runbooks.md)
+<!-- /book:top -->
 
 `fleet` walks through the fleet's procedures one step at a time: installing a
 machine, enrolling a host, secrets, the support key, and checks. Each step says
@@ -9,6 +13,17 @@ anything, and checks the result. `fleet` alone shows a menu, and
 This chapter covers installing it, running it without prompts, what a run
 that stops leaves behind, and how the installer gets it. Each command has a
 page of its own in the [runbooks](../tools/fleet/runbooks/README.md).
+
+<!-- book:sections -->
+In this chapter:
+
+- [Installing it](#installing-it)
+- [Without prompts](#without-prompts)
+- [A run that stops](#a-run-that-stops)
+- [Runbooks](#runbooks)
+- [On the installer](#on-the-installer)
+- [fleet and fleet-secrets](#fleet-and-fleet-secrets)
+<!-- /book:sections -->
 
 ## Installing it
 
@@ -73,3 +88,9 @@ configuration sets `fleet.support.keysFromSecrets`, `fleet support-key rotate`
 changes support's keys there instead of asking you to edit the configuration; and
 `fleet host enroll` checks, before it switches the host, that its branch holds every
 secret the configuration declares, reading the sops files without decrypting them.
+
+<!-- book:bottom -->
+---
+
+[← 9. A private fleet](private-fleet.md) · [Contents](README.md) · [11. Secrets runbooks →](secrets-runbooks.md)
+<!-- /book:bottom -->

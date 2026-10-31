@@ -1,8 +1,22 @@
-# Things to know
+# Appendix B. Things to know
+
+<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->
+[← Appendix A. Configuration reference](configuration.md) · [Contents](README.md) · [Appendix C. Glossary →](glossary.md)
+<!-- /book:top -->
 
 Behaviour that surprises people, by area. Caveats that belong to one subject
 are in its chapter: the sync's in [How it works](how-it-works.md), the
 accounts' in [Accounts and homes](accounts.md).
+
+<!-- book:sections -->
+In this chapter:
+
+- [The flake](#the-flake)
+- [macOS](#macos)
+- [Hardening and auditing](#hardening-and-auditing)
+- [Desktops and virtual machines](#desktops-and-virtual-machines)
+- [Installs](#installs)
+<!-- /book:sections -->
 
 ## The flake
 
@@ -86,3 +100,9 @@ which records it in `/etc/org/revision`, and the first-boot clone checks that
 revision out. Uncommitted changes have no revision: `os-install` warns, and the
 clone stays at the tip of the tracked ref, which may not match the system it
 just installed.
+
+<!-- book:bottom -->
+---
+
+[← Appendix A. Configuration reference](configuration.md) · [Contents](README.md) · [Appendix C. Glossary →](glossary.md)
+<!-- /book:bottom -->

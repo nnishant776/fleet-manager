@@ -1,4 +1,8 @@
-# Networking
+# 6. Networking
+
+<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->
+[← 5. Accounts and homes](accounts.md) · [Contents](README.md) · [7. Signing commits and trusting them →](signing-and-trust.md)
+<!-- /book:top -->
 
 What `conf.networking` does beyond its options: the firewall and where a
 host's own rules go, stable interface names, Wi-Fi networks kept on the
@@ -6,6 +10,15 @@ machine with networkd, and hotspots that share the machine's connection. The
 options are under
 [`conf.networking` and `conf.sharing`](configuration.md#confnetworking-and-confsharing)
 in *Configuration reference*.
+
+<!-- book:sections -->
+In this chapter:
+
+- [The firewall](#the-firewall)
+- [Interface names from the MAC](#interface-names-from-the-mac)
+- [Wi-Fi networks with networkd](#wi-fi-networks-with-networkd)
+- [Hotspots](#hotspots)
+<!-- /book:sections -->
 
 ## The firewall
 
@@ -151,3 +164,9 @@ secrets in them, as they end up in the Nix store.
 
 `nix flake check` checks every host that has a declared hotspot that is off
 (`<host>-hotspot-ready`), so turning it on stays a one-line change.
+
+<!-- book:bottom -->
+---
+
+[← 5. Accounts and homes](accounts.md) · [Contents](README.md) · [7. Signing commits and trusting them →](signing-and-trust.md)
+<!-- /book:bottom -->

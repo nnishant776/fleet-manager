@@ -1,4 +1,8 @@
-# How it works
+# 1. How it works
+
+<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->
+[← Preface](README.md) · [Contents](README.md) · [2. Installing a machine →](installing.md)
+<!-- /book:top -->
 
 A fleet is a set of machines that each build their own configuration from
 git, on a timer, and take only commits a trusted key signed. Nothing is pushed
@@ -7,6 +11,16 @@ so when it cannot.
 
 This chapter is the map. Each section names the chapter that has the detail,
 and the [Glossary](glossary.md) defines the terms it uses.
+
+<!-- book:sections -->
+In this chapter:
+
+- [The pieces](#the-pieces)
+- [From `conf.*` to a system](#from-conf-to-a-system)
+- [What a NixOS host does at each sync](#what-a-nixos-host-does-at-each-sync)
+- [Things to know about the sync](#things-to-know-about-the-sync)
+- [What it is built on](#what-it-is-built-on)
+<!-- /book:sections -->
 
 ## The pieces
 
@@ -212,3 +226,9 @@ The flake inputs, which `flake.lock` pins:
 | `sops-nix` | master | secrets, decrypted with sops at activation |
 | `nixos-raspberrypi` | develop | Raspberry Pi board support, for Pi hosts and `rpi-image` |
 | `microvm` | main | microVM guests on `pi-gw` |
+
+<!-- book:bottom -->
+---
+
+[← Preface](README.md) · [Contents](README.md) · [2. Installing a machine →](installing.md)
+<!-- /book:bottom -->

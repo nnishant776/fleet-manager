@@ -1,9 +1,29 @@
-# Configuration reference
+# Appendix A. Configuration reference
+
+<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->
+[← 11. Secrets runbooks](secrets-runbooks.md) · [Contents](README.md) · [Appendix B. Things to know →](things-to-know.md)
+<!-- /book:top -->
 
 Every `conf.*` option, by concern, to look things up in. The explanations are
 in the chapters: [Roles and machine types](roles.md),
 [Accounts and homes](accounts.md), [Networking](networking.md) and
 [Secrets](secrets.md).
+
+<!-- book:sections -->
+In this chapter:
+
+- [`conf.role`, `conf.machineType`, `conf.platform`](#confrole-confmachinetype-confplatform)
+- [`conf.host`](#confhost)
+- [`conf.users`](#confusers)
+- [`conf.hardware`](#confhardware)
+- [`conf.networking` and `conf.sharing`](#confnetworking-and-confsharing)
+- [`conf.containers` and `conf.virtualisation`](#confcontainers-and-confvirtualisation)
+- [`conf.desktop`](#confdesktop)
+- [`conf.development`](#confdevelopment)
+- [`conf.flatpak` and `conf.homebrew`](#confflatpak-and-confhomebrew)
+- [`conf.fleet`](#conffleet)
+- [`conf.secrets`](#confsecrets)
+<!-- /book:sections -->
 
 ## `conf.role`, `conf.machineType`, `conf.platform`
 
@@ -265,3 +285,9 @@ authenticates with its deploy key; `http://` and `https://` are rejected.
 These checks apply on NixOS; on macOS `secrets.repo.url` only sets up sops.
 
 How the secrets work is in [Secrets](secrets.md), and what to do in [Secrets runbooks](secrets-runbooks.md).
+
+<!-- book:bottom -->
+---
+
+[← 11. Secrets runbooks](secrets-runbooks.md) · [Contents](README.md) · [Appendix B. Things to know →](things-to-know.md)
+<!-- /book:bottom -->

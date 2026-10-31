@@ -1,8 +1,29 @@
-# Further reading
+# Appendix D. Further reading
+
+<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->
+[← Appendix C. Glossary](glossary.md) · [Contents](README.md) · [Appendix E. Index →](index.md)
+<!-- /book:top -->
 
 For each chapter, this appendix lists the upstream documentation it builds
 on and where its subject lives in the code. The code is the final word: when
 this book and the code disagree, the code is right, and the book has a bug.
+
+<!-- book:sections -->
+In this chapter:
+
+- [How it works](#how-it-works)
+- [Installing a machine](#installing-a-machine)
+- [Building a Raspberry Pi image](#building-a-raspberry-pi-image)
+- [Roles and machine types](#roles-and-machine-types)
+- [Accounts and homes](#accounts-and-homes)
+- [Networking](#networking)
+- [Signing commits and trusting them](#signing-commits-and-trusting-them)
+- [Secrets](#secrets)
+- [A private fleet](#a-private-fleet)
+- [The fleet tool](#the-fleet-tool)
+- [Configuration reference](#configuration-reference)
+- [This book](#this-book)
+<!-- /book:sections -->
 
 ## How it works
 
@@ -148,3 +169,9 @@ this book and the code disagree, the code is right, and the book has a bug.
   which [`SUMMARY.md`](SUMMARY.md) follows.
 - `fleet docs` writes the contents, the page turns and the index from it; see
   its [runbook](../tools/fleet/runbooks/docs.md).
+
+<!-- book:bottom -->
+---
+
+[← Appendix C. Glossary](glossary.md) · [Contents](README.md) · [Appendix E. Index →](index.md)
+<!-- /book:bottom -->

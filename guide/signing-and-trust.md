@@ -1,4 +1,8 @@
-# Signing commits and trusting them
+# 7. Signing commits and trusting them
+
+<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->
+[← 6. Networking](networking.md) · [Contents](README.md) · [8. Secrets →](secrets.md)
+<!-- /book:top -->
 
 A fleet host builds only commits signed by a key it trusts, and never goes
 back to an older one. The maintainer's tools hold themselves to the same
@@ -7,6 +11,20 @@ This chapter covers the signers file, signing your commits, those copies, the
 tools' own clones, reviewing new commits, and rotating keys. Read it before
 [Secrets](secrets.md) and [A private fleet](private-fleet.md), which build on
 it.
+
+<!-- book:sections -->
+In this chapter:
+
+- [The signers file](#the-signers-file)
+- [Signing your commits](#signing-your-commits)
+- [Your own copy of the keys](#your-own-copy-of-the-keys)
+- [Your own copy of the trusted commits](#your-own-copy-of-the-trusted-commits)
+- [The tools' own clones](#the-tools-own-clones)
+- [Reviewing new commits](#reviewing-new-commits)
+- [Keys in your agent](#keys-in-your-agent)
+- [Merging](#merging)
+- [Rotating or removing a key](#rotating-or-removing-a-key)
+<!-- /book:sections -->
 
 ## The signers file
 
@@ -190,3 +208,9 @@ commit signed by a key still trusted. Do not rely on `valid-before` for that:
 Git checks it against the commit's own date, which the signer chooses, so a
 stolen key can still sign backdated commits; the option only suits retiring a
 key on a planned date.
+
+<!-- book:bottom -->
+---
+
+[← 6. Networking](networking.md) · [Contents](README.md) · [8. Secrets →](secrets.md)
+<!-- /book:bottom -->

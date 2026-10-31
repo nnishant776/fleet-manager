@@ -1,4 +1,8 @@
-# Secrets
+# 8. Secrets
+
+<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->
+[← 7. Signing commits and trusting them](signing-and-trust.md) · [Contents](README.md) · [9. A private fleet →](private-fleet.md)
+<!-- /book:top -->
 
 How passwords, keys and other secrets reach a host without ever entering
 fleet-manager: the secrets repository and its files, who can decrypt what, what
@@ -15,6 +19,18 @@ host has a branch of its own, `host/<name>`, fetches only that one with its
 deploy key, verifies the commit signature, and decrypts the files at
 activation with sops-nix. A user can have a branch of their own too, which
 the hosts that list them read as well.
+
+<!-- book:sections -->
+In this chapter:
+
+- [The secrets repository](#the-secrets-repository)
+- [Users with a branch of their own](#users-with-a-branch-of-their-own)
+- [Trust model](#trust-model)
+- [On the host](#on-the-host)
+- [Host secrets](#host-secrets)
+- [Rules](#rules)
+- [The tools](#the-tools)
+<!-- /book:sections -->
 
 ## The secrets repository
 
@@ -320,3 +336,9 @@ secrets repository and the configuration upstream; see
 tool, for `host-enroll`, `host-rekey`, `host-retire`, `user-password` and
 `user-key`. `user-keys`, `user-enroll` and `user-retire` exist only in the Go
 port. The runbooks use `fleet secrets`.
+
+<!-- book:bottom -->
+---
+
+[← 7. Signing commits and trusting them](signing-and-trust.md) · [Contents](README.md) · [9. A private fleet →](private-fleet.md)
+<!-- /book:bottom -->

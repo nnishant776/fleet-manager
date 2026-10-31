@@ -1,4 +1,8 @@
-# Installing a machine
+# 2. Installing a machine
+
+<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->
+[← 1. How it works](how-it-works.md) · [Contents](README.md) · [3. Building a Raspberry Pi image →](raspberry-pi.md)
+<!-- /book:top -->
 
 How a machine gets its first system. [First run](../README.md#first-run) in
 the README gives the one command; this chapter has the rest: installing only
@@ -6,6 +10,18 @@ commits you have checked, a Mac, `os-install` and the disk layout it makes,
 adding a disk later, and enrolling a host with secrets while it installs. It
 assumes the overview in [How it works](how-it-works.md); what enrollment is
 for is explained in [Secrets](secrets.md).
+
+<!-- book:sections -->
+In this chapter:
+
+- [From checked commits](#from-checked-commits)
+- [On a Mac](#on-a-mac)
+- [Without bootstrap](#without-bootstrap)
+- [With os-install](#with-os-install)
+- [Adding a disk to a running machine](#adding-a-disk-to-a-running-machine)
+- [What the install does](#what-the-install-does)
+- [Enrolling during the install](#enrolling-during-the-install)
+<!-- /book:sections -->
 
 ## From checked commits
 
@@ -230,3 +246,9 @@ the first boot. A private one can't be read until the host is enrolled, so
 `init` makes the identity first, in memory, the installer waits for both
 deploy keys to be registered, then clones the configuration, installs, and
 writes the identity onto the new disk.
+
+<!-- book:bottom -->
+---
+
+[← 1. How it works](how-it-works.md) · [Contents](README.md) · [3. Building a Raspberry Pi image →](raspberry-pi.md)
+<!-- /book:bottom -->

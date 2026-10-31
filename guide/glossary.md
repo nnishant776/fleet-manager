@@ -1,8 +1,16 @@
-# Glossary
+# Appendix C. Glossary
+
+<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->
+[← Appendix B. Things to know](things-to-know.md) · [Contents](README.md) · [Appendix D. Further reading →](further-reading.md)
+<!-- /book:top -->
 
 The fleet's own terms, each defined in a sentence or two. The link after each
 definition goes to where it is explained. The [Index](index.md) lists every
 place a term is mentioned.
+
+<!-- book:sections -->
+In this chapter: [A](#a) · [B](#b) · [C](#c) · [D](#d) · [E](#e) · [F](#f) · [H](#h) · [I](#i) · [L](#l) · [M](#m) · [O](#o) · [P](#p) · [R](#r) · [S](#s) · [T](#t) · [U](#u)
+<!-- /book:sections -->
 
 ## A
 
@@ -184,3 +192,9 @@ place a term is mentioned.
   [Users with a branch of their own](secrets.md#users-with-a-branch-of-their-own).
 - **user identity**: A user's own age key and SSH signing key, made by
   `fleet user init`. See [Trust model](secrets.md#trust-model).
+
+<!-- book:bottom -->
+---
+
+[← Appendix B. Things to know](things-to-know.md) · [Contents](README.md) · [Appendix D. Further reading →](further-reading.md)
+<!-- /book:bottom -->

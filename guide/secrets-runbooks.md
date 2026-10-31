@@ -1,4 +1,8 @@
-# Secrets runbooks
+# 11. Secrets runbooks
+
+<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->
+[← 10. The fleet tool](fleet-tool.md) · [Contents](README.md) · [Appendix A. Configuration reference →](configuration.md)
+<!-- /book:top -->
 
 What to do in the secrets repository, and why: the maintainer's one-time
 setup, onboarding a machine and a user, login and sudo keys, host secrets,
@@ -6,6 +10,19 @@ day-2 work, emergency access and troubleshooting. The examples use host
 `laptop1`, users `alice` and `bob`, and the maintainer. How it all works is in
 [Secrets](secrets.md); each command also has a page of its own in the
 [runbooks](../tools/fleet/runbooks/README.md).
+
+<!-- book:sections -->
+In this chapter:
+
+- [Maintainer: one-time setup](#maintainer-one-time-setup)
+- [Onboarding a machine](#onboarding-a-machine)
+- [Onboarding a user](#onboarding-a-user)
+- [Login and sudo keys](#login-and-sudo-keys)
+- [Host secrets](#host-secrets)
+- [Day-2 runbooks](#day-2-runbooks)
+- [Emergency access](#emergency-access)
+- [Troubleshooting](#troubleshooting)
+<!-- /book:sections -->
 
 ## Maintainer: one-time setup
 
@@ -547,3 +564,9 @@ left to the secrets commands, which check it against that key.
 
 `git log --format='%h %G? %s' host/laptop1` shows the signature status of
 recent commits on a host's branch: `G` is good, `N` is unsigned.
+
+<!-- book:bottom -->
+---
+
+[← 10. The fleet tool](fleet-tool.md) · [Contents](README.md) · [Appendix A. Configuration reference →](configuration.md)
+<!-- /book:bottom -->

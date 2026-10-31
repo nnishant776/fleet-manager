@@ -1,10 +1,25 @@
-# Roles and machine types
+# 4. Roles and machine types
+
+<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->
+[← 3. Building a Raspberry Pi image](raspberry-pi.md) · [Contents](README.md) · [5. Accounts and homes →](accounts.md)
+<!-- /book:top -->
 
 Two options decide most of a machine's defaults: `conf.role`, what it is for,
 and `conf.machineType`, what it physically is. This chapter lists what each
 sets, the defaults worked out from other options, what turning an option on
 brings with it, and how a host overrides any of it. Every option itself is in
 the [Configuration reference](configuration.md).
+
+<!-- book:sections -->
+In this chapter:
+
+- [Roles](#roles)
+- [Machine types](#machine-types)
+- [Computed defaults](#computed-defaults)
+- [Cascading implications](#cascading-implications)
+- [An example host](#an-example-host)
+- [Overriding values](#overriding-values)
+<!-- /book:sections -->
 
 ## Roles
 
@@ -152,3 +167,9 @@ turn the implied option off.
 | Override a value a module set with a plain assignment | `lib.mkForce`; two plain definitions are a conflict, not a win |
 | Beat another module's `lib.mkForce` | `lib.mkOverride 40`; two `mkForce` definitions conflict |
 | Append to a list | `extraPackages` is the simplest way where it exists. A plain list assignment adds to other plain definitions, but replaces a list a module set with `lib.mkDefault`; to add to such a list, define yours with `lib.mkDefault` too, so the two merge |
+
+<!-- book:bottom -->
+---
+
+[← 3. Building a Raspberry Pi image](raspberry-pi.md) · [Contents](README.md) · [5. Accounts and homes →](accounts.md)
+<!-- /book:bottom -->

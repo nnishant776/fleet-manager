@@ -1,4 +1,8 @@
-# Accounts and homes
+# 5. Accounts and homes
+
+<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->
+[← 4. Roles and machine types](roles.md) · [Contents](README.md) · [6. Networking →](networking.md)
+<!-- /book:top -->
 
 Who can log in, and how their homes are built: sudo with an SSH key instead of
 a password, how a user's home is assembled, personal machines whose owner
@@ -7,6 +11,15 @@ NixOS and macOS. The account options are under
 [`conf.users`](configuration.md#confusers) in *Configuration reference*. On a
 host with secrets, passwords and keys come from the secrets repository, as
 [Secrets](secrets.md) explains.
+
+<!-- book:sections -->
+In this chapter:
+
+- [Sudo with an SSH key](#sudo-with-an-ssh-key)
+- [How a home is assembled](#how-a-home-is-assembled)
+- [Personal machines](#personal-machines)
+- [Things to know](#things-to-know)
+<!-- /book:sections -->
 
 ## Sudo with an SSH key
 
@@ -166,3 +179,9 @@ widens that setting.
 a locally added user or a changed password does not survive the next sync.
 Passwords come from the secrets repository when `conf.secrets.repo.url` is set,
 otherwise from `initialHashedPassword`; an account with neither is locked.
+
+<!-- book:bottom -->
+---
+
+[← 4. Roles and machine types](roles.md) · [Contents](README.md) · [6. Networking →](networking.md)
+<!-- /book:bottom -->
