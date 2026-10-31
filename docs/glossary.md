@@ -9,7 +9,7 @@ definition goes to where it is explained. The [Index](index.md) lists every
 place a term is mentioned.
 
 <!-- book:sections -->
-In this chapter: [A](#a) · [B](#b) · [C](#c) · [D](#d) · [E](#e) · [F](#f) · [H](#h) · [I](#i) · [L](#l) · [M](#m) · [O](#o) · [P](#p) · [R](#r) · [S](#s) · [T](#t) · [U](#u)
+In this chapter: [A](#a) · [B](#b) · [C](#c) · [D](#d) · [E](#e) · [F](#f) · [H](#h) · [I](#i) · [L](#l) · [M](#m) · [O](#o) · [P](#p) · [R](#r) · [S](#s) · [T](#t) · [U](#u) · [W](#w)
 <!-- /book:sections -->
 
 ## A
@@ -148,6 +148,9 @@ In this chapter: [A](#a) · [B](#b) · [C](#c) · [D](#d) · [E](#e) · [F](#f) 
   [Trust model](secrets.md#trust-model).
 - **recovery recipient**: The public half of the recovery identity. Every file
   is encrypted to it. See [Trust model](secrets.md#trust-model).
+- **release**: A build of the `fleet` tool that CI publishes on the forge: static
+  binaries, with their `SHA256SUMS` and attestations. See
+  [A newer fleet-manager, CI and releases](how-it-works.md#a-newer-fleet-manager-ci-and-releases).
 - **role**: What a machine is for, `conf.role`, which sets its defaults. See
   [Roles](roles.md#roles).
 - **rollback on failure**: Going back to the previous generation when a new
@@ -159,7 +162,7 @@ In this chapter: [A](#a) · [B](#b) · [C](#c) · [D](#d) · [E](#e) · [F](#f) 
 ## S
 
 - **secrets repository**: The private repository of sops ciphertext, one
-  branch per host. See [The secrets repository](secrets.md#the-secrets-repository).
+  branch per host and one per user who keeps their own. See [The secrets repository](secrets.md#the-secrets-repository).
 - **secrets snapshot**: The host's copy of its own files from the secrets
   repository, which activation decrypts. See [On the host](secrets.md#on-the-host).
 - **self-managed home**: A home its user activates, with `selfManagedHome`,
@@ -172,7 +175,7 @@ In this chapter: [A](#a) · [B](#b) · [C](#c) · [D](#d) · [E](#e) · [F](#f) 
   [On the host](secrets.md#on-the-host).
 - **support account**: `support`, the maintainer's account on a fleet host,
   logged in to with keys only. See
-  [Onboarding a machine](secrets-runbooks.md#onboarding-a-machine).
+  [Reaching a host](how-it-works.md#reaching-a-host).
 - **sync**: A host's periodic fetch, check, build and activation of its
   configuration and secrets. See
   [What a NixOS host does at each sync](how-it-works.md#what-a-nixos-host-does-at-each-sync).
@@ -195,6 +198,13 @@ In this chapter: [A](#a) · [B](#b) · [C](#c) · [D](#d) · [E](#e) · [F](#f) 
   [Users with a branch of their own](secrets.md#users-with-a-branch-of-their-own).
 - **user identity**: A user's own age key and SSH signing key, made by
   `fleet user init`. See [Trust model](secrets.md#trust-model).
+
+## W
+
+- **weekly flake update**: CI's pull request, every Monday, that updates
+  fleet-manager's `flake.lock`. Its commit is not signed, so it is taken as a
+  signed commit of your own. See
+  [A newer fleet-manager, CI and releases](how-it-works.md#a-newer-fleet-manager-ci-and-releases).
 
 <!-- book:bottom -->
 ---
