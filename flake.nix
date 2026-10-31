@@ -90,6 +90,16 @@
     checks.x86_64-linux = {
       # Builds fleet, which runs its unit tests.
       fleet = self.packages.x86_64-linux.fleet;
+      # The runbooks and the guide are what fleet docs writes, and every link leads somewhere.
+      guide = nixpkgs.legacyPackages.x86_64-linux.runCommand "guide" {
+        nativeBuildInputs = [ self.packages.x86_64-linux.fleet ];
+      } ''
+        cp -r ${self} src
+        chmod -R u+w src
+        cd src
+        fleet docs --check --out tools/fleet/runbooks --guide guide
+        touch $out
+      '';
       # The fleet-secrets port against the shell tool, command by command.
       fleet-secrets-parity = import ./tests/fleet/secrets-parity.nix {
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
