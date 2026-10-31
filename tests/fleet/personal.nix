@@ -15,7 +15,12 @@
 # - the owner's own ~/.ssh/authorized_keys admits her over SSH, while the
 #   same key in bob's does not;
 # - on `plain`, the owner has no sudo and only the allowlisted NetworkManager
-#   actions; on `owner` she has sudo with her password.
+#   actions; on `owner` she has sudo with her password;
+# - adoption (what the inventory holds after `fleet host adopt`): on `owner`,
+#   a switch to a configuration that declares her, with no uid, and turns
+#   personal mode off keeps her uid, her files, her password and her
+#   groups, makes accounts immutable, removes the setup service and the
+#   fleet-local group, and stops her home keys from admitting her.
 # Wi-Fi is not covered: the VM has none, and has a network, so the setup never
 # offers nmtui. Run it with `nix build .#checks.x86_64-linux.fleet-personal`.
 { pkgs, inputs }:
@@ -52,8 +57,27 @@ let
       services.openssh.authorizedKeysInHomedir = false;
       systemd.services.fleet-bootstrap.enable = false;
       systemd.timers.config-auto-update.enable = false;
-    }];
+    }
+    # What the inventory holds once `fleet host adopt` has run: the owner
+    # declared with no uid, personal mode off. NixOS keeps the uid she has. The password comes
+    # from a file the test writes, in place of the secrets this host has none
+    # of. Only the administrator's host has it.
+    (lib.optionalAttrs ownerPrivileged {
+      specialisation.adopted.configuration = {
+        conf.fleet.personal.enable = lib.mkForce false;
+        conf.users.accounts.ann = {
+          fullName = "Ann Example";
+          privileged = true;
+        };
+        users.users.ann.hashedPasswordFile = "/var/lib/adopt/ann-hash";
+      };
+    })];
   };
+
+  # The uid the first account the setup makes gets after bob's; the test
+  # asserts it before the switch and again after it, which shows that NixOS
+  # keeps it by itself: the declaration gives none.
+  annUid = 1001;
 in
 pkgs.testers.runNixOSTest {
   name = "fleet-personal";
@@ -178,5 +202,63 @@ pkgs.testers.runNixOSTest {
 
     with subtest("a privileged owner has sudo with her password"):
         owner.succeed(f"runuser -u ann -- sh -c 'echo \"{password}\" | sudo -S true'")
+
+    with subtest("adopting the owner keeps her uid, files and password under immutable accounts"):
+        uid = "${toString annUid}"
+        assert owner.succeed("id -u ann").strip() == uid, owner.succeed("getent passwd ann")
+        hash_before = owner.succeed("getent shadow ann | cut -d: -f2").strip()
+        assert hash_before.startswith("$"), hash_before
+        # What `fleet host adopt` stores in the secrets, and the host then
+        # takes from there; this host has none, so a file stands in.
+        owner.succeed(
+            "install -d -m 0700 /var/lib/adopt",
+            "getent shadow ann | cut -d: -f2 > /var/lib/adopt/ann-hash",
+            "chmod 0600 /var/lib/adopt/ann-hash",
+            "echo mine > /home/ann/mine && chown ann: /home/ann/mine",
+            "systemctl is-active sshd.service",
+        )
+        assert owner.succeed("id -nG ann").split().count("fleet-local") == 1
+        # An account made by hand, which the new configuration does not know.
+        owner.succeed("useradd stray")
+        # Her user manager outlives her last session, the SSH login above, by
+        # ten seconds; home-manager switching her units while it stops fails.
+        owner.wait_until_succeeds(
+            f"systemctl show -p ActiveState --value user@{uid}.service | grep -qxE 'inactive|failed'",
+            timeout=60,
+        )
+        owner.succeed("/run/current-system/specialisation/adopted/bin/switch-to-configuration test")
+
+        # Her ids, files and password are as they were.
+        assert owner.succeed("id -u ann").strip() == uid
+        assert owner.succeed("stat -c %u:%G /home/ann /home/ann/mine").split() == [uid + ":users"] * 2
+        assert owner.succeed("getent shadow ann | cut -d: -f2").strip() == hash_before
+        assert owner.succeed("cat /home/ann/mine").strip() == "mine"
+        groups = owner.succeed("id -nG ann").split()
+        assert "wheel" in groups and "ssh-users" in groups, groups
+        # Accounts are the configuration's now: the stray one is gone.
+        owner.fail("getent passwd stray")
+        owner.succeed("getent passwd ann bob")
+        # She has not become less than she was, and the setup is gone with the
+        # group that let her home keys in.
+        owner.fail("systemctl cat fleet-owner-setup.service")
+        owner.fail("getent group fleet-local")
+        assert "fleet-local" not in groups, groups
+        owner.fail(f"{ssh} ann@localhost true")
+        owner.succeed(f"runuser -u ann -- sh -c 'echo \"{password}\" | sudo -S true'")
+
+        # The same password at the console, on a terminal of its own.
+        owner.send_key("alt-f2")
+        owner.wait_until_tty_matches("2", "login: ")
+        owner.send_chars("ann\n")
+        owner.wait_until_tty_matches("2", "Password")
+        owner.send_chars(password + "\n")
+        owner.wait_until_tty_matches("2", "ann@")
+        owner.send_chars("id -u\n")
+        owner.wait_until_tty_matches("2", uid)
+
+        # Another activation of the same configuration changes nothing.
+        owner.succeed("/run/current-system/bin/switch-to-configuration test")
+        assert owner.succeed("id -u ann").strip() == uid
+        assert owner.succeed("getent shadow ann | cut -d: -f2").strip() == hash_before
   '';
 }
