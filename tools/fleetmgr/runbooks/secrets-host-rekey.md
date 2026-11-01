@@ -21,7 +21,7 @@ fleetmgr secrets host-rekey laptop1 --from laptop1.enroll
 | `--repo` | Your clone of the secrets repository, left on main, or the name of a repository (fleetmgr repo list), which means the tool's own clone of it; defaults to FLEETMGR_SECRETS_REPO, then this directory |
 | `--recovery` | Your passphrase-encrypted age identity (age -p). Empty: sops uses SOPS_AGE_KEY_FILE or SOPS_AGE_KEY |
 | `--host` | The host's name: lowercase letters, digits and '-' |
-| `--from` | The host's enrollment file, as written by fleet-secrets-sync init, or - for standard input |
+| `--from` | The host's enrollment file, as written by fleetmgr-secrets-sync init, or - for standard input |
 
 Every command also takes `--dry-run` (show every step and command; look, but
 change nothing), `-y`/`--yes` (run changes without asking) and `--verbose`.

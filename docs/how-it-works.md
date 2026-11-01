@@ -120,7 +120,7 @@ flowchart TB
   secrets, and two read-only deploy keys, one for the secrets and one for a
   private configuration. It makes them itself, at install, at its first boot,
   or when `fleetmgr host enroll` brings it in. They leave it only through
-  `fleet-identity --export`, for a planned reinstall.
+  `fleetmgr-identity --export`, for a planned reinstall.
 - **CI** on the forge tests the `fleetmgr` tool, publishes its static binaries as
   releases, and proposes a weekly update of the flake's inputs.
 - **Upstream inputs and binary caches** are where the code a host runs comes
@@ -164,9 +164,9 @@ flowchart TB
     end
     loki[("Log server")]
     subgraph host["A NixOS fleet host"]
-        timer["config-auto-update.timer<br/>daily; fleet-sync-now at once"]
-        boot["fleet-bootstrap<br/>first boot, or a missing checkout"]
-        ownersetup["fleet-owner-setup<br/>personal machines, on tty1"]
+        timer["config-auto-update.timer<br/>daily; fleetmgr-sync-now at once"]
+        boot["fleetmgr-bootstrap<br/>first boot, or a missing checkout"]
+        ownersetup["fleetmgr-owner-setup<br/>personal machines, on tty1"]
         sync["config-auto-update<br/>the sync"]
         state[("/var/lib/fleet<br/>identity, secrets snapshot,<br/>accepted records")]
         checkout[("/etc/nixos<br/>the checked checkout")]
@@ -209,12 +209,12 @@ flowchart TB
 
 ### What configures it
 
-- **The first boot.** `fleet-bootstrap` completes the host's identity in
+- **The first boot.** `fleetmgr-bootstrap` completes the host's identity in
   `/var/lib/fleet` if a key is missing, syncs the secrets, and only then
   clones the configuration into `/etc/nixos`, at the commit the system was
   built from. It runs again whenever the checkout goes missing.
 - **The sync.** The timer starts `config-auto-update` daily, and
-  `fleet-sync-now` or the maintainer's commands start it at once. It fetches
+  `fleetmgr-sync-now` or the maintainer's commands start it at once. It fetches
   the secrets and the configuration, checks each, keeps a snapshot of the
   host's own secrets in `/var/lib/fleet` and moves `/etc/nixos` to the verified
   commit. Then it builds the system into the Nix store, with inputs fetched by
@@ -234,7 +234,7 @@ flowchart TB
 
   A run whose system did not change, but whose secrets did, activates the
   running system again, so the new secrets reach `/run/secrets`.
-- **The owner's setup**, on a personal machine. `fleet-owner-setup` takes tty1
+- **The owner's setup**, on a personal machine. `fleetmgr-owner-setup` takes tty1
   at the first boot, before the login prompt, and makes the owner's account. It
   does not run again once the account exists; see
   [Personal machines and adoption](#personal-machines-and-adoption).
@@ -256,12 +256,12 @@ flowchart TB
   | `fleetmgr host adopt` | `support` | reads the owner's marker, account, password hash (with sudo) and login keys |
   | `fleetmgr host enroll` | an administrator account, through a one-key agent | makes the host's identity, copies its enrollment file back, switches with `systemd-run nixos-rebuild switch`, replaces `/etc/nixos` and starts the first-boot clone |
 
-- **`fleet-sync-now`** lets a privileged account at the machine start the sync
+- **`fleetmgr-sync-now`** lets a privileged account at the machine start the sync
   at once, with no `sudo` and no password.
 - **Notices.** When the sync stops on something a person has to fix, it
   writes why to `/var/lib/fleet-sync/status`. Every shell login prints it; in
   a graphical session a notification shows it, again each time the file
-  changes; `fleet-sync-status` prints it on demand. Users whose own branch
+  changes; `fleetmgr-sync-status` prints it on demand. Users whose own branch
   failed a check are listed beside it. A self-managed home that falls behind
   the system gets a notice of its own.
 - **Logs and audit.** The journal holds the audit records. With a log server
@@ -273,13 +273,13 @@ flowchart TB
 | Flow | Started by | What moves | Checked by | Explained in |
 |---|---|---|---|---|
 | A change reaches a host | the maintainer: push, then `fleetmgr inventory publish` | the configuration, to each host's branch | the tools: main signed and trusted; the host: signature, no going back | [A change reaches a host](#a-change-reaches-a-host) |
-| The periodic sync | the host's timer; `fleet-sync-now`; several `fleetmgr` commands | the configuration and the secrets, to the host | signature, no going back, the build, the activation | [What a NixOS host does at each sync](#what-a-nixos-host-does-at-each-sync) |
+| The periodic sync | the host's timer; `fleetmgr-sync-now`; several `fleetmgr` commands | the configuration and the secrets, to the host | signature, no going back, the build, the activation | [What a NixOS host does at each sync](#what-a-nixos-host-does-at-each-sync) |
 | Secrets from the maintainer | `fleetmgr secrets …`, `fleetmgr host secret` | ciphertext, to a host's branch | the branch's tip signed and trusted; the commit check | [Secrets reach a host](#secrets-reach-a-host) |
 | Secrets from a user | `fleetmgr user password`, `keys`, `secret` | ciphertext, to the user's branch | the user's own key; the host checks the recipients | [Users who keep their own secrets](#users-who-keep-their-own-secrets) |
 | A user joins, or leaves | `fleetmgr user init`, `fleetmgr secrets user-enroll`, `user-retire` | the user's enrollment file, to the maintainer; the user's files, to their branch | a channel the maintainer trusts | [Users who keep their own secrets](#users-who-keep-their-own-secrets) |
 | A new machine | `bootstrap`, or the line `fleetmgr install prep` prints | the install line, the `fleetmgr` binary, the configuration | the commits' signatures; bootstrap's SHA-256 | [A new machine](#a-new-machine) |
 | Enrollment at install | the installer, then `fleetmgr secrets host-enroll` | the enrollment file, to the maintainer; deploy keys, to the forge | a channel the maintainer trusts | [A new machine](#a-new-machine) |
-| The first boot | `fleet-bootstrap`, on the host | the secrets, then the configuration's checkout | as in the sync | [A new machine](#a-new-machine) |
+| The first boot | `fleetmgr-bootstrap`, on the host | the secrets, then the configuration's checkout | as in the sync | [A new machine](#a-new-machine) |
 | A running machine comes in | `fleetmgr host enroll` | the host's identity; a switch, over SSH | the commit, on the maintainer's machine | [Bringing in a running machine](#bringing-in-a-running-machine) |
 | A host moves into the inventory | `fleetmgr inventory import` | the host's folder, from fleet-manager to the inventory | the source commit; the host evaluates | [Bringing in a running machine](#bringing-in-a-running-machine) |
 | A personal machine's owner | the owner, at the first boot | their account, on the machine only | none | [Personal machines and adoption](#personal-machines-and-adoption) |
@@ -336,7 +336,7 @@ and used is in [A private fleet](private-fleet.md).
 A host with `conf.fleet.repo.url` runs the sync, `config-auto-update`, on a
 timer: daily at 04:00 by default, with up to 30 minutes of random delay
 (`conf.fleet.autoUpdate`), and at the next start for a machine that was off.
-`fleet-sync-now` at the machine starts it at once, and so do these commands on
+`fleetmgr-sync-now` at the machine starts it at once, and so do these commands on
 the maintainer's machine: `fleetmgr host sync`, `fleetmgr inventory publish --sync`,
 `fleetmgr host enroll`, `fleetmgr host secret --sync` and `fleetmgr support-key rotate`.
 Each run goes through these steps, and stops at the first that fails:
@@ -497,7 +497,7 @@ keys are registered read-only on the forge. When the maintainer presses Enter,
 the installer fetches the host's secrets and checks that they decrypt, before
 the first boot.
 
-**The first boot.** `fleet-bootstrap` runs at the first boot, and again
+**The first boot.** `fleetmgr-bootstrap` runs at the first boot, and again
 whenever the checkout is missing. On a host with secrets, it completes the
 identity if a key is missing, and syncs the secrets first, retrying every
 minute until it can. Then it clones
@@ -798,7 +798,7 @@ that does not build, a missing secret or a failed activation, it records why in
 `/var/lib/fleet-sync/status`. Every account then sees it: a persistent
 notification in a graphical session, shown again on every run that stops and
 taken down by the first one that succeeds, and a few lines at every shell
-login, which covers SSH and headless hosts. `fleet-sync-status` prints it on
+login, which covers SSH and headless hosts. `fleetmgr-sync-status` prints it on
 demand. A run that switched and then finds support access broken records that
 too, though the update itself went through. On a host with secrets, a second,
 smaller notice names the users whose own branch failed a check; the machine
@@ -813,11 +813,11 @@ a deploy key that was removed, fails the same way, and only a person can fix
 them. `fleetmgr host check` shows how the last sync ended, so run it when a host
 seems not to update.
 
-**A privileged account can sync a host at once.** `fleet-sync-now` starts the
+**A privileged account can sync a host at once.** `fleetmgr-sync-now` starts the
 sync without waiting for its timer. It needs no `sudo` and no password, which
 suits a host where a privileged account has none. It shows the sync's log as it
 runs, then the commit the machine runs against the newest one of its branch,
-then what `fleet-sync-status` says. Other accounts cannot start it.
+then what `fleetmgr-sync-status` says. Other accounts cannot start it.
 
 **Automatic updates discard local edits.** With `resetLocalChanges` on, which is
 the default, the checkout is hard reset to the tracked ref before building, so

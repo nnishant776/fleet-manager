@@ -21,7 +21,7 @@ import (
 // The maintainer's tools are the ones that create the files.
 
 // secretNamePattern is what the name of a secret of one's own may be: it is
-// a key under secrets in the user's file, and a name for fleet-user-secret.
+// a key under secrets in the user's file, and a name for fleetmgr-user-secret.
 const secretNamePattern = `^[A-Za-z0-9_-]+$`
 
 // userEdit is one change of a user's files, made on each host chosen.
@@ -428,7 +428,7 @@ var UserKeys = userEditFlow(engine.Flow{
 
 var secretNameInput = engine.Input{
 	Name: "name", Prompt: "Name of the secret", Pattern: secretNamePattern,
-	Help: "Its key under secrets in your file, and the name fleet-user-secret takes on the host: letters, digits, - and _",
+	Help: "Its key under secrets in your file, and the name fleetmgr-user-secret takes on the host: letters, digits, - and _",
 }
 
 // UserSecretSet stores a secret of the user's own on their hosts.
@@ -439,7 +439,7 @@ var UserSecretSet = userEditFlow(engine.Flow{
 	Long: "Stores the value as secrets.<name> in your file for each host, users/<user>/<host>.yaml, on your branch,\n" +
 		"user/<user>, of your clone of the secrets repository; commits, signed with your own signing key, and pushes\n" +
 		"the branch. The value is typed hidden or read from standard input. A host whose configuration sets\n" +
-		"accounts.<user>.secrets.own decrypts your whole file for you alone, and fleet-user-secret <name> prints the value\n" +
+		"accounts.<user>.secrets.own decrypts your whole file for you alone, and fleetmgr-user-secret <name> prints the value\n" +
 		"there. A value that is stored already makes no commit.",
 	Example: "  fleetmgr user secret set token laptop1\n  printf %s \"$token\" | fleetmgr user secret set token --all-hosts --value-stdin --yes",
 	Args:    []string{"name"},

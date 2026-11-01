@@ -21,7 +21,7 @@ fleetmgr user secret unset token --all-hosts
 |---|---|
 | `--repo` | Your clone of the secrets repository, left on main, or the name of a repository (fleetmgr repo list), which means the tool's own clone of it; defaults to FLEETMGR_SECRETS_REPO, then this directory |
 | `--user` | The user's name: lowercase letters, digits and '-'; your login name by default |
-| `--name` | Its key under secrets in your file, and the name fleet-user-secret takes on the host: letters, digits, - and _ |
+| `--name` | Its key under secrets in your file, and the name fleetmgr-user-secret takes on the host: letters, digits, - and _ |
 | `--host` | A host whose file of yours is changed; may be given more than once. Or use --all-hosts; may be given more than once |
 | `--all-hosts` | Change your file on every host that has one on your branch, instead of the hosts named |
 | `--identity` | Your passphrase-encrypted age identity (age -p); ~/.fleet/user.age by default. Empty: sops uses SOPS_AGE_KEY_FILE or SOPS_AGE_KEY |

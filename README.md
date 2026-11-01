@@ -27,8 +27,8 @@ explains the pieces, and the [guide](docs/README.md) has the rest.
 │   ├── apps/                        # os-install, system-switch, home-switch, check-purity, fleetmgr-secrets, fleetmgr; rpi-image and secrets-harness on Linux; darwin-rebuild on macOS
 │   ├── mkFleet.nix                  # lib.mkFleet: a fleet's systems, homes and apps from its host folders; see docs/private-fleet.md
 │   ├── mkHost.nix                   # host factory (NixOS / nix-darwin)
-│   ├── secrets-sync.nix             # fleet-secrets-sync and fleet-identity, used by the sync and os-install
-│   ├── clone-flake.nix              # fleet-clone-flake: clones a private flake for an install, at an exact commit
+│   ├── secrets-sync.nix             # fleetmgr-secrets-sync and fleetmgr-identity, used by the sync and os-install
+│   ├── clone-flake.nix              # fleetmgr-clone-flake: clones a private flake for an install, at an exact commit
 │   ├── forge-host-keys.nix          # GitHub's SSH host keys, which every fetch over SSH is checked against
 │   ├── buildUser.nix                # assembles a user's Home Manager modules
 │   ├── mkUser.nix                   # standalone Home Manager builder

@@ -5,7 +5,7 @@
 # before accounts are created. The SSH key is deliberately left under
 # /run/secrets rather than linked into ~/.ssh, because sops-nix would create
 # the missing parent directories as root. With `secrets.own` the whole file is
-# decrypted for the account alone (users/<name>/all), and fleet-user-secret
+# decrypted for the account alone (users/<name>/all), and fleetmgr-user-secret
 # prints one of the secrets the user keeps in it.
 { config, lib, pkgs, ... }:
 let
@@ -19,31 +19,31 @@ let
   withOwn = lib.filterAttrs (_: a: a.secrets.own) accounts;
   userFile = name: "${cfg.statePath}/secrets/users/${name}/${host}.yaml";
 
-  # fleet-user-secret <name> prints secrets.<name> from the whole file of the
+  # fleetmgr-user-secret <name> prints secrets.<name> from the whole file of the
   # user who runs it, which `own` decrypts for that user alone. The user is
   # the one running it (id), not what $USER says.
   userSecret = pkgs.writeShellApplication {
-    name = "fleet-user-secret";
+    name = "fleetmgr-user-secret";
     runtimeInputs = [ pkgs.coreutils pkgs.yq-go ];
     text = ''
       if [ "$#" -ne 1 ]; then
-        echo "usage: fleet-user-secret <name>" >&2
+        echo "usage: fleetmgr-user-secret <name>" >&2
         exit 2
       fi
       name="$1"
       case "$name" in
         *[!A-Za-z0-9_-]* | "")
-          echo "fleet-user-secret: a name is letters, digits, - and _" >&2
+          echo "fleetmgr-user-secret: a name is letters, digits, - and _" >&2
           exit 2
           ;;
       esac
       file="/run/secrets/users/$(id -un)/all"
       if [ ! -r "$file" ]; then
-        echo "fleet-user-secret: $file is not there: this host does not keep your secrets for you (accounts.<you>.secrets.own), or has not synced them yet" >&2
+        echo "fleetmgr-user-secret: $file is not there: this host does not keep your secrets for you (accounts.<you>.secrets.own), or has not synced them yet" >&2
         exit 1
       fi
       if ! value="$(NAME="$name" yq -e '.secrets[strenv(NAME)]' "$file" 2>/dev/null)"; then
-        echo "fleet-user-secret: there is no secret named $name in your file on this host (fleetmgr user secret set $name)" >&2
+        echo "fleetmgr-user-secret: there is no secret named $name in your file on this host (fleetmgr user secret set $name)" >&2
         exit 1
       fi
       printf '%s\n' "$value"

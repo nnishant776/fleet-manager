@@ -55,7 +55,7 @@ let
       # this one is not: no account reads keys from its home, so only the
       # fleet-local match lets the owner do it.
       services.openssh.authorizedKeysInHomedir = false;
-      systemd.services.fleet-bootstrap.enable = false;
+      systemd.services.fleetmgr-bootstrap.enable = false;
       systemd.timers.config-auto-update.enable = false;
     }
     # What the inventory holds once `fleetmgr host adopt` has run: the owner
@@ -123,7 +123,7 @@ pkgs.testers.runNixOSTest {
         owner.wait_until_tty_matches("1", "Username: ")
         status, out = owner.execute("timeout 300 /run/current-system/bin/switch-to-configuration test 2>&1")
         assert status == 0, f"activation while the setup waits exited {status}:\n{out}"
-        owner.succeed("systemctl show -p ActiveState --value fleet-owner-setup.service | grep -qx activating")
+        owner.succeed("systemctl show -p ActiveState --value fleetmgr-owner-setup.service | grep -qx activating")
         assert "Username: " in owner.get_tty_text("1")
 
     with subtest("the first boot asks for the owner's account"):
@@ -142,7 +142,7 @@ pkgs.testers.runNixOSTest {
             assert ("network-users" in groups) != admin, groups
             assert m.succeed("cat /var/lib/fleet/owner").strip() == "ann"
             m.succeed("systemctl is-active getty@tty1.service")
-            m.fail("systemctl is-active fleet-owner-setup.service")
+            m.fail("systemctl is-active fleetmgr-owner-setup.service")
             # A fleet account stays what the configuration says.
             assert "ann" not in m.succeed("getent passwd bob")
 
@@ -160,8 +160,8 @@ pkgs.testers.runNixOSTest {
             marker = m.succeed("stat -c %Y /var/lib/fleet/owner").strip()
             m.succeed("/run/current-system/bin/switch-to-configuration test")
             assert m.succeed("getent shadow ann; id -nG ann").strip() == before
-            m.succeed("systemctl start fleet-owner-setup.service")
-            m.fail("systemctl is-active fleet-owner-setup.service")
+            m.succeed("systemctl start fleetmgr-owner-setup.service")
+            m.fail("systemctl is-active fleetmgr-owner-setup.service")
             assert m.succeed("cat /var/lib/fleet/owner").strip() == "ann"
             assert m.succeed("stat -c %Y /var/lib/fleet/owner").strip() == marker
             # The condition skipped it: nothing is on the console but the login.
@@ -247,7 +247,7 @@ pkgs.testers.runNixOSTest {
         owner.succeed("getent passwd ann bob")
         # She has not become less than she was, and the setup is gone with the
         # group that let her home keys in.
-        owner.fail("systemctl cat fleet-owner-setup.service")
+        owner.fail("systemctl cat fleetmgr-owner-setup.service")
         owner.fail("getent group fleet-local")
         assert "fleet-local" not in groups, groups
         refused("ann")

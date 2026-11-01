@@ -68,7 +68,7 @@ nothing new makes no new snapshot. Dave then changes his own files with `fleetmg
 user`, from a directory and home of his own with only his identity and signing
 key: his password, a secret, a login key, each signed by his key; a branch whose
 newest commit no trusted key signed is not built on. The host takes it all, and
-once it runs a generation with `secrets.own` for dave, `fleet-user-secret token`
+once it runs a generation with `secrets.own` for dave, `fleetmgr-user-secret token`
 prints his secret to him alone, and the login key he added logs in as him.
 
 Erin is enrolled with `fleetmgr secrets user-enroll` and retired with
@@ -96,6 +96,6 @@ workflow does not run it.
 boots nothing. It checks, on `hosts/scratch-secrets`, that a user's secrets stay
 that user's: their key files, the login and sudo keys from the secrets
 (`secrets.authorizedKeys`, `secrets.sudoKeys`, support's `keysFromSecrets`), and
-`secrets.own` with `fleet-user-secret`, and that a secret of a user's file that
+`secrets.own` with `fleetmgr-user-secret`, and that a secret of a user's file that
 another account or group could read, or a host secret named like the users' own,
 fails the build.

@@ -43,7 +43,7 @@ pkgs.writeShellApplication {
                              keys are registered
       -y, --yes              do not ask for confirmation before erasing
           --identity FILE    carry over the identity document written by
-                             'fleet-identity --export' on the old install,
+                             'fleetmgr-identity --export' on the old install,
                              instead of generating a new identity
           --no-enroll        do not wait for the host to be enrolled
           --enroll-out PATH  also copy the enrollment file to PATH, for
@@ -162,13 +162,13 @@ pkgs.writeShellApplication {
       if [ -n "$identity" ]; then
         initArgs+=(--from-identity "$identity")
       fi
-      fleet-secrets-sync init "''${initArgs[@]}"
+      fleetmgr-secrets-sync init "''${initArgs[@]}"
       if [ -z "$identity" ]; then
         echo
         echo "Enrollment file for $host:"
         cat "$ramState/$host.enroll"
         echo
-        fleet-identity --state "$ramState" --qr
+        fleetmgr-identity --state "$ramState" --qr
         if [ -n "$enrollOut" ]; then
           cp -- "$ramState/$host.enroll" "$enrollOut"
           echo "os-install: enrollment file copied to $enrollOut"
@@ -178,7 +178,7 @@ pkgs.writeShellApplication {
         echo "repository and its configuration key read-only on the configuration repository."
       fi
       # The document the step after nixos-install reads, as with --identity.
-      fleet-identity --state "$ramState" --export > "$ramState/identity.yaml"
+      fleetmgr-identity --state "$ramState" --export > "$ramState/identity.yaml"
       identity="$ramState/identity.yaml"
 
       # git+ssh://git@github.com/o/r?ref=x&rev=y is what git clones, a branch,
@@ -189,7 +189,7 @@ pkgs.writeShellApplication {
       clone="$ramState/flake"
       export GIT_SSH_COMMAND="ssh -i $ramState/config_deploy_key -o IdentitiesOnly=yes ${pins.options} -o UserKnownHostsFile=$ramState/known_hosts -o StrictHostKeyChecking=accept-new"
       attempt=0
-      until fleet-clone-flake "$flake" "$clone"; do
+      until fleetmgr-clone-flake "$flake" "$clone"; do
         rm -rf "$clone"
         attempt=$((attempt + 1))
         if $interactive; then
@@ -373,14 +373,14 @@ pkgs.writeShellApplication {
       if [ -n "$identity" ]; then
         initArgs+=(--from-identity "$identity")
       fi
-      fleet-secrets-sync init "''${initArgs[@]}"
+      fleetmgr-secrets-sync init "''${initArgs[@]}"
 
       if [ -z "$identity" ]; then
         echo
         echo "Enrollment file for $host:"
         cat "$state/$host.enroll"
         echo
-        fleet-identity --state "$state" --qr
+        fleetmgr-identity --state "$state" --qr
         if [ -n "$enrollOut" ]; then
           cp -- "$state/$host.enroll" "$enrollOut"
           echo "os-install: enrollment file copied to $enrollOut"
@@ -405,7 +405,7 @@ pkgs.writeShellApplication {
         echo "os-install: warning: $host sets no conf.fleet.signing.allowedSignersFile; secrets not fetched" >&2
       else
         rc=0
-        fleet-secrets-sync sync --state "$state" --host "$host" \
+        fleetmgr-secrets-sync sync --state "$state" --host "$host" \
           --repo "$secretsRepo" --ref "$secretsRef" --signers "$signers" || rc=$?
         case "$rc" in
           0)  echo "os-install: secrets in place" ;;
@@ -430,7 +430,7 @@ pkgs.writeShellApplication {
     fi
     if $enrollSkipped; then
       echo "  - Enrollment was skipped. The enrollment file is $statePath/$host.enroll on the"
-      echo "    installed system; 'sudo fleet-identity --qr' shows it after boot."
+      echo "    installed system; 'sudo fleetmgr-identity --qr' shows it after boot."
     fi
   '';
 }

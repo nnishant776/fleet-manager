@@ -1,4 +1,4 @@
-# `fleet-sync-now` starts the sync (fleet/sync.nix) at once, rather than at its
+# `fleetmgr-sync-now` starts the sync (fleet/sync.nix) at once, rather than at its
 # timer. That needs root, and on these hosts a privileged account often has no
 # password: its sudo works only through a forwarded SSH agent. Starting the
 # sync is safe to allow without authentication. The sync applies only a commit
@@ -10,7 +10,7 @@
 # authentication.
 #
 # As root it shows the unit's log while it runs, then what the machine runs
-# against the newest commit of its branch, then what `fleet-sync-status` says.
+# against the newest commit of its branch, then what `fleetmgr-sync-status` says.
 { config, lib, pkgs, ... }:
 let
   cfg = config.conf.fleet;
@@ -18,11 +18,11 @@ let
   # As in fleet/sync.nix: the command exists wherever the sync does.
   enabled = if au.enable != null then au.enable else cfg.repo.url != null;
 
-  path = "/run/current-system/sw/bin/fleet-sync-now";
+  path = "/run/current-system/sw/bin/fleetmgr-sync-now";
   sudo = "/run/wrappers/bin/sudo";
 
   syncNow = pkgs.writeShellApplication {
-    name = "fleet-sync-now";
+    name = "fleetmgr-sync-now";
     runtimeInputs = [ pkgs.coreutils pkgs.git pkgs.systemd ];
     text = ''
       repo=${lib.escapeShellArg cfg.localPath}
@@ -32,7 +32,7 @@ let
         if ${sudo} -n -l ${path} >/dev/null 2>&1; then
           exec ${sudo} -n ${path} "$@"
         fi
-        echo "fleet-sync-now: only privileged accounts can start the sync; fleet-sync-status shows how updates are going" >&2
+        echo "fleetmgr-sync-now: only privileged accounts can start the sync; fleetmgr-sync-status shows how updates are going" >&2
         exit 1
       fi
 
@@ -61,7 +61,7 @@ let
         echo "This machine runs ''${running:0:12}; the newest commit of $ref is unknown."
       fi
       echo
-      /run/current-system/sw/bin/fleet-sync-status
+      /run/current-system/sw/bin/fleetmgr-sync-status
 
       [ "$rc" -eq 0 ] || exit 1
     '';

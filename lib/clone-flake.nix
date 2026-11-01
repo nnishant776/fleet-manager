@@ -1,7 +1,7 @@
 # Clones a git+ssh:// or git+https:// flake reference for an install, as
 # os-install does for a private configuration:
 #
-#   fleet-clone-flake FLAKE-URL DIR
+#   fleetmgr-clone-flake FLAKE-URL DIR
 #
 # ?ref= picks the branch. ?rev= pins the commit: the clone is left at exactly
 # that commit, and a repository without it is an error (exit 3), not a reason
@@ -11,11 +11,11 @@
 # forge.
 { pkgs }:
 pkgs.writeShellApplication {
-  name = "fleet-clone-flake";
+  name = "fleetmgr-clone-flake";
   runtimeInputs = [ pkgs.git pkgs.openssh ];
   text = ''
     if [ $# -ne 2 ]; then
-      echo "usage: fleet-clone-flake FLAKE-URL DIR" >&2
+      echo "usage: fleetmgr-clone-flake FLAKE-URL DIR" >&2
       exit 2
     fi
     url="''${1#git+}" query="" ref="" rev=""
@@ -25,11 +25,11 @@ pkgs.writeShellApplication {
       case "$p" in
         ref=*) ref="''${p#ref=}" ;;
         rev=*) rev="''${p#rev=}" ;;
-        *) echo "fleet-clone-flake: '$p' in $1 is not understood" >&2; exit 2 ;;
+        *) echo "fleetmgr-clone-flake: '$p' in $1 is not understood" >&2; exit 2 ;;
       esac
     done
     if [ -n "$rev" ] && ! [[ "$rev" =~ ^[0-9a-f]{40}$ ]]; then
-      echo "fleet-clone-flake: rev=$rev is not a full commit hash" >&2
+      echo "fleetmgr-clone-flake: rev=$rev is not a full commit hash" >&2
       exit 2
     fi
 
@@ -40,7 +40,7 @@ pkgs.writeShellApplication {
     git clone "''${args[@]}" -- "$url" "$2" || exit 1
     if [ -n "$rev" ]; then
       if ! git -C "$2" cat-file -e "$rev^{commit}" 2>/dev/null; then
-        echo "fleet-clone-flake: $url has no commit $rev: is it pushed?" >&2
+        echo "fleetmgr-clone-flake: $url has no commit $rev: is it pushed?" >&2
         rm -rf "$2"
         exit 3
       fi

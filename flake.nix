@@ -84,7 +84,7 @@
         default = fleetmgr;
         # For fleetmgr host enroll to make a host's identity before the host runs a
         # fleet configuration, from a commit checked on the maintainer's machine.
-        fleet-secrets-sync = (import ./lib/secrets-sync.nix { pkgs = nixpkgs.legacyPackages.${system}; }).sync;
+        fleetmgr-secrets-sync = (import ./lib/secrets-sync.nix { pkgs = nixpkgs.legacyPackages.${system}; }).sync;
       });
 
     checks.x86_64-linux = {
@@ -162,7 +162,7 @@
         inherit inputs self;
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
       };
-      fleet-sync-status = import ./tests/fleet/sync-status.nix {
+      fleetmgr-sync-status = import ./tests/fleet/sync-status.nix {
         inherit inputs;
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
       };

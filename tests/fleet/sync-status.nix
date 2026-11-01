@@ -4,10 +4,10 @@
 # repository. The checks:
 # - an unsigned commit stops the sync and is recorded in
 #   /var/lib/fleet-sync/status, readable by everyone, with the commit;
-# - an unprivileged user sees the notice at login, and `fleet-sync-status`
+# - an unprivileged user sees the notice at login, and `fleetmgr-sync-status`
 #   prints it;
 # - users named in /var/lib/fleet-sync/user-problems (whose own secrets the
-#   sync could not take) are shown at login and by `fleet-sync-status`, with
+#   sync could not take) are shown at login and by `fleetmgr-sync-status`, with
 #   or without a stopped sync;
 # - the same problem on the next run keeps its first time;
 # - a different problem (a signed commit that does not build) replaces it;
@@ -25,7 +25,7 @@
 #   detached at it, origin the only remote, holding only the tracked branch,
 #   and no local branches;
 # - a privileged account with no password starts the sync at once with
-#   `fleet-sync-now`, which shows the log and the result; an unprivileged one
+#   `fleetmgr-sync-now`, which shows the log and the result; an unprivileged one
 #   cannot, and the rule allows nothing else;
 # - a missing checkout stops the sync, which starts the first-boot clone;
 # - a run that finds nothing new repairs support's access: its keys file, its
@@ -34,14 +34,14 @@
 #   ends, and one that fails while a user's systemd stops under it is tried
 #   once more; one that fails with none stopping is rolled back at once.
 # The graphical notification is not covered: the VM has no session.
-# Run it with `nix build .#checks.x86_64-linux.fleet-sync-status`.
+# Run it with `nix build .#checks.x86_64-linux.fleetmgr-sync-status`.
 { pkgs, inputs }:
 let
   lib = pkgs.lib;
   mkHost = import ../../lib/mkHost.nix { inherit inputs; };
   hostNode = mkHost.modulesFor { hostName = "checkout"; hostDir = ./host; };
 
-  signer = pkgs.runCommand "fleet-sync-status-signer" { nativeBuildInputs = [ pkgs.openssh ]; } ''
+  signer = pkgs.runCommand "fleetmgr-sync-status-signer" { nativeBuildInputs = [ pkgs.openssh ]; } ''
     mkdir $out
     ssh-keygen -q -t ed25519 -N "" -C signer -f $out/signer
     echo "signer namespaces=\"git\" $(cut -d' ' -f1,2 $out/signer.pub)" > $out/allowed_signers
@@ -119,7 +119,7 @@ let
   '';
 in
 pkgs.testers.runNixOSTest {
-  name = "fleet-sync-status";
+  name = "fleetmgr-sync-status";
 
   node.specialArgs = hostNode.specialArgs;
   node.pkgsReadOnly = false;
@@ -148,7 +148,7 @@ pkgs.testers.runNixOSTest {
       services.logind.settings.Login.UserStopDelaySec = 60;
 
       # The test makes the checkout and runs the sync itself.
-      systemd.services.fleet-bootstrap.enable = false;
+      systemd.services.fleetmgr-bootstrap.enable = false;
       systemd.timers.config-auto-update.enable = false;
     }];
   };
@@ -197,18 +197,18 @@ pkgs.testers.runNixOSTest {
         assert "erin: has no branch user/erin" in out, out
         assert "Please report this to your administrator." in out, out
         assert "have stopped" not in out, out
-        out = checkout.succeed("runuser -u bob -- fleet-sync-status")
+        out = checkout.succeed("runuser -u bob -- fleetmgr-sync-status")
         assert "dave: commit abc is not signed" in out, out
         # Alongside a stopped sync, both are told.
         checkout.succeed(
             "printf 'kind=build\\ncommit=\\nsince=2026-01-01T00:00:00+00:00\\nmessage=It does not build.\\n' > /var/lib/fleet-sync/status",
         )
-        out = checkout.succeed("runuser -u bob -- fleet-sync-status")
+        out = checkout.succeed("runuser -u bob -- fleetmgr-sync-status")
         assert "It does not build." in out and "dave: commit abc is not signed" in out, out
         out = checkout.succeed("su -l bob -c true 2>&1")
         assert "Configuration updates on this machine have stopped" in out, out
         checkout.succeed("rm /var/lib/fleet-sync/status /var/lib/fleet-sync/user-problems")
-        out = checkout.succeed("runuser -u bob -- fleet-sync-status")
+        out = checkout.succeed("runuser -u bob -- fleetmgr-sync-status")
         assert "Configuration updates are working." in out, out
 
     with subtest("an unsigned commit stops the sync and is recorded for everyone"):
@@ -230,7 +230,7 @@ pkgs.testers.runNixOSTest {
         assert "not signed by a trusted key" in out, out
         assert "Please report this to your administrator." in out, out
         assert unsigned[:12] in out, out
-        out = checkout.succeed("runuser -u bob -- fleet-sync-status")
+        out = checkout.succeed("runuser -u bob -- fleetmgr-sync-status")
         assert "not signed by a trusted key" in out, out
 
     with subtest("the same problem on the next run keeps its first time"):
@@ -363,7 +363,7 @@ pkgs.testers.runNixOSTest {
         # A machine switched to this commit would run it; the stand-in
         # system does not stamp one, so say so here.
         checkout.succeed(f"rm -f /etc/org/revision; echo {six} > /etc/org/revision")
-        out = checkout.succeed("su - ann -c fleet-sync-now </dev/null 2>&1")
+        out = checkout.succeed("su - ann -c fleetmgr-sync-now </dev/null 2>&1")
         print(out)
         assert head("/etc/nixos") == six, head("/etc/nixos")
         assert invocation() != before
@@ -373,7 +373,7 @@ pkgs.testers.runNixOSTest {
 
     with subtest("an unprivileged account cannot"):
         before = invocation()
-        status, out = checkout.execute("runuser -u bob -- fleet-sync-now 2>&1")
+        status, out = checkout.execute("runuser -u bob -- fleetmgr-sync-now 2>&1")
         assert status == 1, (status, out)
         assert "only privileged accounts can start the sync" in out, out
         assert invocation() == before

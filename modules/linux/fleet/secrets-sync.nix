@@ -28,7 +28,7 @@ in
           + " (git@host:org/repo.git or ssh://…).";
       }
       {
-        # fleet-bootstrap and config-auto-update are what refresh the secrets;
+        # fleetmgr-bootstrap and config-auto-update are what refresh the secrets;
         # both exist only on a host with a configuration upstream.
         assertion = config.conf.fleet.repo.url != null;
         message =

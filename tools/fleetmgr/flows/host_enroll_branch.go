@@ -10,7 +10,7 @@ import (
 	"github.com/nnishant776/fleet-manager/tools/fleetmgr/internal/secrets"
 )
 
-// declaredSecret is what fleet-secrets-sync check reads of each secret a
+// declaredSecret is what fleetmgr-secrets-sync check reads of each secret a
 // configuration declares.
 type declaredSecret struct {
 	SopsFile string `json:"sopsFile"`
@@ -19,7 +19,7 @@ type declaredSecret struct {
 
 // checkBranchHoldsSecrets checks that the host's branch of the secrets
 // repository holds every secret the configuration it is about to run
-// declares, the check fleet-secrets-sync makes on the host after each sync,
+// declares, the check fleetmgr-secrets-sync makes on the host after each sync,
 // but before the switch, when a miss can still be put right from here. It
 // reads the files as they are in git: sops keeps the keys of an encrypted file
 // in clear, so nothing is decrypted.

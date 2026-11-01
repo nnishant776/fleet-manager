@@ -25,7 +25,7 @@ fleetmgr install -H nas1 -d main=/dev/nvme0n1 -d data=/dev/sda --enroll-out /med
 | `--flake` | A checkout or a flake reference, or the name of a repository (fleetmgr repo list), which means the tool's own clone of it; defaults to this directory's flake, then /etc/nixos |
 | `-H`, `--host` | The host to install (hosts/\<name>); chosen from a list when not given |
 | `-d`, `--disk` | [NAME=]DEVICE for a disk of the host's layout, as os-install takes it; chosen from a list when not given; may be given more than once |
-| `--identity` | An identity document from 'fleet-identity --export' on the old install, instead of a new identity |
+| `--identity` | An identity document from 'fleetmgr-identity --export' on the old install, instead of a new identity |
 | `--no-enroll` | Do not wait for the host to be enrolled; it retries after boot |
 | `--enroll-out` | A path, for example on a mounted USB stick |
 | `--rev` | A full commit hash from fleetmgr install prep: os-install comes from it, not from main |

@@ -13,7 +13,7 @@
 # otherwise. DIR and STATE are /etc/nixos and /var/lib/fleet-sync unless a
 # test says otherwise.
 #
-# The switch's activation starts fleet-bootstrap, the first-boot clone, which
+# The switch's activation starts fleetmgr-bootstrap, the first-boot clone, which
 # replaces an /etc/nixos that has no checkout and records the commit it checks
 # out in STATE/accepted and accepted.url. Starting it waits for that run to
 # end, and does nothing when a checkout exists. A checkout that was there
@@ -23,14 +23,14 @@ set -eu
 url=$1 was_git=$2 dir=${3:-/etc/nixos} state=${4:-/var/lib/fleet-sync}
 
 # Nothing is deleted on a host that could not make the checkout again.
-if ! systemctl cat fleet-bootstrap >/dev/null 2>&1; then
-  echo "this host has no fleet-bootstrap unit to make the checkout with, so $dir is left as it is" >&2
+if ! systemctl cat fleetmgr-bootstrap >/dev/null 2>&1; then
+  echo "this host has no fleetmgr-bootstrap unit to make the checkout with, so $dir is left as it is" >&2
   exit 1
 fi
 g() { git -c safe.directory="$dir" -C "$dir" "$@"; }
 ours() { [ -d "$dir/.git" ] && [ "$(g remote get-url origin 2>/dev/null)" = "$url" ]; }
 clone() {
-  systemctl start fleet-bootstrap || echo "fleet-bootstrap did not finish" >&2
+  systemctl start fleetmgr-bootstrap || echo "fleetmgr-bootstrap did not finish" >&2
 }
 
 clone
@@ -41,7 +41,7 @@ if [ "$was_git" = true ] || ! ours; then
 fi
 
 if ! ours; then
-  echo "$dir is not a checkout of $url yet: the clone failed (journalctl -u fleet-bootstrap shows why)." >&2
+  echo "$dir is not a checkout of $url yet: the clone failed (journalctl -u fleetmgr-bootstrap shows why)." >&2
   echo "The unit keeps trying every 60 seconds by itself. The host keeps running its configuration, and its sync waits for the checkout." >&2
   exit 1
 fi

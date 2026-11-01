@@ -120,7 +120,7 @@ In this chapter:
 - [Managing deploy keys](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/managing-deploy-keys)
   on GitHub.
 - In the code: [`lib/secrets-sync.nix`](../lib/secrets-sync.nix),
-  `fleet-secrets-sync` and `fleet-identity`;
+  `fleetmgr-secrets-sync` and `fleetmgr-identity`;
   [`modules/linux/secrets/`](../modules/linux/secrets/), sops and the users'
   secrets; [`lib/apps/fleetmgr-secrets.nix`](../lib/apps/fleetmgr-secrets.nix), the
   shell tool; [`tests/secrets/`](../tests/secrets/), with the local stand-in

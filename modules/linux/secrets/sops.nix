@@ -1,5 +1,5 @@
 # sops-nix wiring. The host's age identity and its snapshot of the secrets
-# repository live under conf.secrets.statePath; fleet-identity and the sync
+# repository live under conf.secrets.statePath; fleetmgr-identity and the sync
 # service own them, so sops-nix must neither generate a key nor look for the
 # encrypted files while the configuration is evaluated.
 { config, lib, ... }:
@@ -14,7 +14,7 @@ in {
     # The file is not available at evaluation time.
     sops.validateSopsFiles = false;
     sops.age.keyFile = "${cfg.statePath}/age.key";
-    # os-install and fleet-bootstrap own the identity.
+    # os-install and fleetmgr-bootstrap own the identity.
     sops.age.generateKey = false;
   };
 }

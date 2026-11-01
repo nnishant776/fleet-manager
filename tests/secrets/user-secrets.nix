@@ -11,7 +11,7 @@
 #   read them from /run/secrets/users/%u/…, per user; sudoKeys needs a
 #   privileged account, and keysFromSecrets a host with secrets;
 # - secrets.own declares the account's whole file (key = "") as
-#   users/<name>/all, the account's, mode 0400, and installs fleet-user-secret
+#   users/<name>/all, the account's, mode 0400, and installs fleetmgr-user-secret
 #   on that host only;
 # - on a host with secrets, keys in the configuration (sshKeys, sudoSshKeys,
 #   support's sshKeys, NixOS's users.users.<name>.openssh.authorizedKeys, root's
@@ -55,7 +55,7 @@ let
   # An account that keeps its own secrets: its whole file, for it alone.
   owned = hostWith { conf.users.accounts.alice.secrets.own = true; };
   ownSecrets = owned.config.sops.secrets;
-  hasUserSecretCommand = h: lib.any (p: (p.name or "") == "fleet-user-secret") h.config.environment.systemPackages;
+  hasUserSecretCommand = h: lib.any (p: (p.name or "") == "fleetmgr-user-secret") h.config.environment.systemPackages;
   # No account with keys in the secrets: support is off.
   plain = (hostWith { conf.fleet.support.enable = false; }).config;
   # Support with its keys in the secrets only.
@@ -87,7 +87,7 @@ assert lib.assertMsg (failed { conf.users.accounts.alice.secrets.own = true; } =
 assert lib.assertMsg (ownSecrets."users/alice/all".key == "" && ownSecrets."users/alice/all".owner == "alice" && ownSecrets."users/alice/all".mode == "0400" && ownSecrets."users/alice/all".sopsFile == aliceFile)
   "secrets.own does not declare alice's whole file, hers alone, mode 0400";
 assert lib.assertMsg (!(secrets ? "users/alice/all")) "alice's whole file is declared without secrets.own";
-assert lib.assertMsg (hasUserSecretCommand owned && !(hasUserSecretCommand (hostWith { }))) "fleet-user-secret is not installed exactly where an account has secrets.own";
+assert lib.assertMsg (hasUserSecretCommand owned && !(hasUserSecretCommand (hostWith { }))) "fleetmgr-user-secret is not installed exactly where an account has secrets.own";
 assert lib.assertMsg (rejects ownerOnly { conf.users.accounts.alice.secrets.own = true; sops.secrets."users/alice/all".mode = lib.mkForce "0440"; }) "alice's whole file readable by her group is accepted";
 assert lib.assertMsg (failed withKeys == [ ]) "keys from the secrets fail the host's assertions: ${lib.concatStringsSep "; " (failed withKeys)}";
 assert lib.assertMsg (lib.elem "/run/secrets/users/%u/authorized_keys" sshFiles) "sshd does not read the login keys from the secrets";
@@ -119,5 +119,5 @@ assert lib.assertMsg (hostWith noSecretsKeys).config.services.openssh.authorized
 assert lib.assertMsg (!(rejects "on a host with secrets" noSecretsKeys)) "keys in the configuration of a host without secrets are refused: ${lib.concatStringsSep "; " (failed noSecretsKeys)}";
 # Building the command runs shellcheck on it.
 pkgs.runCommand "secrets-user-owner-only"
-  { command = lib.findFirst (p: (p.name or "") == "fleet-user-secret") null owned.config.environment.systemPackages; }
+  { command = lib.findFirst (p: (p.name or "") == "fleetmgr-user-secret") null owned.config.environment.systemPackages; }
   "touch $out"

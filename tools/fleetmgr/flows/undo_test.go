@@ -154,7 +154,7 @@ func TestAnInterruptedEnrollmentStillStopsTheAgent(t *testing.T) {
 	host := enrollHost(false, false, false)
 	var out bytes.Buffer
 	fake := &engine.Fake{Respond: func(s engine.Spec) (engine.Result, error) {
-		if s.Name == "ssh" && strings.Contains(s.Args[len(s.Args)-1], "fleet-secrets-sync init") {
+		if s.Name == "ssh" && strings.Contains(s.Args[len(s.Args)-1], "fleetmgr-secrets-sync init") {
 			cancel()
 			return engine.Result{Code: -1}, errors.New("signal: terminated")
 		}

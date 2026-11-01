@@ -110,7 +110,7 @@ func TestEnrollDoesWhatIsMissingInOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
-	order := []string{"ssh-agent", "ssh-add /keys/home", "has_tooling", "fleet-secrets-sync init", "pi.enroll", "secrets host-enroll pi --from", "push", "sh -c 'cat >> /forge/authorized_keys'", "kill 4242"}
+	order := []string{"ssh-agent", "ssh-add /keys/home", "has_tooling", "fleetmgr-secrets-sync init", "pi.enroll", "secrets host-enroll pi --from", "push", "sh -c 'cat >> /forge/authorized_keys'", "kill 4242"}
 	cmds := strings.Join(fake.Commands(), "\n")
 	pos := 0
 	for _, want := range order {
@@ -272,10 +272,10 @@ func listsEtcNixos(respond func(engine.Spec) (engine.Result, error), listing str
 func remakeRuns(fake *engine.Fake) (int, engine.Spec) {
 	written := false
 	for i, s := range fake.Ran {
-		if strings.Contains(s.Stdin, "systemctl start fleet-bootstrap") && strings.Contains(s.String(), "/run/fleet-enroll-remake.sh") {
+		if strings.Contains(s.Stdin, "systemctl start fleetmgr-bootstrap") && strings.Contains(s.String(), "/run/fleetmgr-enroll-remake.sh") {
 			written = true
 		}
-		if written && strings.Contains(s.String(), "--unit=fleet-enroll-remake") {
+		if written && strings.Contains(s.String(), "--unit=fleetmgr-enroll-remake") {
 			return i, s
 		}
 	}
@@ -322,10 +322,10 @@ func TestEnrollWarnsThenReplacesEtcNixos(t *testing.T) {
 			if remake.Name == "" || at < 0 {
 				t.Fatalf("the remake script did not run:\n%s", cmds)
 			}
-			if got := remake.String(); !strings.Contains(got, "fleet-enroll-remake.sh https://github.com/nnishant776/fleet-manager.git "+tc.wasGit) {
+			if got := remake.String(); !strings.Contains(got, "fleetmgr-enroll-remake.sh https://github.com/nnishant776/fleet-manager.git "+tc.wasGit) {
 				t.Errorf("remake args: %s", got)
 			}
-			if strings.Index(cmds, "nixos-rebuild switch") > strings.Index(cmds, "fleet-enroll-remake.sh https://github.com") {
+			if strings.Index(cmds, "nixos-rebuild switch") > strings.Index(cmds, "fleetmgr-enroll-remake.sh https://github.com") {
 				t.Errorf("replaced /etc/nixos before the switch:\n%s", cmds)
 			}
 			// What the host listed is shown, never used in a command.
@@ -395,7 +395,7 @@ func TestEnrollOnAnEmptyEtcNixosDoesNotWarn(t *testing.T) {
 		t.Errorf("output:\n%s", out)
 	}
 	_, remake := remakeRuns(fake)
-	if !strings.Contains(remake.String(), "fleet-enroll-remake.sh https://github.com/nnishant776/fleet-manager.git false") {
+	if !strings.Contains(remake.String(), "fleetmgr-enroll-remake.sh https://github.com/nnishant776/fleet-manager.git false") {
 		t.Errorf("remake: %+v", remake)
 	}
 }
@@ -446,7 +446,7 @@ func TestEnrollSkipsWhatIsDone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
-	for _, unwanted := range []string{"fleet-secrets-sync init", "host-enroll", "git push"} {
+	for _, unwanted := range []string{"fleetmgr-secrets-sync init", "host-enroll", "git push"} {
 		if got := ranMatching(fake, unwanted); len(got) > 0 {
 			t.Errorf("ran %q on a host that is enrolled already", unwanted)
 		}
@@ -542,7 +542,7 @@ func TestEnrollAddsAndRegistersTheConfigurationKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
-	if n := len(ranMatching(fake, "fleet-secrets-sync init")); n != 1 {
+	if n := len(ranMatching(fake, "fleetmgr-secrets-sync init")); n != 1 {
 		t.Errorf("init ran %d times, want once to add the configuration key\n%s", n, out)
 	}
 	registered := ranMatching(fake, "cat >> /forge/authorized_keys")
@@ -575,7 +575,7 @@ func TestEnrollDoesNotSwitchAMachineItsConfigurationDoesNotFit(t *testing.T) {
 }
 
 // A host without fleetmgr's tools makes its identity before the switch, with
-// fleet-secrets-sync from the fleet-manager commit checked for it.
+// fleetmgr-secrets-sync from the fleet-manager commit checked for it.
 func TestEnrollMakesTheIdentityBeforeTheSwitch(t *testing.T) {
 	err, fake, out := runSwitch(t, noTooling(enrollHost(false, false, false)))
 	if err != nil {
@@ -588,7 +588,7 @@ func TestEnrollMakesTheIdentityBeforeTheSwitch(t *testing.T) {
 		if len(s.Args) > 0 {
 			script = s.Args[len(s.Args)-1]
 		}
-		if strings.Contains(script, "run 'git+https://github.com/nnishant776/fleet-manager?rev=abc1230000000000000000000000000000000000#fleet-secrets-sync' -- init --state /var/lib/fleet --host pi") {
+		if strings.Contains(script, "run 'git+https://github.com/nnishant776/fleet-manager?rev=abc1230000000000000000000000000000000000#fleetmgr-secrets-sync' -- init --state /var/lib/fleet --host pi") {
 			init = i
 		}
 		if strings.Contains(script, "nixos-rebuild switch") {
@@ -657,7 +657,7 @@ func TestEnrollAPrivateHostWithoutReinstalling(t *testing.T) {
 			script = s.Args[len(s.Args)-1]
 		}
 		for name, frag := range map[string]string{
-			"init":     "run 'git+https://github.com/nnishant776/fleet-manager?rev=" + pinnedFM + "#fleet-secrets-sync' -- init",
+			"init":     "run 'git+https://github.com/nnishant776/fleet-manager?rev=" + pinnedFM + "#fleetmgr-secrets-sync' -- init",
 			"config":   "cat >> /forge/authorized_keys",
 			"pinned":   "cat > /var/lib/fleet/known_hosts.pinned",
 			"switch":   "nixos-rebuild switch --flake 'git+ssh://git@github.com/example-org/inventory.git?ref=main&rev=" + pinnedINV + "#pi'",
@@ -710,7 +710,7 @@ func TestEnrollMovesAHostFromAnotherRepository(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 	cmds := strings.Join(fake.Commands(), "\n")
-	order := []string{"verify-commit abc1230000000000000000000000000000000000", "sh -s -- true / /dev/disk", "symbolic-ref", "nixos-rebuild switch", "fleet-enroll-remake.sh https://github.com", "systemctl start config-auto-update"}
+	order := []string{"verify-commit abc1230000000000000000000000000000000000", "sh -s -- true / /dev/disk", "symbolic-ref", "nixos-rebuild switch", "fleetmgr-enroll-remake.sh https://github.com", "systemctl start config-auto-update"}
 	pos := 0
 	for _, want := range order {
 		i := strings.Index(cmds[pos:], want)
@@ -723,7 +723,7 @@ func TestEnrollMovesAHostFromAnotherRepository(t *testing.T) {
 		t.Errorf("did not say where it moves from and to:\n%s", out)
 	}
 	_, remake := remakeRuns(fake)
-	if !strings.Contains(remake.String(), "fleet-enroll-remake.sh https://github.com/nnishant776/fleet-manager.git true") {
+	if !strings.Contains(remake.String(), "fleetmgr-enroll-remake.sh https://github.com/nnishant776/fleet-manager.git true") {
 		t.Errorf("the old checkout is not replaced: %+v", remake)
 	}
 }
@@ -738,7 +738,7 @@ func TestEnrollSkipsTheSwitchOfAHostOnThisRepository(t *testing.T) {
 	if got := strings.Count(out, "skipped: it already runs a configuration with secrets from https://github.com/nnishant776/fleet-manager.git"); got != 5 {
 		t.Errorf("%d steps name the repository, want 5 (choose, fit, branch, warn, switch):\n%s", got, out)
 	}
-	for _, unwanted := range []string{"nixos-rebuild", "verify-commit", "sh -s -- true / /dev/disk", "fleet-enroll-remake.sh https://github.com"} {
+	for _, unwanted := range []string{"nixos-rebuild", "verify-commit", "sh -s -- true / /dev/disk", "fleetmgr-enroll-remake.sh https://github.com"} {
 		if got := ranMatching(fake, unwanted); len(got) > 0 {
 			t.Errorf("ran %s", got[0])
 		}

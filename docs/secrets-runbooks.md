@@ -285,7 +285,7 @@ password stay locked until the secrets arrive.
 
 ```bash
 ssh support@laptop1                                # the maintainer's support key, from users/support/laptop1.yaml
-sudo journalctl -u fleet-bootstrap -u config-auto-update
+sudo journalctl -u fleetmgr-bootstrap -u config-auto-update
 sudo ls -l /var/lib/fleet                          # secrets -> snapshots/<hash of its manifest>
 ```
 
@@ -302,11 +302,11 @@ the TPM as `os-install` printed.
   yet. Enroll it with `fleetmgr secrets host-enroll laptop1 --from laptop1.enroll`,
   then continue with step 4. If the file is lost, boot the installer, unlock
   the disk, mount the `fleetmgr` volume and read `laptop1.enroll` from it. Once
-  the host is enrolled and synced, `sudo fleet-identity --qr` on it shows the
+  the host is enrolled and synced, `sudo fleetmgr-identity --qr` on it shows the
   file again.
 - **Reinstall, identity kept.** After a manual reinstall that kept the `fleetmgr`
   volume, nothing changes. `os-install` erases it, so to carry the identity
-  over, run `sudo fleet-identity --export > /media/usb/laptop1.identity` on the
+  over, run `sudo fleetmgr-identity --export > /media/usb/laptop1.identity` on the
   old install, then install with `--identity /media/usb/laptop1.identity` at
   the end of the prep line. No enrollment and no change to a repository or the
   forge is needed. Shred the file afterwards.
@@ -372,7 +372,7 @@ hash from the secrets is reapplied at every activation. To change a password, ru
    its next sync, with no rebuild.
 
 **A secret of a user's own on a host.** Set `accounts.bob.secrets.own = true`.
-The host then decrypts bob's whole file for bob alone, and `fleet-user-secret
+The host then decrypts bob's whole file for bob alone, and `fleetmgr-user-secret
 token` run as bob prints the value he stored with `fleetmgr user secret set token
 laptop1`. It says so and exits 1 when there is no such secret. The whole
 file also holds bob's password hash and keys, which only bob can read.
@@ -534,7 +534,7 @@ They are a build error there, by design: keys live in one place.
 ## Troubleshooting
 
 On the host, look at `journalctl -u config-auto-update` (the periodic sync) and
-`journalctl -u fleet-bootstrap` (first boot). `fleet-secrets-sync` exit codes:
+`journalctl -u fleetmgr-bootstrap` (first boot). `fleetmgr-secrets-sync` exit codes:
 
 | Code | Meaning | Fix |
 |---|---|---|
@@ -550,7 +550,7 @@ If a user's branch fails a check (an unsigned commit, a file not encrypted to
 exactly the user, this host and the recovery recipient, a commit that does not
 follow the last accepted one), the host keeps the file it had for that user and
 the others carry on. The user is named in the notice shown at every login, in
-`fleet-sync-status` and in `fleetmgr host check`, until a good commit fixes it.
+`fleetmgr-sync-status` and in `fleetmgr host check`, until a good commit fixes it.
 Look at `git log --format='%h %G? %s' user/<u>`; if the user's commit is the
 problem, they fix it on their branch, or the maintainer replaces it with a
 signed one.

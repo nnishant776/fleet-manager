@@ -160,7 +160,7 @@ var HostEnroll = &engine.Flow{
 		},
 		{
 			Title: "Make /etc/nixos the configuration repository's checkout",
-			Why: "The sync owns /etc/nixos and fetches the repository the configuration names. What was there is deleted, and the first-boot clone, fleet-bootstrap, " +
+			Why: "The sync owns /etc/nixos and fetches the repository the configuration names. What was there is deleted, and the first-boot clone, fleetmgr-bootstrap, " +
 				"makes the checkout at the commit the host runs and records it as the first the machine accepted.",
 			When: func(x *engine.Ctx) (bool, string) {
 				if x.Value("switched") == "true" {
@@ -218,7 +218,7 @@ func lookAtHost(x *engine.Ctx) error {
 	res, err := fleetmgr.OnAdmin(`set -u
 echo "login=$(id -un)"
 sudo -n true 2>/dev/null && echo sudo=true || echo sudo=false
-command -v fleet-secrets-sync >/dev/null && echo has_tooling=true || echo has_tooling=false
+command -v fleetmgr-secrets-sync >/dev/null && echo has_tooling=true || echo has_tooling=false
 sudo -n test -f /var/lib/fleet/age.key && echo has_identity=true || echo has_identity=false
 sudo -n test -f /var/lib/fleet/config_deploy_key && echo has_config_key=true || echo has_config_key=false
 test -d /etc/nixos/.git && echo has_checkout=true || echo has_checkout=false
@@ -349,11 +349,11 @@ func writePinnedKeys(x *engine.Ctx) error {
 	return nil
 }
 
-// createIdentity runs fleet-secrets-sync init: the host's own, or, on a host
+// createIdentity runs fleetmgr-secrets-sync init: the host's own, or, on a host
 // without fleetmgr's tools yet, the one of the fleet-manager commit checked for
 // the switch, with nix run.
 func createIdentity(x *engine.Ctx) error {
-	cmd := "sudo -n fleet-secrets-sync init --state /var/lib/fleet --host {{.host}}"
+	cmd := "sudo -n fleetmgr-secrets-sync init --state /var/lib/fleet --host {{.host}}"
 	if x.Value("has_tooling") != "true" {
 		if x.Value("installer_rev") == "" {
 			// --switch-to named the configuration; the tools come from main's
@@ -364,7 +364,7 @@ func createIdentity(x *engine.Ctx) error {
 			}
 			x.Values["installer_rev"] = rev
 		}
-		x.Values["init_flake"] = engine.Quote(installerAttr(x, "fleet-secrets-sync"))
+		x.Values["init_flake"] = engine.Quote(installerAttr(x, "fleetmgr-secrets-sync"))
 		cmd = "sudo -n nix --extra-experimental-features 'nix-command flakes' run {{.init_flake}} -- init --state /var/lib/fleet --host {{.host}}"
 	}
 	_, err := fleetmgr.OnAdmin(cmd).OK("created under /var/lib/fleet").
@@ -465,17 +465,17 @@ func remakeEtcNixos(x *engine.Ctx) error {
 	}
 	x.Values["remake_script"] = remakeEtcNixosScript
 	x.Values["remake_args"] = engine.Quote(x.Value("config_url")) + " " + map[bool]string{true: "true", false: "false"}[x.Value("etc_nixos") == "git"]
-	if _, err := fleetmgr.OnAdmin("sudo -n sh -c 'umask 077 && cat > /run/fleet-enroll-remake.sh'").
+	if _, err := fleetmgr.OnAdmin("sudo -n sh -c 'umask 077 && cat > /run/fleetmgr-enroll-remake.sh'").
 		StdinFrom("remake_script").StdinNote("remake-etc-nixos.sh").Run(x); err != nil {
 		return err
 	}
-	if _, err := fleetmgr.StillRunning(fleetmgr.OnAdmin(`sudo -n systemctl reset-failed fleet-enroll-remake 2>/dev/null; `+
-		`sudo -n systemd-run --wait --collect --unit=fleet-enroll-remake `+
+	if _, err := fleetmgr.StillRunning(fleetmgr.OnAdmin(`sudo -n systemctl reset-failed fleetmgr-enroll-remake 2>/dev/null; `+
+		`sudo -n systemd-run --wait --collect --unit=fleetmgr-enroll-remake `+
 		`--setenv=PATH=/run/wrappers/bin:/run/current-system/sw/bin `+
-		`sh /run/fleet-enroll-remake.sh {{.remake_args}}; s=$?; `+
-		`sudo -n journalctl -u fleet-enroll-remake -o cat -n 15 --no-pager; `+
-		`sudo -n rm -f /run/fleet-enroll-remake.sh; exit $s`).OK("/etc/nixos is the checkout of {{.config_url}}"),
-		"the new checkout", "fleet-enroll-remake", "{{.admin}}").Run(x); err != nil {
+		`sh /run/fleetmgr-enroll-remake.sh {{.remake_args}}; s=$?; `+
+		`sudo -n journalctl -u fleetmgr-enroll-remake -o cat -n 15 --no-pager; `+
+		`sudo -n rm -f /run/fleetmgr-enroll-remake.sh; exit $s`).OK("/etc/nixos is the checkout of {{.config_url}}"),
+		"the new checkout", "fleetmgr-enroll-remake", "{{.admin}}").Run(x); err != nil {
 		return err
 	}
 	if x.Options.DryRun {
@@ -674,7 +674,7 @@ func registerDeployKey(x *engine.Ctx) error {
 // host's configuration fetches, conf.fleet.repo.url.
 func registerConfigKey(x *engine.Ctx) error {
 	if x.Value("config_key") == "" && !x.Options.DryRun {
-		return errors.New("its enrollment file lists no configuration key: the fleet-secrets-sync it runs predates them;" +
+		return errors.New("its enrollment file lists no configuration key: the fleetmgr-secrets-sync it runs predates them;" +
 			" let it sync a newer fleet-manager, whose init makes one, then run this again")
 	}
 	return registerKey(x, "config_key", x.Value("config_url"), "the configuration repository")

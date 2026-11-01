@@ -174,7 +174,7 @@ host's secrets and checks that they decrypt. These flags control the step:
 
 | Flag | Effect |
 |---|---|
-| `--identity FILE` | Restore a host identity exported by `fleet-identity --export` instead of generating one; no enrollment is needed |
+| `--identity FILE` | Restore a host identity exported by `fleetmgr-identity --export` instead of generating one; no enrollment is needed |
 | `--no-enroll` | Do not wait for enrollment; the host boots with locked accounts and retries the secrets fetch until it is enrolled |
 | `--enroll-out PATH` | Also copy the enrollment file to `PATH`, for example a mounted USB stick |
 | `--flake git+ssh://…` | A private flake, which the host reads with its own configuration key: the identity is made first, the install waits until its keys are registered, then clones the flake and installs from it. With `?rev=<commit>`, as `fleetmgr install prep` gives it, it installs exactly that commit, and stops if the repository does not have it. See [A private fleet](private-fleet.md) |
@@ -194,7 +194,7 @@ flowchart TB
         config[("Configuration repository")]
     end
     subgraph host["New host"]
-        init(["fleet-secrets-sync init"])
+        init(["fleetmgr-secrets-sync init"])
         identity[("Identity<br/>/var/lib/fleet")]
         install(["os-install"])
         sync(["Sync"])

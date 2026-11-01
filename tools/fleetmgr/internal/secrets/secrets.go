@@ -82,7 +82,7 @@ func UserName() engine.Input {
 var FromInput = engine.Input{
 	Name:   "from",
 	Prompt: "Enrollment file",
-	Help:   "The host's enrollment file, as written by fleet-secrets-sync init, or - for standard input",
+	Help:   "The host's enrollment file, as written by fleetmgr-secrets-sync init, or - for standard input",
 }
 
 // in is a path in the worktree the command works in.

@@ -213,7 +213,7 @@ let
         # trying until it can, so a machine whose checkout was lost, whatever
         # the cause, mends itself.
         log "no git checkout at $repo; starting the first-boot clone to make it"
-        systemctl start --no-block fleet-bootstrap.service || log "could not start fleet-bootstrap"
+        systemctl start --no-block fleetmgr-bootstrap.service || log "could not start fleetmgr-bootstrap"
         stop checkout "The configuration checkout at $repo is missing, so this machine cannot update until it is made again."
       fi
 

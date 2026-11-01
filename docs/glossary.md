@@ -71,7 +71,7 @@ In this chapter: [A](#a) · [B](#b) · [C](#c) · [D](#d) · [E](#e) · [F](#f) 
 
 ## F
 
-- **first-boot clone**: `fleet-bootstrap`, which clones the configuration into
+- **first-boot clone**: `fleetmgr-bootstrap`, which clones the configuration into
   `/etc/nixos` at the first boot, at the commit the system was built from. See
   [What the install does](installing.md#what-the-install-does).
 - **`fleetmgr`**: The guided tool that walks through the fleet's procedures, on
@@ -79,19 +79,19 @@ In this chapter: [A](#a) · [B](#b) · [C](#c) · [D](#d) · [E](#e) · [F](#f) 
 - **`fleetmgr-secrets`**: The maintainer's shell tool for the secrets repository;
   `fleetmgr secrets …` does the same and more. See
   [The tools](secrets.md#the-tools).
+- **`fleetmgr-identity`**: The host's command that prints its enrollment file, or
+  exports its identity for a reinstall. See [The tools](secrets.md#the-tools).
+- **`fleetmgr-secrets-sync`**: The host's program that fetches, verifies and
+  snapshots its secrets. See [On the host](secrets.md#on-the-host).
+- **`fleetmgr-sync-now`**: Starts the sync at once, for a privileged account at the
+  machine. See [Things to know about the sync](how-it-works.md#things-to-know-about-the-sync).
+- **`fleetmgr-sync-status`**: Prints why the last sync stopped, if it did. See
+  [Things to know about the sync](how-it-works.md#things-to-know-about-the-sync).
+- **`fleetmgr-user-secret`**: Prints one of the secrets a user keeps in their own
+  file. See [Onboarding a user](secrets-runbooks.md#onboarding-a-user).
 - **fleet host**: A machine with `conf.fleet.repo.url`, which syncs from its
   configuration. See
   [What a NixOS host does at each sync](how-it-works.md#what-a-nixos-host-does-at-each-sync).
-- **`fleet-identity`**: The host's command that prints its enrollment file, or
-  exports its identity for a reinstall. See [The tools](secrets.md#the-tools).
-- **`fleet-secrets-sync`**: The host's program that fetches, verifies and
-  snapshots its secrets. See [On the host](secrets.md#on-the-host).
-- **`fleet-sync-now`**: Starts the sync at once, for a privileged account at the
-  machine. See [Things to know about the sync](how-it-works.md#things-to-know-about-the-sync).
-- **`fleet-sync-status`**: Prints why the last sync stopped, if it did. See
-  [Things to know about the sync](how-it-works.md#things-to-know-about-the-sync).
-- **`fleet-user-secret`**: Prints one of the secrets a user keeps in their own
-  file. See [Onboarding a user](secrets-runbooks.md#onboarding-a-user).
 - **forge**: The service the repositories live on, GitHub here. See
   [The pieces](how-it-works.md#the-pieces).
 

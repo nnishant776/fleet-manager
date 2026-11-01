@@ -399,7 +399,7 @@ pkgs.writeShellApplication {
       made_branch=""
     }
 
-    # Reads an enrollment file (as written by fleet-secrets-sync init) and
+    # Reads an enrollment file (as written by fleetmgr-secrets-sync init) and
     # sets enrolledRecipient, enrolledDeployKey and enrolledConfigKey (empty
     # in a file written before hosts had a configuration key) after checking
     # it is for the given host. The file itself is kept as enrolledDoc.

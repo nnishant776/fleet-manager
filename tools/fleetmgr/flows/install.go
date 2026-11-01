@@ -36,7 +36,7 @@ var Install = &engine.Flow{
 			Pattern: secrets.NamePattern, Optional: true},
 		{Name: "disk", Short: "d", Prompt: "Disks", Help: "[NAME=]DEVICE for a disk of the host's layout, as os-install takes it; chosen from a list when not given",
 			Many: true, Optional: true},
-		{Name: "identity", Prompt: "Identity to carry over", Help: "An identity document from 'fleet-identity --export' on the old install, instead of a new identity",
+		{Name: "identity", Prompt: "Identity to carry over", Help: "An identity document from 'fleetmgr-identity --export' on the old install, instead of a new identity",
 			Optional: true},
 		{Name: "no-enroll", Prompt: "Skip waiting for the enrollment?", Help: "Do not wait for the host to be enrolled; it retries after boot", Bool: true},
 		{Name: "enroll-out", Prompt: "Also copy the enrollment file to", Help: "A path, for example on a mounted USB stick",

@@ -74,7 +74,7 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 15. **Switch HOST to its fleet configuration.** The switch runs as a service on the host, so it finishes even if this connection drops. A private configuration is fetched with the host's configuration key. /etc/nixos is replaced after it.
 
-16. **Make /etc/nixos the configuration repository's checkout.** The sync owns /etc/nixos and fetches the repository the configuration names. What was there is deleted, and the first-boot clone, fleet-bootstrap, makes the checkout at the commit the host runs and records it as the first the machine accepted.
+16. **Make /etc/nixos the configuration repository's checkout.** The sync owns /etc/nixos and fetches the repository the configuration names. What was there is deleted, and the first-boot clone, fleetmgr-bootstrap, makes the checkout at the commit the host runs and records it as the first the machine accepted.
 
 17. **Sync HOST.** Its first sync with secrets: fetch and verify them, then its configuration.
 

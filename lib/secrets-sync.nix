@@ -7,16 +7,16 @@ let
 in
 {
   sync = pkgs.writeShellApplication {
-    name = "fleet-secrets-sync";
+    name = "fleetmgr-secrets-sync";
     runtimeInputs = with pkgs; [
       git openssh age sops yq-go coreutils util-linux findutils gnugrep gawk nix
     ];
     text = ''
       usage() {
         cat >&2 <<'EOF'
-      usage: fleet-secrets-sync init  --state DIR --host H [--from-identity FILE] [--force]
-             fleet-secrets-sync sync  --state DIR --host H --repo URL [--ref main] --signers FILE
-             fleet-secrets-sync check --state DIR --host H --config FLAKEREF
+      usage: fleetmgr-secrets-sync init  --state DIR --host H [--from-identity FILE] [--force]
+             fleetmgr-secrets-sync sync  --state DIR --host H --repo URL [--ref main] --signers FILE
+             fleetmgr-secrets-sync check --state DIR --host H --config FLAKEREF
 
       exit codes: 10 fetch failed, 11 commit not signed by an allowed signer,
       12 check found missing files or keys, 13 bad state directory, 14 identity
@@ -29,7 +29,7 @@ in
       fail() {  # fail CODE MESSAGE...
         local code="$1"
         shift
-        echo "fleet-secrets-sync: $*" >&2
+        echo "fleetmgr-secrets-sync: $*" >&2
         exit "$code"
       }
 
@@ -37,7 +37,7 @@ in
       case "$1" in
         -h|--help) usage 0 ;;
         init|sync|check) command="$1"; shift ;;
-        *) echo "fleet-secrets-sync: unknown command '$1'" >&2; usage ;;
+        *) echo "fleetmgr-secrets-sync: unknown command '$1'" >&2; usage ;;
       esac
 
       state=/var/lib/fleet
@@ -60,11 +60,11 @@ in
           --signers)       signers="''${2:?--signers needs a value}"; shift 2 ;;
           --config)        config="''${2:?--config needs a value}"; shift 2 ;;
           -h|--help)       usage 0 ;;
-          *) echo "fleet-secrets-sync: unknown option '$1'" >&2; usage ;;
+          *) echo "fleetmgr-secrets-sync: unknown option '$1'" >&2; usage ;;
         esac
       done
 
-      [ -n "$host" ] || { echo "fleet-secrets-sync: --host is required" >&2; usage; }
+      [ -n "$host" ] || { echo "fleetmgr-secrets-sync: --host is required" >&2; usage; }
 
       # The state directory holds private keys; refuse one that somebody else
       # could have tampered with.
@@ -193,8 +193,8 @@ in
           ;;
 
         sync)
-          [ -n "$repo" ] || { echo "fleet-secrets-sync: sync needs --repo" >&2; usage; }
-          [ -n "$signers" ] || { echo "fleet-secrets-sync: sync needs --signers" >&2; usage; }
+          [ -n "$repo" ] || { echo "fleetmgr-secrets-sync: sync needs --repo" >&2; usage; }
+          [ -n "$signers" ] || { echo "fleetmgr-secrets-sync: sync needs --signers" >&2; usage; }
           check_state
           cd "$state"
           rename_old_keys
@@ -247,8 +247,8 @@ in
               fi
               if [ "$attempt" -ge 5 ]; then
                 if grep -q 'Permission denied (publickey)' "$tmp/err"; then
-                  echo "fleet-secrets-sync: the forge rejected this host's deploy key; it has to be enrolled:" >&2
-                  echo "fleet-secrets-sync: show it with 'fleet-identity' and run 'fleetmgr-secrets host-enroll $host --from FILE' on the maintainer's machine" >&2
+                  echo "fleetmgr-secrets-sync: the forge rejected this host's deploy key; it has to be enrolled:" >&2
+                  echo "fleetmgr-secrets-sync: show it with 'fleetmgr-identity' and run 'fleetmgr-secrets host-enroll $host --from FILE' on the maintainer's machine" >&2
                 fi
                 fail 10 "fetch of $what from $repo failed after $attempt attempts"
               fi
@@ -318,7 +318,7 @@ in
             else
               # The check at the end says so with its own message and code.
               cat "$tmp/sops-err" >&2
-              echo "fleet-secrets-sync: the users of $host cannot be read; none is taken from its own branch this time" >&2
+              echo "fleetmgr-secrets-sync: the users of $host cannot be read; none is taken from its own branch this time" >&2
               listed=()
             fi
           fi
@@ -339,7 +339,7 @@ in
           : > "$problems"
           problem() {  # problem USER REASON
             printf '%s %s\n' "$1" "$2" >> "$problems"
-            echo "fleet-secrets-sync: user $1: $2" >&2
+            echo "fleetmgr-secrets-sync: user $1: $2" >&2
           }
 
           # Which of the listed users have a branch, and a fetch of those.
@@ -546,13 +546,13 @@ in
           ;;
 
         check)
-          [ -n "$config" ] || { echo "fleet-secrets-sync: check needs --config" >&2; usage; }
+          [ -n "$config" ] || { echo "fleetmgr-secrets-sync: check needs --config" >&2; usage; }
           check_state
           snapshot="$state/secrets"
 
           if ! declared="$(nix eval --json "$config#nixosConfigurations.$host.config.sops.secrets" \
                 --apply 'builtins.mapAttrs (_: s: { inherit (s) sopsFile key; })')"; then
-            echo "fleet-secrets-sync: could not evaluate the secrets of $host in $config" >&2
+            echo "fleetmgr-secrets-sync: could not evaluate the secrets of $host in $config" >&2
             exit 1
           fi
 
@@ -580,12 +580,12 @@ in
   };
 
   identity = pkgs.writeShellApplication {
-    name = "fleet-identity";
+    name = "fleetmgr-identity";
     runtimeInputs = with pkgs; [ yq-go qrencode coreutils openssh ];
     text = ''
       usage() {
         cat >&2 <<'EOF'
-      usage: fleet-identity [--state DIR] [--qr | --export]
+      usage: fleetmgr-identity [--state DIR] [--qr | --export]
 
         (no flag)  print the enrollment file
         --qr       print it as a terminal QR code
@@ -603,19 +603,19 @@ in
           --qr)      mode=qr; shift ;;
           --export)  mode="export"; shift ;;
           -h|--help) usage 0 ;;
-          *) echo "fleet-identity: unknown option '$1'" >&2; usage ;;
+          *) echo "fleetmgr-identity: unknown option '$1'" >&2; usage ;;
         esac
       done
 
       enroll="$(find "$state" -maxdepth 1 -name '*.enroll' | sort | head -n 1)"
-      [ -n "$enroll" ] || { echo "fleet-identity: no enrollment file in $state" >&2; exit 1; }
+      [ -n "$enroll" ] || { echo "fleetmgr-identity: no enrollment file in $state" >&2; exit 1; }
 
       case "$mode" in
         print) cat "$enroll" ;;
         qr)    qrencode -t ANSIUTF8 < "$enroll" ;;
         export)
           if [ "$(id -u)" -ne 0 ]; then
-            echo "fleet-identity: --export prints private keys and needs root" >&2
+            echo "fleetmgr-identity: --export prints private keys and needs root" >&2
             exit 1
           fi
           echo "version: 1"

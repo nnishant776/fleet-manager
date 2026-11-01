@@ -26,7 +26,7 @@ let
     else "/dev/null";
 
   bootstrap = pkgs.writeShellApplication {
-    name = "fleet-bootstrap";
+    name = "fleetmgr-bootstrap";
     runtimeInputs = [ pkgs.git pkgs.openssh pkgs.coreutils pkgs.systemd ];
     text = ''
       repo=${lib.escapeShellArg cfg.localPath}${lib.optionalString secretsOn ''
@@ -43,7 +43,7 @@ let
             --signers ${signers} || rc=$?
         fi
         if [ "$rc" -ne 0 ]; then
-          echo "fleet-bootstrap: secrets sync failed with code $rc; retrying"
+          echo "fleetmgr-bootstrap: secrets sync failed with code $rc; retrying"
           exit 1
         fi
       ''}
@@ -51,7 +51,7 @@ let
 
       # Clone beside the target and move it into place, so a half-finished
       # clone never looks like a checkout.
-      tmp="$(mktemp -d "$(dirname "$repo")/.fleet-bootstrap.XXXXXX")"
+      tmp="$(mktemp -d "$(dirname "$repo")/.fleetmgr-bootstrap.XXXXXX")"
       trap 'rm -rf "$tmp"' EXIT
       # Only the branch it tracks: with lib.mkFleet's hostBranches, the others
       # hold other hosts' definitions.
@@ -61,10 +61,10 @@ let
         if git -C "$tmp/checkout" checkout --quiet ${revision}; then
           installed=${revision}
         else
-          echo "fleet-bootstrap: revision ${revision} not on ${cfg.repo.ref}; left at its tip, the sync will converge"
+          echo "fleetmgr-bootstrap: revision ${revision} not on ${cfg.repo.ref}; left at its tip, the sync will converge"
         fi
       '' else ''
-        echo "fleet-bootstrap: this system was built from uncommitted changes; checkout left at the tip of ${cfg.repo.ref}"
+        echo "fleetmgr-bootstrap: this system was built from uncommitted changes; checkout left at the tip of ${cfg.repo.ref}"
       ''}
       # Fleet machines pull; see fleet/sync.nix.
       git -C "$tmp/checkout" remote set-url --push origin no_push
@@ -72,7 +72,7 @@ let
       # The checkout belongs to the fleet, so whatever is there without one
       # goes; fleetmgr host enroll warns about it before the switch.
       if [ -d "$repo" ] && [ ! -L "$repo" ] && [ -n "$(ls -A "$repo")" ]; then
-        echo "fleet-bootstrap: replacing $repo, which holds no checkout"
+        echo "fleetmgr-bootstrap: replacing $repo, which holds no checkout"
       fi
       rm -rf "$repo"
       mv "$tmp/checkout" "$repo"
@@ -93,12 +93,12 @@ let
       # watch its path as a name only; loading them again watches everything
       # in it from now on (audit/auditd.nix).
       systemctl try-restart audit-rules-nixos.service || true
-      echo "fleet-bootstrap: $repo at $(git -C "$repo" rev-parse HEAD)"
+      echo "fleetmgr-bootstrap: $repo at $(git -C "$repo" rev-parse HEAD)"
     '';
   };
 in {
   config = lib.mkIf (cfg.repo.url != null && config.conf.platform == "nixos") {
-    systemd.services.fleet-bootstrap = {
+    systemd.services.fleetmgr-bootstrap = {
       description = "Clone the fleet configuration into ${cfg.localPath} on first boot";
       wantedBy = [ "multi-user.target" ];
       wants = [ "network-online.target" ];
@@ -120,6 +120,6 @@ in {
     };
 
     # The sync needs the checkout; on first boot it waits for the clone.
-    systemd.services.config-auto-update.after = [ "fleet-bootstrap.service" ];
+    systemd.services.config-auto-update.after = [ "fleetmgr-bootstrap.service" ];
   };
 }

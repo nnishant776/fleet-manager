@@ -7,7 +7,7 @@ Store a secret of your own, which your hosts hand only to you, on your own branc
 Stores the value as secrets.\<name> in your file for each host, users/\<user>/\<host>.yaml, on your branch,
 user/\<user>, of your clone of the secrets repository; commits, signed with your own signing key, and pushes
 the branch. The value is typed hidden or read from standard input. A host whose configuration sets
-accounts.\<user>.secrets.own decrypts your whole file for you alone, and fleet-user-secret \<name> prints the value
+accounts.\<user>.secrets.own decrypts your whole file for you alone, and fleetmgr-user-secret \<name> prints the value
 there. A value that is stored already makes no commit.
 
 ```
@@ -23,7 +23,7 @@ printf %s "$token" | fleetmgr user secret set token --all-hosts --value-stdin --
 |---|---|
 | `--repo` | Your clone of the secrets repository, left on main, or the name of a repository (fleetmgr repo list), which means the tool's own clone of it; defaults to FLEETMGR_SECRETS_REPO, then this directory |
 | `--user` | The user's name: lowercase letters, digits and '-'; your login name by default |
-| `--name` | Its key under secrets in your file, and the name fleet-user-secret takes on the host: letters, digits, - and _ |
+| `--name` | Its key under secrets in your file, and the name fleetmgr-user-secret takes on the host: letters, digits, - and _ |
 | `--value-stdin` | read the value from standard input, instead of being asked. Hidden as you type; trailing newlines are dropped |
 | `--host` | A host whose file of yours is changed; may be given more than once. Or use --all-hosts; may be given more than once |
 | `--all-hosts` | Change your file on every host that has one on your branch, instead of the hosts named |

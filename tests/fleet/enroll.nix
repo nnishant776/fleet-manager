@@ -111,7 +111,7 @@ pkgs.testers.runNixOSTest {
       conf.secrets.repo.url = secretsUrl;
 
       # The test makes the checkout itself and runs the secrets sync by hand.
-      systemd.services.fleet-bootstrap.enable = false;
+      systemd.services.fleetmgr-bootstrap.enable = false;
       systemd.timers.config-auto-update.enable = false;
 
       # Root reaches the forge with the host's deploy key, once registered.
@@ -183,7 +183,7 @@ pkgs.testers.runNixOSTest {
 
     with subtest("the host then fetches, verifies and decrypts its secrets"):
         newhost.succeed(
-            "fleet-secrets-sync sync --state /var/lib/fleet --host newhost"
+            "fleetmgr-secrets-sync sync --state /var/lib/fleet --host newhost"
             " --repo ${secretsUrl} --ref host/newhost --signers ${fixtures}/allowed_signers"
         )
         newhost.succeed("test -f /var/lib/fleet/secrets/hosts/newhost.yaml")
@@ -200,7 +200,7 @@ pkgs.testers.runNixOSTest {
     with subtest("/etc/nixos is replaced by the configuration's checkout, whatever it held"):
         # What enroll runs on a host after its first switch, on scratch
         # directories in place of /etc/nixos and /var/lib/fleet-sync. This test
-        # keeps the host's own fleet-bootstrap off and has no configuration
+        # keeps the host's own fleetmgr-bootstrap off and has no configuration
         # repository on the forge, and a system built here records no revision
         # to accept, so the unit cannot make a real clone: a stub systemctl
         # does what the unit does when it is started and finds no checkout

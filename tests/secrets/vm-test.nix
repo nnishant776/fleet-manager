@@ -19,7 +19,7 @@
 # file from her branch, signed by her own key.
 # Dave changes his own password, login key and secrets with fleetmgr user, from a
 # directory and home of his own with his identity and signing key, signed by
-# him, and the host hands him his secret with fleet-user-secret, to him alone.
+# him, and the host hands him his secret with fleetmgr-user-secret, to him alone.
 # No network and no hosting service are involved. Run it with
 # `nix build .#checks.x86_64-linux.secrets-sync` (see README.md).
 { pkgs, inputs, self }:
@@ -452,20 +452,20 @@ pkgs.testers.runNixOSTest {
     # host's deploy key and the configuration fetch its configuration key
     # (its repo.url is an SSH address), each as the tools set it, or not at all.
     # sops, to read back what fleetmgr host secret stored, with the host's own key;
-    # fleet-clone-flake, the clone os-install makes of a private flake.
+    # fleetmgr-clone-flake, the clone os-install makes of a private flake.
     environment.systemPackages = [ pkgs.sops pkgs.openssh (import ../../lib/clone-flake.nix { inherit pkgs; }) ];
 
     # Stands in for os-install's identity step: the keys of the fixtures
-    # are put in place before fleet-bootstrap's own `init`, which then finds
+    # are put in place before fleetmgr-bootstrap's own `init`, which then finds
     # them and changes nothing.
     systemd.services.secrets-test-seed = {
       description = "Install the fixture identity into the state directory";
       wantedBy = [ "multi-user.target" ];
-      before = [ "fleet-bootstrap.service" ];
+      before = [ "fleetmgr-bootstrap.service" ];
       # A switch starts every wanted oneshot that is inactive; the identity
       # is seeded once, and a second `init` would refuse to overwrite it.
       unitConfig.ConditionPathExists = "!/var/lib/fleet/age.key";
-      requiredBy = [ "fleet-bootstrap.service" ];
+      requiredBy = [ "fleetmgr-bootstrap.service" ];
       serviceConfig.Type = "oneshot";
       script = ''
         ${lib.getExe (import ../../lib/secrets-sync.nix {
@@ -479,7 +479,7 @@ pkgs.testers.runNixOSTest {
 
   testScript = ''
     sync_cmd = (
-        "fleet-secrets-sync sync --state /var/lib/fleet --host ${hostName}"
+        "fleetmgr-secrets-sync sync --state /var/lib/fleet --host ${hostName}"
         " --repo ${secretsUrl} --ref host/${hostName} --signers ${fixtures}/allowed_signers"
     )
 
@@ -490,10 +490,10 @@ pkgs.testers.runNixOSTest {
         # A oneshot without RemainAfterExit is inactive once done, which
         # wait_for_unit rejects, so wait for the checkout and read the result.
         fleet.wait_until_succeeds(
-            "systemctl show -p ActiveState --value fleet-bootstrap.service | grep -x inactive"
+            "systemctl show -p ActiveState --value fleetmgr-bootstrap.service | grep -x inactive"
             " && test -e /etc/nixos/.git"
         )
-        fleet.succeed("systemctl show -p Result --value fleet-bootstrap.service | grep -x success")
+        fleet.succeed("systemctl show -p Result --value fleetmgr-bootstrap.service | grep -x success")
 
     with subtest("2: the snapshot is in place and holds no repository"):
         fleet.succeed("test -L /var/lib/fleet/secrets")
@@ -856,7 +856,7 @@ pkgs.testers.runNixOSTest {
     with subtest("14: init reads an older identity, and adds a configuration key to it"):
         # The document says deploy_key and has no configuration key.
         fleet.succeed(
-            "fleet-secrets-sync init --state /tmp/old --host ${hostName}"
+            "fleetmgr-secrets-sync init --state /tmp/old --host ${hostName}"
             " --from-identity ${fixtures}/identity-without-config.yaml"
         )
         secrets_pub = fleet.succeed("cat /tmp/old/secrets_deploy_key.pub").strip()
@@ -866,7 +866,7 @@ pkgs.testers.runNixOSTest {
         assert f"secrets_deploy_pubkey: {secrets_pub}" in enroll, enroll
         assert f"config_deploy_pubkey: {pub}" in enroll, enroll
         before = fleet.succeed("sha256sum /tmp/old/* | sort")
-        fleet.succeed("fleet-secrets-sync init --state /tmp/old --host ${hostName}")
+        fleet.succeed("fleetmgr-secrets-sync init --state /tmp/old --host ${hostName}")
         assert fleet.succeed("sha256sum /tmp/old/* | sort") == before, "a second init changed the identity"
         # The host's own enrollment file lists the key the config account takes.
         real = fleet.succeed("cat /var/lib/fleet/${hostName}.enroll")
@@ -880,7 +880,7 @@ pkgs.testers.runNixOSTest {
             "cp -a /tmp/old/secrets_deploy_key /tmp/legacy/deploy_ed25519",
             "cp -a /tmp/old/secrets_deploy_key.pub /tmp/legacy/deploy_ed25519.pub",
         )
-        fleet.succeed("fleet-secrets-sync init --state /tmp/legacy --host ${hostName}")
+        fleet.succeed("fleetmgr-secrets-sync init --state /tmp/legacy --host ${hostName}")
         fleet.succeed("test -f /tmp/legacy/secrets_deploy_key -a ! -e /tmp/legacy/deploy_ed25519")
         assert fleet.succeed("cat /tmp/legacy/secrets_deploy_key.pub").strip() == secrets_pub
         enroll = fleet.succeed("cat /tmp/legacy/${hostName}.enroll")
@@ -902,7 +902,7 @@ pkgs.testers.runNixOSTest {
             "cp -a /tmp/old/config_deploy_key /tmp/legacy2/config_deploy_ed25519",
             "cp -a /tmp/old/config_deploy_key.pub /tmp/legacy2/config_deploy_ed25519.pub",
         )
-        fleet.succeed("fleet-secrets-sync init --state /tmp/legacy2 --host ${hostName}")
+        fleet.succeed("fleetmgr-secrets-sync init --state /tmp/legacy2 --host ${hostName}")
         for name in ["secrets_deploy_key", "config_deploy_key"]:
             fleet.succeed(f"test \"$(stat -c %a /tmp/legacy2/{name})\" = 600")
         fleet.succeed("test ! -e /tmp/legacy2/secrets_deploy_ed25519 -a ! -e /tmp/legacy2/secrets_deploy_ed25519.pub")
@@ -933,7 +933,7 @@ pkgs.testers.runNixOSTest {
         )
         check_cmd = (
             "NIX_CONFIG='extra-experimental-features = nix-command flakes'"
-            " fleet-secrets-sync check --state /tmp/check-state --config path:/tmp/check-flake --host "
+            " fleetmgr-secrets-sync check --state /tmp/check-state --config path:/tmp/check-flake --host "
         )
         fleet.succeed(check_cmd + "good")
         status, out = fleet.execute(check_cmd + "bad 2>&1")
@@ -967,7 +967,7 @@ pkgs.testers.runNixOSTest {
         )
         keys_check = (
             "NIX_CONFIG='extra-experimental-features = nix-command flakes'"
-            " fleet-secrets-sync check --state /tmp/check-state --config path:/tmp/check-keys-flake --host "
+            " fleetmgr-secrets-sync check --state /tmp/check-state --config path:/tmp/check-keys-flake --host "
         )
         fleet.succeed(keys_check + "keys")
         status, out = fleet.execute(keys_check + "nokeys 2>&1")
@@ -995,7 +995,7 @@ pkgs.testers.runNixOSTest {
             "ssh -i /var/lib/fleet/config_deploy_key -o IdentitiesOnly=yes"
             " -o UserKnownHostsFile=/var/lib/fleet/known_hosts -o StrictHostKeyChecking=accept-new"
         )
-        clone = f"GIT_SSH_COMMAND='{ssh}' fleet-clone-flake 'git+${configUrl}?ref=main&rev="
+        clone = f"GIT_SSH_COMMAND='{ssh}' fleetmgr-clone-flake 'git+${configUrl}?ref=main&rev="
         fleet.succeed(f"{clone}{older}' /tmp/pinned")
         assert fleet.succeed("git -C /tmp/pinned rev-parse HEAD").strip() == older
         status, out = fleet.execute(f"{clone}{'0' * 40}' /tmp/missing 2>&1")
@@ -1013,7 +1013,7 @@ pkgs.testers.runNixOSTest {
         fetch = fleet.succeed("git -C /etc/nixos config --get-all remote.origin.fetch").strip()
         assert fetch == "+refs/heads/main:refs/remotes/origin/main", fetch
         # Nor does the clone os-install makes.
-        fleet.succeed(f"GIT_SSH_COMMAND='{ssh}' fleet-clone-flake 'git+${configUrl}?ref=main' /tmp/one-branch")
+        fleet.succeed(f"GIT_SSH_COMMAND='{ssh}' fleetmgr-clone-flake 'git+${configUrl}?ref=main' /tmp/one-branch")
         fleet.fail(f"git -C /tmp/one-branch cat-file -e {other}")
 
     with subtest("19: a change to the secrets alone reaches the running system"):
@@ -1206,7 +1206,7 @@ pkgs.testers.runNixOSTest {
         status, out = run_sync()
         assert status == 0, out
         fleet.succeed("test \"$(stat -c %a /var/lib/fleet-sync/user-problems)\" = 644")
-        out = fleet.succeed("runuser -u alice -- fleet-sync-status")
+        out = fleet.succeed("runuser -u alice -- fleetmgr-sync-status")
         assert "dave:" in out and "not signed" in out, out
         out = fleet.succeed("su -l alice -c true 2>&1")
         assert "Some users' secrets on this machine have not updated" in out, out
@@ -1221,7 +1221,7 @@ pkgs.testers.runNixOSTest {
         status, out = run_sync()
         assert status == 0, out
         fleet.fail("test -e /var/lib/fleet-sync/user-problems")
-        assert "working" in fleet.succeed("runuser -u alice -- fleet-sync-status")
+        assert "working" in fleet.succeed("runuser -u alice -- fleetmgr-sync-status")
 
     with subtest("28: a file not encrypted to dave, this host and the recovery key is kept out"):
         good = tip
@@ -1395,15 +1395,15 @@ pkgs.testers.runNixOSTest {
         fleet.succeed("/run/booted-system/specialisation/dave-own/bin/switch-to-configuration test")
         out = fleet.succeed("stat -c '%U %a' /run/secrets/users/dave/all").strip()
         assert out == "dave 400", f"dave's file is '{out}', expected 'dave 400'"
-        assert fleet.succeed("runuser -u dave -- fleet-user-secret token") == "tok-123\n"
+        assert fleet.succeed("runuser -u dave -- fleetmgr-user-secret token") == "tok-123\n"
         # Another name, and another user, get nothing.
-        status, out = fleet.execute("runuser -u dave -- fleet-user-secret nothing 2>&1")
+        status, out = fleet.execute("runuser -u dave -- fleetmgr-user-secret nothing 2>&1")
         assert status == 1 and "there is no secret named nothing" in out, (status, out)
-        status, out = fleet.execute("runuser -u alice -- fleet-user-secret token 2>&1")
+        status, out = fleet.execute("runuser -u alice -- fleetmgr-user-secret token 2>&1")
         assert status == 1 and "tok-123" not in out and "is not there" in out, (status, out)
         fleet.fail("runuser -u alice -- cat /run/secrets/users/dave/all")
         # The key he added with fleetmgr user keys logs in as him, and only as him.
-        out = forge.succeed(ssh_login.format(key="dave_login", user="dave", command="/run/current-system/sw/bin/fleet-user-secret token")).strip()
+        out = forge.succeed(ssh_login.format(key="dave_login", user="dave", command="/run/current-system/sw/bin/fleetmgr-user-secret token")).strip()
         assert out == "tok-123", out
         status, _ = forge.execute(ssh_login.format(key="dave_login", user="alice", command="true"))
         assert status != 0, "dave's key logged in as alice"

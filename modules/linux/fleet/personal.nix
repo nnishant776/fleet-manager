@@ -28,7 +28,7 @@ let
   ownerGroups = if cfg.ownerPrivileged then adminGroups else plainGroups;
 
   setup = pkgs.writeShellApplication {
-    name = "fleet-owner-setup";
+    name = "fleetmgr-owner-setup";
     runtimeInputs = [
       pkgs.coreutils
       pkgs.gnugrep
@@ -220,7 +220,7 @@ in
     # (and the graphical session that follows it) waits for the owner to finish,
     # which is wanted before an account exists; ssh and the support account do
     # not wait. The other consoles (tty2 and on) are not held.
-    systemd.services.fleet-owner-setup = {
+    systemd.services.fleetmgr-owner-setup = {
       description = "Create the account of this machine's owner";
       wantedBy = [ "multi-user.target" ];
       after = [ "NetworkManager.service" "systemd-user-sessions.service" ];

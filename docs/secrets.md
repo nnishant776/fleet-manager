@@ -72,7 +72,7 @@ of the users its own file lists.
 | | `ssh_key`, `ssh_key_pub` | `accounts.<u>.secrets.sshKey = true` | `fleetmgr secrets user-key` |
 | | `authorized_keys` | `accounts.<u>.secrets.authorizedKeys = true`; for `support`, `conf.fleet.support.keysFromSecrets = true` | `fleetmgr secrets user-keys`, or `fleetmgr user keys` on a user's own branch |
 | | `sudo_keys` | `accounts.<u>.secrets.sudoKeys = true` (privileged accounts only) | the same |
-| | `secrets.<name>` | `accounts.<u>.secrets.own = true`, read with `fleet-user-secret <name>` | `fleetmgr user secret` |
+| | `secrets.<name>` | `accounts.<u>.secrets.own = true`, read with `fleetmgr-user-secret <name>` | `fleetmgr user secret` |
 | `hosts/<h>.yaml` | `support_password` | `conf.fleet.support.consolePassword = true` | `fleetmgr host secret`, or `sops` by hand |
 | | any `<name>` | a module declares `sops.secrets.<name>` | `fleetmgr host secret`, or `sops` by hand |
 | | `users` | reserved: the users whose branch the host reads (each with `signing_key` and `age_recipient`) | `fleetmgr secrets user-enroll`, `user-retire` |
@@ -143,7 +143,7 @@ push it.
 | Host **configuration deploy key** (SSH) | `/var/lib/fleet/config_deploy_key`, on the host only | *read* a private configuration repository (registered read-only there); unused for a public one |
 
 Host private keys are generated on the host and never leave it, except through
-an explicit `fleet-identity --export` for a reinstall. The maintainer only sees
+an explicit `fleetmgr-identity --export` for a reinstall. The maintainer only sees
 their public halves, in the host's **enrollment file**, which is also kept on
 its branch as `enroll`:
 
@@ -193,7 +193,7 @@ the one accepted last (`accepted/user-<name>`), and holds a file for this host
 encrypted to exactly the user, this host and the recovery recipient, with a
 `password`, if any, that is a password hash. A user whose branch fails a check
 keeps the file the host had, and the others carry on; the problem is listed at
-every login, in `fleet-sync-status` and in `fleetmgr host check`, until a good
+every login, in `fleetmgr-sync-status` and in `fleetmgr host check`, until a good
 commit fixes it. The files go into a snapshot in `<statePath>/secrets`, with a
 `manifest` saying which commit each file came from, named after the manifest,
 so a sync that brings nothing new changes nothing; sops-nix decrypts the
@@ -208,7 +208,7 @@ configuration that needs a secret the snapshot lacks.
 | `/run/secrets/users/alice/ssh_key.pub` | alice, 0400 | For reference |
 | `/run/secrets/users/alice/authorized_keys` | alice, 0400 | sshd, as an `AuthorizedKeysFile` with `%u`, so a file admits only its own account; only if `secrets.authorizedKeys` is on (or for support, `fleet.support.keysFromSecrets`). sshd opens it as the account, which is why the file is hers |
 | `/run/secrets/users/admin/sudo_keys` | root, 0400 | sudo's SSH-agent check, for that account only; only if `secrets.sudoKeys` is on. Root's, so the account cannot add a key |
-| `/run/secrets/users/alice/all` | alice, 0400 | The whole of alice's file, so that she can read what she keeps in it herself, with `fleet-user-secret <name>`; only if `secrets.own` is on |
+| `/run/secrets/users/alice/all` | alice, 0400 | The whole of alice's file, so that she can read what she keeps in it herself, with `fleetmgr-user-secret <name>`; only if `secrets.own` is on |
 | `/run/secrets/<host secret>` | per module | Whichever module declared it |
 
 A user's secrets are that user's alone. Every secret read from a file under
@@ -323,10 +323,10 @@ change that changes nothing makes no commit. The commands that encrypt need your
 recipient in the cache `fleetmgr setup` fills, and stop with "run fleetmgr setup"
 without it. `fleetmgr setup` also installs, in the secrets
 clone, a copy of the repository's pre-commit hook, which refuses a file under
-`hosts/` or `users/` that is not ciphertext. `fleet-secrets-sync` (`init`, `sync` and `check`, which the sync and the
-installer run) and `fleet-identity` are installed on opted-in hosts;
-`fleet-identity` prints the host's enrollment file (`--qr` for a QR code); it needs `sudo`, since the state
-directory is root's; `sudo fleet-identity --export`
+`hosts/` or `users/` that is not ciphertext. `fleetmgr-secrets-sync` (`init`, `sync` and `check`, which the sync and the
+installer run) and `fleetmgr-identity` are installed on opted-in hosts;
+`fleetmgr-identity` prints the host's enrollment file (`--qr` for a QR code); it needs `sudo`, since the state
+directory is root's; `sudo fleetmgr-identity --export`
 writes the private identity document for a planned reinstall. For a local
 test without a hosting service, `nix run .#secrets-harness` stands in for the
 secrets repository and the configuration upstream; see

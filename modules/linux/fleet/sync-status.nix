@@ -5,7 +5,7 @@
 # fails, and removes it when a run succeeds. Every account sees it: as a
 # persistent notification in a graphical session, shown again whenever the
 # sync writes it, and as a few lines at every shell login, which also covers
-# SSH and headless machines. `fleet-sync-status` prints it on demand.
+# SSH and headless machines. `fleetmgr-sync-status` prints it on demand.
 #
 # A second, smaller notice names users whose own secrets could not be updated
 # (/var/lib/fleet-sync/user-problems, a copy of the sync's list of them): the
@@ -22,7 +22,7 @@ let
 
   # The status, for people: what happened, what to do, and since when.
   describe = pkgs.writeShellApplication {
-    name = "fleet-sync-status";
+    name = "fleetmgr-sync-status";
     runtimeInputs = [ pkgs.coreutils pkgs.gnused ];
     text = ''
       if [ ! -r ${status} ] && [ ! -r ${userProblems} ]; then
@@ -57,10 +57,10 @@ let
   };
 
   notify = pkgs.writeShellApplication {
-    name = "fleet-sync-notify";
+    name = "fleetmgr-sync-notify";
     runtimeInputs = [ pkgs.coreutils pkgs.libnotify pkgs.systemd describe ];
     text = ''
-      idFile="''${XDG_RUNTIME_DIR:-/tmp}/fleet-sync-notify.id"
+      idFile="''${XDG_RUNTIME_DIR:-/tmp}/fleetmgr-sync-notify.id"
 
       # Nothing wrong, and nothing on screen to take down.
       if [ ! -r ${status} ] && [ ! -r ${userProblems} ] && [ ! -s "$idFile" ]; then
@@ -103,7 +103,7 @@ let
         --replace-id="$replaceId" \
         --print-id \
         "$title" \
-        "$(fleet-sync-status)" > "$idFile"
+        "$(fleetmgr-sync-status)" > "$idFile"
     '';
   };
 in {
@@ -125,7 +125,7 @@ in {
     }
 
     (lib.mkIf config.conf.desktop.enable {
-      systemd.user.services.fleet-sync-notify = {
+      systemd.user.services.fleetmgr-sync-notify = {
         description = "Show whether this machine's configuration updates have stopped";
         wantedBy = [ "graphical-session.target" ];
         after = [ "graphical-session.target" ];
@@ -138,7 +138,7 @@ in {
 
       # The sync replaces the file on every run that stops and removes it on
       # one that succeeds; either starts the service above.
-      systemd.user.paths.fleet-sync-notify = {
+      systemd.user.paths.fleetmgr-sync-notify = {
         description = "Watch this machine's configuration update status";
         wantedBy = [ "graphical-session.target" ];
         partOf = [ "graphical-session.target" ];
@@ -150,7 +150,7 @@ in {
       # when the switch added them.
       system.userActivationScripts.fleetSyncNotify = ''
         if ${pkgs.systemd}/bin/systemctl --user is-active --quiet graphical-session.target; then
-          ${pkgs.systemd}/bin/systemctl --user start --no-block fleet-sync-notify.path fleet-sync-notify.service || true
+          ${pkgs.systemd}/bin/systemctl --user start --no-block fleetmgr-sync-notify.path fleetmgr-sync-notify.service || true
         fi
       '';
     })

@@ -221,7 +221,7 @@ Add its folder to the inventory, push, publish its branch, then run
 not run a fleet configuration yet, enroll does this in order:
 
 1. Checks the commit to install, as `fleetmgr install prep` does.
-2. Makes the host's identity with `fleet-secrets-sync` from the checked
+2. Makes the host's identity with `fleetmgr-secrets-sync` from the checked
    fleet-manager commit.
 3. Enrolls the host and registers both of its keys.
 4. Checks the configuration fits the machine as it is.
