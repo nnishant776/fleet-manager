@@ -33,7 +33,12 @@ var HostEnroll = &engine.Flow{
 		"does not run it yet or runs another repository's, creates its identity, copies its\n" +
 		"enrollment file here and checks it, enrolls it in the secrets repository and pushes,\n" +
 		"registers its deploy key read-only, then syncs the host and checks it. Steps that are\n" +
-		"done already are skipped, so it can be run again after a failure.",
+		"done already are skipped, so it can be run again after a failure.\n" +
+		"\n" +
+		"The switch is a trial. The host fetches its secrets first, so that the new system has\n" +
+		"support's keys. The new system is activated with a timer armed that brings back the one\n" +
+		"before after --trial-minutes, and it stays, as the boot default, only once fleetmgr has\n" +
+		"logged in to it as support. A configuration that cuts the host off so undoes itself.",
 	Example: "  fleetmgr host enroll pi1 --key ~/.ssh/admin_key --repo ~/Projects/secrets",
 	Args:    []string{"host"},
 	Inputs: []engine.Input{
@@ -57,6 +62,7 @@ var HostEnroll = &engine.Flow{
 			}},
 		fleetmgr.HostKeyInput,
 		fleetmgr.AdminPasswordInput,
+		trialMinutesInput,
 		secrets.RepoInput,
 		secrets.RecoveryInput,
 		{Name: "switch-to", Prompt: "Configuration to switch the host to, if it needs a switch",
@@ -71,7 +77,7 @@ var HostEnroll = &engine.Flow{
 	},
 	Needs:   []string{"ssh", "ssh-agent", "ssh-add", "ssh-keygen", "ssh-keyscan", "git", "sops", "age"},
 	Cleanup: fleetmgr.StopAgent,
-	Steps: []engine.Step{
+	Steps: joinSteps([]engine.Step{
 		knowHostKeyStep,
 		{
 			Title: "Start an agent that holds one key",
@@ -157,13 +163,7 @@ var HostEnroll = &engine.Flow{
 			When: warnsAboutEtcNixos,
 			Do:   engine.Func(warnAboutEtcNixos),
 		},
-		{
-			Title: "Switch {{.host}} to its fleet configuration",
-			Why: "The switch runs as a service on the host, so it finishes even if this connection drops. A private configuration is fetched with the host's configuration key. " +
-				"/etc/nixos is replaced after it.",
-			When: needsSwitch,
-			Do:   engine.Func(switchHost),
-		},
+	}, trialSwitchSteps(needsSwitch), []engine.Step{
 		{
 			Title: "Make /etc/nixos the configuration repository's checkout",
 			Why: "The sync owns /etc/nixos and fetches the repository the configuration names. What was there is deleted, and the first-boot clone, fleetmgr-bootstrap, " +
@@ -192,7 +192,7 @@ var HostEnroll = &engine.Flow{
 			Do: engine.Cmd("fleetmgr", "host", "check", "{{.host}}", "--address", "{{.address}}", "--flake", "{{.flake}}").
 				ReadOnly().Interactive(),
 		},
-	},
+	}),
 }
 
 func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
@@ -505,31 +505,6 @@ func remakeEtcNixos(x *engine.Ctx) error {
 		x.UI.Note("It is at " + head + ", not at " + rev + ", the commit the host was switched to: the first-boot clone leaves the tip of the branch when that commit is not on it. The sync converges.")
 	}
 	return nil
-}
-
-func switchHost(x *engine.Ctx) error {
-	x.Values["switch_env"] = ""
-	if sshURL(x.Value("config_url")) && strings.HasPrefix(x.Value("switch_ref"), "git+ssh://") {
-		// A private configuration: nix fetches it with the host's own key.
-		if err := writePinnedKeys(x); err != nil {
-			return err
-		}
-		x.Values["switch_env"] = engine.Quote("--setenv=GIT_SSH_COMMAND=" + x.Value("ssh_private"))
-	}
-	// systemd-run gives the service a minimal PATH; nixos-rebuild needs the
-	// system's (it runs `test`).
-	// It runs as a unit on the host, so that a dropped connection or a stop
-	// here cannot cut it in half.
-	_, err := fleetmgr.StillRunning(fleetmgr.OnAdmin(`sudo -n systemctl reset-failed fleet-enroll-switch 2>/dev/null; `+
-		`sudo -n systemd-run --wait --collect --unit=fleet-enroll-switch `+
-		`--setenv=PATH=/run/wrappers/bin:/run/current-system/sw/bin {{.switch_env}} `+
-		`nixos-rebuild switch --flake {{.switch_target}}; s=$?; `+
-		`sudo -n journalctl -u fleet-enroll-switch -o cat -n 15 --no-pager; exit $s`).OK("switched"),
-		"the switch", "fleet-enroll-switch", "{{.admin}}").Run(x)
-	if err == nil {
-		x.Values["switched"] = "true"
-	}
-	return err
 }
 
 // signedUpstreamMain takes the newest commit of fleet-manager's main, fetched with

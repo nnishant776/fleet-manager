@@ -30,6 +30,11 @@ func gitFacts(respond func(engine.Spec) (engine.Result, error)) func(engine.Spec
 			res.Stdout = "sudo=key\n"
 			return res, nil
 		}
+		if err == nil && res.Stdout == "" {
+			if r, ok := trialFacts(s, res); ok {
+				return r, nil
+			}
+		}
 		if err != nil || res.Stdout != "" || s.Name != "git" {
 			return res, err
 		}

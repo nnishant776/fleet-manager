@@ -101,7 +101,7 @@ func TestEnrollChecksTheBranchBeforeTheSwitch(t *testing.T) {
 		switch {
 		case strings.HasPrefix(s.Title, "Check host/{{.host}} holds"):
 			check = i
-		case strings.HasPrefix(s.Title, "Switch {{.host}} to its fleet configuration"):
+		case strings.HasPrefix(s.Title, "Try the new system on {{.host}}"):
 			sw = i
 		}
 	}

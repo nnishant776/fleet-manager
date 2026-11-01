@@ -14,6 +14,11 @@ enrollment file here and checks it, enrolls it in the secrets repository and pus
 registers its deploy key read-only, then syncs the host and checks it. Steps that are
 done already are skipped, so it can be run again after a failure.
 
+The switch is a trial. The host fetches its secrets first, so that the new system has
+support's keys. The new system is activated with a timer armed that brings back the one
+before after --trial-minutes, and it stays, as the boot default, only once fleetmgr has
+logged in to it as support. A configuration that cuts the host off so undoes itself.
+
 ```
 fleetmgr host enroll [HOST] [flags]
 
@@ -32,6 +37,7 @@ fleetmgr host enroll pi1 --key ~/.ssh/admin_key --repo ~/Projects/secrets
 | `--key` | A private key file; the only key the agent fleetmgr starts holds and forwards |
 | `--host-key` | SHA256:…, as ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub prints it on the host's console; only needed when this machine does not know the host's key yet and cannot ask |
 | `--admin-password-stdin` | read the admin-password from standard input, instead of being asked. Only needed when the admin account's sudo asks for its password; asked for then, or read from --admin-password-stdin. It is kept in memory only, and passed to sudo on the host on stdin |
+| `--trial-minutes` | After the switch, fleetmgr must log in to the new system as support within this time, or the host goes back to the system it ran before; 5 by default |
 | `--repo` | Your clone of the secrets repository, left on main, or the name of a repository (fleetmgr repo list), which means the tool's own clone of it; defaults to FLEETMGR_SECRETS_REPO, then this directory |
 | `--recovery` | Your passphrase-encrypted age identity (age -p). Empty: sops uses SOPS_AGE_KEY_FILE or SOPS_AGE_KEY |
 | `--switch-to` | A flake reference; defaults to the newest commit of github:nnishant776/fleet-manager's main, once it is signed by a key in the checkout's fleet/allowed_signers |
@@ -80,17 +86,25 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 16. **Warn that /etc/nixos on HOST will be replaced.** /etc/nixos belongs to the fleet's configuration: nothing it holds now is kept. This step changes nothing; it shows what is there and asks, before the switch, so that you can copy what you need first.
 
-17. **Switch HOST to its fleet configuration.** The switch runs as a service on the host, so it finishes even if this connection drops. A private configuration is fetched with the host's configuration key. /etc/nixos is replaced after it.
+17. **Fetch HOST's secrets before the switch.** The new system takes its secrets, support's keys among them, from the host's snapshot of the secrets repository, which only its sync makes. So the host fetches, verifies and decrypts them now, as its sync will, with the signers file of the configuration it is switched to.
 
-18. **Make /etc/nixos the configuration repository's checkout.** The sync owns /etc/nixos and fetches the repository the configuration names. What was there is deleted, and the first-boot clone, fleetmgr-bootstrap, makes the checkout at the commit the host runs and records it as the first the machine accepted.
+18. **Build HOST's new system.** On the host, as a unit, so that a dropped connection does not stop it. Nothing changes on the host yet.
 
-19. **Sync HOST.** Its first sync with secrets: fetch and verify them, then its configuration.
+19. **Try the new system on HOST, with a way back.** A timer is armed first: unless fleetmgr confirms the new system within TRIAL-MINUTES minutes, the host goes back to the one it runs now. Then the new system is activated, without becoming the boot default, so a reboot goes back as well.
+
+20. **Confirm HOST works on its new system.** As USER, with nothing forwarded, as every step after this one logs in: if it can, the timer is stopped and the new system stays.
+
+21. **Make the new system HOST's boot default.** It becomes the system profile's newest generation and the boot loader's default, as a plain switch would have made it.
+
+22. **Make /etc/nixos the configuration repository's checkout.** The sync owns /etc/nixos and fetches the repository the configuration names. What was there is deleted, and the first-boot clone, fleetmgr-bootstrap, makes the checkout at the commit the host runs and records it as the first the machine accepted.
+
+23. **Sync HOST.** Its first sync with secrets: fetch and verify them, then its configuration.
 
    ```
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'sudo -n systemctl start config-auto-update'
    ```
 
-20. **Check HOST.** fleetmgr host check, as support with nothing forwarded: this also shows support works.
+24. **Check HOST.** fleetmgr host check, as support with nothing forwarded: this also shows support works.
 
    ```
    $ fleetmgr host check HOST --address ADDRESS --flake FLAKE

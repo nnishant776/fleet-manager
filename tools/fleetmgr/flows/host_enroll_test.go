@@ -122,7 +122,7 @@ func TestEnrollDoesWhatIsMissingInOrder(t *testing.T) {
 		}
 		pos += i
 	}
-	for _, unwanted := range []string{"nixos-rebuild", "remote set-url"} {
+	for _, unwanted := range []string{"fleetmgr-trial-build", "remote set-url"} {
 		if strings.Contains(cmds, unwanted) {
 			t.Errorf("ran %q although nothing called for it", unwanted)
 		}
@@ -211,7 +211,7 @@ func TestEnrollSwitchesToASignedCommitOfMain(t *testing.T) {
 	cmds := strings.Join(fake.Commands(), "\n")
 	order := []string{"fetch -q https://github.com/nnishant776/fleet-manager +refs/heads/main:refs/remotes/origin/main",
 		// Quoted for the host's shell, then again as part of the ssh command.
-		"verify-commit abc1230000000000000000000000000000000000", `nixos-rebuild switch --flake '\''git+https://github.com/nnishant776/fleet-manager?rev=abc1230000000000000000000000000000000000#pi'\''`}
+		"verify-commit abc1230000000000000000000000000000000000", `sh '\''git+https://github.com/nnishant776/fleet-manager?rev=abc1230000000000000000000000000000000000#nixosConfigurations.pi.config.system.build.toplevel'\''`}
 	pos := 0
 	for _, want := range order {
 		i := strings.Index(cmds[pos:], want)
@@ -235,7 +235,7 @@ func TestEnrollDoesNotSwitchToAnUnsignedCommit(t *testing.T) {
 	if !strings.Contains(out, "is not signed by a key you trust") {
 		t.Errorf("output:\n%s", out)
 	}
-	if got := ranMatching(fake, "nixos-rebuild"); len(got) > 0 {
+	if got := ranMatching(fake, "fleetmgr-trial-build"); len(got) > 0 {
 		t.Fatalf("switched anyway: %s", got[0])
 	}
 }
@@ -307,7 +307,7 @@ func TestEnrollWarnsThenReplacesEtcNixos(t *testing.T) {
 				}
 			}
 			cmds := strings.Join(fake.Commands(), "\n")
-			switched := strings.Index(cmds, "nixos-rebuild switch")
+			switched := strings.Index(cmds, "trial-switch.sh /nix/store")
 			for _, unwanted := range []string{"mv /etc/nixos", "remote rename", "rm -rf", "before-fleet", "remote set-url"} {
 				if strings.Contains(cmds, unwanted) {
 					t.Errorf("ran %q on the host:\n%s", unwanted, cmds)
@@ -327,7 +327,7 @@ func TestEnrollWarnsThenReplacesEtcNixos(t *testing.T) {
 			if got := remake.String(); !strings.Contains(got, "fleetmgr-enroll-remake.sh https://github.com/nnishant776/fleet-manager.git "+tc.wasGit) {
 				t.Errorf("remake args: %s", got)
 			}
-			if strings.Index(cmds, "nixos-rebuild switch") > strings.Index(cmds, "fleetmgr-enroll-remake.sh https://github.com") {
+			if strings.Index(cmds, "trial-switch.sh /nix/store") > strings.Index(cmds, "fleetmgr-enroll-remake.sh https://github.com") {
 				t.Errorf("replaced /etc/nixos before the switch:\n%s", cmds)
 			}
 			// What the host listed is shown, never used in a command.
@@ -342,7 +342,7 @@ func TestEnrollWarnsThenReplacesEtcNixos(t *testing.T) {
 
 func switchedAt(fake *engine.Fake) int {
 	for i, s := range fake.Ran {
-		if strings.Contains(s.String(), "nixos-rebuild switch") {
+		if strings.Contains(s.String(), "trial-switch.sh /nix/store") {
 			return i
 		}
 	}
@@ -571,7 +571,7 @@ func TestEnrollDoesNotSwitchAMachineItsConfigurationDoesNotFit(t *testing.T) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}
 	}
-	if got := ranMatching(fake, "nixos-rebuild"); len(got) > 0 {
+	if got := ranMatching(fake, "fleetmgr-trial-build"); len(got) > 0 {
 		t.Fatalf("switched anyway: %s", got[0])
 	}
 }
@@ -593,7 +593,7 @@ func TestEnrollMakesTheIdentityBeforeTheSwitch(t *testing.T) {
 		if strings.Contains(script, "run 'git+https://github.com/nnishant776/fleet-manager?rev=abc1230000000000000000000000000000000000#fleetmgr-secrets-sync' -- init --state /var/lib/fleet --host pi") {
 			init = i
 		}
-		if strings.Contains(script, "nixos-rebuild switch") {
+		if strings.Contains(script, "trial-switch.sh /nix/store") {
 			switched = i
 		}
 	}
@@ -662,7 +662,7 @@ func TestEnrollAPrivateHostWithoutReinstalling(t *testing.T) {
 			"init":     "run 'git+https://github.com/nnishant776/fleet-manager?rev=" + pinnedFM + "#fleetmgr-secrets-sync' -- init",
 			"config":   "cat >> /forge/authorized_keys",
 			"pinned":   "cat > /var/lib/fleet/known_hosts.pinned",
-			"switch":   "nixos-rebuild switch --flake 'git+ssh://git@github.com/example-org/inventory.git?ref=main&rev=" + pinnedINV + "#pi'",
+			"switch":   "sh 'git+ssh://git@github.com/example-org/inventory.git?ref=main&rev=" + pinnedINV + "#nixosConfigurations.pi.config.system.build.toplevel'",
 			"with key": "'--setenv=GIT_SSH_COMMAND=ssh -i /var/lib/fleet/config_deploy_key -o IdentitiesOnly=yes -o GlobalKnownHostsFile=/var/lib/fleet/known_hosts.pinned",
 		} {
 			if strings.Contains(script, frag) {
@@ -712,7 +712,7 @@ func TestEnrollMovesAHostFromAnotherRepository(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 	cmds := strings.Join(fake.Commands(), "\n")
-	order := []string{"verify-commit abc1230000000000000000000000000000000000", "sh -s -- true / /dev/disk", "symbolic-ref", "nixos-rebuild switch", "fleetmgr-enroll-remake.sh https://github.com", "systemctl start config-auto-update"}
+	order := []string{"verify-commit abc1230000000000000000000000000000000000", "sh -s -- true / /dev/disk", "symbolic-ref", "trial-switch.sh /nix/store", "fleetmgr-enroll-remake.sh https://github.com", "systemctl start config-auto-update"}
 	pos := 0
 	for _, want := range order {
 		i := strings.Index(cmds[pos:], want)
@@ -737,10 +737,10 @@ func TestEnrollSkipsTheSwitchOfAHostOnThisRepository(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
-	if got := strings.Count(out, "skipped: it already runs a configuration with secrets from https://github.com/nnishant776/fleet-manager.git"); got != 5 {
-		t.Errorf("%d steps name the repository, want 5 (choose, fit, branch, warn, switch):\n%s", got, out)
+	if got := strings.Count(out, "skipped: it already runs a configuration with secrets from https://github.com/nnishant776/fleet-manager.git"); got != 9 {
+		t.Errorf("%d steps name the repository, want 9 (choose, fit, branch, warn, and the five of the switch):\n%s", got, out)
 	}
-	for _, unwanted := range []string{"nixos-rebuild", "verify-commit", "sh -s -- true / /dev/disk", "fleetmgr-enroll-remake.sh https://github.com"} {
+	for _, unwanted := range []string{"fleetmgr-trial-build", "verify-commit", "sh -s -- true / /dev/disk", "fleetmgr-enroll-remake.sh https://github.com"} {
 		if got := ranMatching(fake, unwanted); len(got) > 0 {
 			t.Errorf("ran %s", got[0])
 		}
@@ -765,7 +765,7 @@ func TestEnrollDoesNotSwitchOverAnUnsignedCommitUnderTheTip(t *testing.T) {
 	if !strings.Contains(flat(out), "1 of the 2 commits from "+fleetmgr.Short(enrollRecord)+" to "+fleetmgr.Short(enrollMain)) || !strings.Contains(out, "✗ unsigned fix: sneaked in") {
 		t.Errorf("output:\n%s", out)
 	}
-	if got := ranMatching(fake, "nixos-rebuild"); len(got) > 0 {
+	if got := ranMatching(fake, "fleetmgr-trial-build"); len(got) > 0 {
 		t.Fatalf("switched anyway: %s", got[0])
 	}
 	if r := trustedOf(t, fleetmgr.UpstreamURL, "main"); r != enrollRecord {
