@@ -103,4 +103,4 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'sudo -n stat -L -c '\''%U %a'\'' /run/secrets/NAME 2>/dev/null || echo missing'
    ```
 
-It needs `git`, `yq`, `sops`, `age` on the PATH; `fleetmgr doctor` says where to get them.
+It needs `git`, `sops`, `age` on the PATH; `fleetmgr doctor` says where to get them.

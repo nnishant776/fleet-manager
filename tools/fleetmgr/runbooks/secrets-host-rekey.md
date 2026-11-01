@@ -81,4 +81,4 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
    > 
    > Then delete the host's previous deploy key on the forge.
 
-It needs `git`, `yq`, `sops`, `age` on the PATH; `fleetmgr doctor` says where to get them.
+It needs `git`, `sops`, `age` on the PATH; `fleetmgr doctor` says where to get them.

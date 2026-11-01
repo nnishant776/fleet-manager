@@ -65,7 +65,7 @@ var HostEnroll = &engine.Flow{
 			Help: "Sync the host at the end and run fleetmgr host check (default true)", Bool: true,
 			Default: func(*engine.Ctx) (string, error) { return "true", nil }},
 	},
-	Needs:   []string{"ssh", "ssh-agent", "ssh-add", "git", "yq", "sops", "age"},
+	Needs:   []string{"ssh", "ssh-agent", "ssh-add", "git", "sops", "age"},
 	Cleanup: fleetmgr.StopAgent,
 	Steps: []engine.Step{
 		{

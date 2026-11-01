@@ -75,7 +75,7 @@ var SecretsUserEnroll = &engine.Flow{
 			Help:    "A host to list the user on, whether or not its branch holds a file of theirs; may be given more than once",
 			Default: func(*engine.Ctx) (string, error) { return "", nil }},
 	},
-	Needs: []string{"git", "yq", "sops", "age", "ssh-keygen"},
+	Needs: []string{"git", "sops", "age", "ssh-keygen"},
 	Steps: []engine.Step{
 		secrets.Open(true),
 		{
@@ -446,7 +446,7 @@ var SecretsUserRetire = &engine.Flow{
 	Example: "  fleetmgr secrets user-retire alice",
 	Args:    []string{"user"},
 	Inputs:  []engine.Input{secrets.RepoInput, secrets.RecoveryInput, secrets.UserName()},
-	Needs:   []string{"git", "yq", "sops", "age"},
+	Needs:   []string{"git", "sops", "age"},
 	Steps: []engine.Step{
 		secrets.Open(false),
 		secrets.Unlock(),

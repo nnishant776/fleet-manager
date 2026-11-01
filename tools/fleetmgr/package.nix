@@ -15,7 +15,6 @@
   openssh,
   sops,
   age,
-  yq-go,
   mkpasswd,
   gh,
   version ? "0.1.0",
@@ -41,7 +40,7 @@ let
   };
 
   # Everything a flow may run but nix (see flows/doctor.go).
-  tools = [ git openssh sops age yq-go mkpasswd gh ];
+  tools = [ git openssh sops age mkpasswd gh ];
 in
 symlinkJoin {
   name = "fleetmgr-${version}";

@@ -76,4 +76,4 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
    > 2. Rotate what the user could decrypt: their password and SSH keys on the hosts they were listed on,
    > and revoke their public keys on the forge now.
 
-It needs `git`, `yq`, `sops`, `age` on the PATH; `fleetmgr doctor` says where to get them.
+It needs `git`, `sops`, `age` on the PATH; `fleetmgr doctor` says where to get them.

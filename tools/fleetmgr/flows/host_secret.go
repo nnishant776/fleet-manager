@@ -73,7 +73,7 @@ var HostSecret = &engine.Flow{
 			Default: func(*engine.Ctx) (string, error) { return "false", nil },
 		},
 	},
-	Needs: []string{"git", "yq", "sops", "age"},
+	Needs: []string{"git", "sops", "age"},
 	Steps: []engine.Step{
 		secrets.Open(true),
 		secrets.ExistingBranch("host '{{.host}}' is not enrolled; enroll it first (fleetmgr host enroll, or fleetmgr secrets host-enroll)", true),

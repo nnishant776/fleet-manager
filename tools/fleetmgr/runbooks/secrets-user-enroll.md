@@ -74,4 +74,4 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
 
 10. **Push the hosts' branches.** A host reads the user from its branch on its next sync, which checks the commit is signed by an allowed key.
 
-It needs `git`, `yq`, `sops`, `age`, `ssh-keygen` on the PATH; `fleetmgr doctor` says where to get them.
+It needs `git`, `sops`, `age`, `ssh-keygen` on the PATH; `fleetmgr doctor` says where to get them.

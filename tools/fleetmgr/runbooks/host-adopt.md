@@ -81,4 +81,4 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
 
 12. **Next.** The declaration to add to the inventory, and the commands that finish.
 
-It needs `git`, `nix`, `tar`, `ssh`, `yq`, `sops`, `age`, `ssh-keygen` on the PATH; `fleetmgr doctor` says where to get them.
+It needs `git`, `nix`, `tar`, `ssh`, `sops`, `age`, `ssh-keygen` on the PATH; `fleetmgr doctor` says where to get them.

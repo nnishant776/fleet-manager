@@ -38,7 +38,7 @@ var HostAdopt = &engine.Flow{
 	Inputs: append(append(fleetmgr.HostInputs(), secrets.RepoInput, secrets.RecoveryInput),
 		engine.Input{Name: "from", Prompt: "Owner's enrollment file", Optional: true,
 			Help: "The owner's enrollment file (fleetmgr user init), when they will manage their own password and keys later; none: they ask you"}),
-	Needs: []string{"git", "nix", "tar", "ssh", "yq", "sops", "age", "ssh-keygen"},
+	Needs: []string{"git", "nix", "tar", "ssh", "sops", "age", "ssh-keygen"},
 	Steps: []engine.Step{
 		{
 			Title: "Read how {{.host}} is configured",

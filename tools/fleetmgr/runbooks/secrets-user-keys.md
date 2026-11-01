@@ -102,4 +102,4 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
    $ cd REPO && git push origin BRANCH
    ```
 
-It needs `git`, `yq`, `sops`, `age`, `ssh-keygen` on the PATH; `fleetmgr doctor` says where to get them.
+It needs `git`, `sops`, `age`, `ssh-keygen` on the PATH; `fleetmgr doctor` says where to get them.

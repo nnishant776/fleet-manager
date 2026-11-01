@@ -76,4 +76,4 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
    > is the safer route), or with:
    > gh repo deploy-key add \<file holding the key above> --title HOST
 
-It needs `git`, `yq`, `sops`, `age` on the PATH; `fleetmgr doctor` says where to get them.
+It needs `git`, `sops`, `age` on the PATH; `fleetmgr doctor` says where to get them.

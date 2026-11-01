@@ -62,7 +62,7 @@ var SecretsUserKeys = &engine.Flow{
 		"  fleetmgr secrets user-keys support laptop1 --remove-authorized-keys old.pub",
 	Args:   []string{"user", "host"},
 	Inputs: append([]engine.Input{secrets.RepoInput, secrets.RecoveryInput, secrets.UserName(), knownHost()}, keyInputs()...),
-	Needs:  []string{"git", "yq", "sops", "age", "ssh-keygen"},
+	Needs:  []string{"git", "sops", "age", "ssh-keygen"},
 	Steps: []engine.Step{
 		{
 			Title: "Check the keys",

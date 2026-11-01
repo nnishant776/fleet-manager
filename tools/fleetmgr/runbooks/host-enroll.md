@@ -88,4 +88,4 @@ A value that is neither given nor has a default is asked for on a terminal.
    $ fleetmgr host check HOST --address ADDRESS --flake FLAKE
    ```
 
-It needs `ssh`, `ssh-agent`, `ssh-add`, `git`, `yq`, `sops`, `age` on the PATH; `fleetmgr doctor` says where to get them.
+It needs `ssh`, `ssh-agent`, `ssh-add`, `git`, `sops`, `age` on the PATH; `fleetmgr doctor` says where to get them.

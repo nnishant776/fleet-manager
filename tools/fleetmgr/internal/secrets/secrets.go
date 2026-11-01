@@ -1,10 +1,10 @@
 // Package secrets is the port of fleetmgr-secrets (lib/apps/fleetmgr-secrets.nix):
-// the maintainer's side of the secrets repository. It runs the same yq, sops,
+// the maintainer's side of the secrets repository. It runs the same sops,
 // git, mkpasswd and ssh-keygen commands as the shell tool, in the same order,
-// and leaves the repository in the same state: the same branches, one
-// host/<name> per host, the same files on them, encrypted to the same
-// recipients, and the same commit messages. tests/fleet/secrets-parity.nix runs
-// both and compares.
+// and reads itself (yaml.go) what the shell tool reads with yq. It leaves the
+// repository in the same state: the same branches, one host/<name> per host,
+// the same files on them, encrypted to the same recipients, and the same
+// commit messages. tests/fleet/secrets-parity.nix runs both and compares.
 //
 // A command for a host works in a temporary worktree of its branch, so the
 // clone's own checkout stays on main. There is no registry of recipients: a

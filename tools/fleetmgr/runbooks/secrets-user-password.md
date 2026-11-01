@@ -79,4 +79,4 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
    $ cd REPO && git worktree remove --force WORK
    ```
 
-It needs `git`, `yq`, `sops`, `age`, `mkpasswd` on the PATH; `fleetmgr doctor` says where to get them.
+It needs `git`, `sops`, `age`, `mkpasswd` on the PATH; `fleetmgr doctor` says where to get them.

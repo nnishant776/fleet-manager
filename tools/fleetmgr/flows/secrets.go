@@ -68,7 +68,7 @@ var SecretsHostEnroll = &engine.Flow{
 	Example: "  fleetmgr secrets host-enroll laptop1 --from laptop1.enroll\n  ssh support@laptop1 sudo cat /var/lib/fleet/laptop1.enroll | fleetmgr secrets host-enroll laptop1 --from -",
 	Args:    []string{"host"},
 	Inputs:  secretsInputs(secrets.HostName("Which host?"), secrets.FromInput),
-	Needs:   []string{"git", "yq", "sops", "age"},
+	Needs:   []string{"git", "sops", "age"},
 	Steps: []engine.Step{
 		secrets.Open(true),
 		secrets.ReadEnrollment(),
@@ -92,7 +92,7 @@ var SecretsHostRekey = &engine.Flow{
 	Example: "  fleetmgr secrets host-rekey laptop1 --from laptop1.enroll",
 	Args:    []string{"host"},
 	Inputs:  secretsInputs(knownHost(), secrets.FromInput),
-	Needs:   []string{"git", "yq", "sops", "age"},
+	Needs:   []string{"git", "sops", "age"},
 	Steps: []engine.Step{
 		secrets.Open(true),
 		secrets.ReadEnrollment(),
@@ -200,7 +200,7 @@ var SecretsUserPassword = &engine.Flow{
 		{Name: "hash", Prompt: "Password hash", Help: "A password hash as /etc/shadow has it, such as $y$… or $6$…", Secret: true, Optional: true, Pattern: shadowHash},
 		{Name: "password", Prompt: "Password for {{.user}}", Help: "Hidden as you type", Secret: true, Twice: true,
 			Skip: func(x *engine.Ctx) bool { return x.Value("hash") != "" }}},
-	Needs: []string{"git", "yq", "sops", "age", "mkpasswd"},
+	Needs: []string{"git", "sops", "age", "mkpasswd"},
 	Steps: []engine.Step{
 		secrets.Open(true),
 		secrets.ExistingBranch("host '{{.host}}' is not enrolled; use host-enroll first", true),
@@ -243,7 +243,7 @@ var SecretsUserKey = &engine.Flow{
 	Example: "  fleetmgr secrets user-key alice laptop1",
 	Args:    []string{"user", "host"},
 	Inputs:  []engine.Input{secrets.RepoInput, secrets.RecoveryInput, secrets.UserName(), knownHost()},
-	Needs:   []string{"git", "yq", "sops", "age", "ssh-keygen"},
+	Needs:   []string{"git", "sops", "age", "ssh-keygen"},
 	Steps: []engine.Step{
 		secrets.Open(true),
 		secrets.ExistingBranch("host '{{.host}}' is not enrolled; use host-enroll first", true),
