@@ -545,3 +545,31 @@ func TestAHiddenStepIsLeftOutOfTheRun(t *testing.T) {
 		t.Errorf("a step that is not hidden does not show:\n%s", s)
 	}
 }
+
+func TestSecretFirstLineGoesBeforeStdinAndIsNeverShown(t *testing.T) {
+	x, fake, out := newCtx(Options{Yes: true}, nil)
+	x.Values["pw"], x.Values["data"] = "hunter2", "the data"
+	f := &Flow{Title: "t", Steps: []Step{
+		{Title: "with", Do: Cmd("ssh", "h", "script").StdinFrom("data").StdinSecretFirst("pw", "the sudo password")},
+		{Title: "without", Do: Cmd("ssh", "h", "script").StdinFrom("data").StdinSecretFirst("none", "the sudo password")},
+	}}
+	if err := RunWith(x, f, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := fake.Ran[0].Stdin; got != "hunter2\nthe data" {
+		t.Fatalf("stdin with a password: %q", got)
+	}
+	if got := fake.Ran[1].Stdin; got != "the data" {
+		t.Fatalf("stdin with no password: %q", got)
+	}
+	shown := ansi.Strip(out.String())
+	if strings.Contains(shown, "hunter2") {
+		t.Fatalf("the password was shown:\n%s", shown)
+	}
+	if !strings.Contains(shown, "# the sudo password, then data on stdin") {
+		t.Fatalf("the shown line does not say what is on stdin:\n%s", shown)
+	}
+	if strings.Count(shown, "the sudo password") != 1 {
+		t.Fatalf("a command with no password says it has one:\n%s", shown)
+	}
+}

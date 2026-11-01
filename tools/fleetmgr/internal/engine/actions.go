@@ -26,6 +26,8 @@ type Command struct {
 	captureEnv  string   // keep the output as hidden environment: NAME=output
 	captureTo   []string // the commands that get it
 	stdinNote   string   // what the shown command says about its stdin
+	stdinFirst  string   // a secret value whose line goes before the stdin, never shown
+	firstNote   string   // what the shown command says about that line
 	explain     func(Result) string
 	before      func(*Ctx) error // runs just before the command does, and only if it does
 	after       func(*Ctx) error // runs when the command has succeeded
@@ -77,6 +79,15 @@ func (c *Command) CaptureEnv(name string, to ...string) *Command {
 // StdinNote says what goes to stdin, for the shown command.
 func (c *Command) StdinNote(note string) *Command { c.stdinNote = note; return c }
 
+// StdinSecretFirst puts the value of name, a secret such as a password, on
+// the first line of stdin, before what the command gets on it otherwise. It
+// is never shown; note says what it is, on the shown line. An empty value
+// adds nothing.
+func (c *Command) StdinSecretFirst(name, note string) *Command {
+	c.stdinFirst, c.firstNote = name, note
+	return c
+}
+
 // spec expands the command against the values.
 func (c *Command) spec(x *Ctx) (Spec, error) {
 	s := Spec{Interactive: c.interactive, Prompts: c.prompts}
@@ -110,6 +121,9 @@ func (c *Command) spec(x *Ctx) (Spec, error) {
 			return s, err
 		}
 	}
+	if v := x.Values[c.stdinFirst]; c.stdinFirst != "" && v != "" {
+		s.Stdin = v + "\n" + s.Stdin
+	}
 	return s, nil
 }
 
@@ -118,11 +132,18 @@ func (c *Command) shown(x *Ctx, s Spec) string {
 	if s.Dir != "" && s.Dir != "." {
 		line = "cd " + quote(s.Dir) + " && " + line
 	}
+	var on []string
+	if c.stdinFirst != "" && x.Values[c.stdinFirst] != "" {
+		on = append(on, c.firstNote)
+	}
 	switch {
 	case c.stdinNote != "":
-		line += "   # " + c.stdinNote + " on stdin"
+		on = append(on, c.stdinNote)
 	case c.stdinFrom != "":
-		line += "   # " + c.stdinFrom + " on stdin"
+		on = append(on, c.stdinFrom)
+	}
+	if len(on) > 0 {
+		line += "   # " + strings.Join(on, ", then ") + " on stdin"
 	}
 	return line
 }
