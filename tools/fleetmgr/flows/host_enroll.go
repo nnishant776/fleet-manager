@@ -77,122 +77,134 @@ var HostEnroll = &engine.Flow{
 	},
 	Needs:   []string{"ssh", "ssh-agent", "ssh-add", "ssh-keygen", "ssh-keyscan", "git", "sops", "age"},
 	Cleanup: fleetmgr.StopAgent,
-	Steps: joinSteps([]engine.Step{
-		knowHostKeyStep,
-		{
-			Title: "Start an agent that holds one key",
-			Why:   "{{.admin}}'s sudo may check its key through the forwarded agent. Only this agent is forwarded, never yours, which holds your signing key.",
-			Do:    engine.Func(fleetmgr.StartAgent),
+	Steps: joinSteps([]engine.Step{knowHostKeyStep, enrollAgentStep, adminSudoStep}, enrollIdentitySteps, enrollChecksSteps,
+		trialSwitchSteps(needsSwitch), enrollFinishSteps),
+}
+
+var enrollAgentStep = engine.Step{
+	Title: "Start an agent that holds one key",
+	Why:   "{{.admin}}'s sudo may check its key through the forwarded agent. Only this agent is forwarded, never yours, which holds your signing key.",
+	Do:    engine.Func(fleetmgr.StartAgent),
+}
+
+// enrollIdentitySteps give a host its identity and its place in the secrets
+// repository, and register its keys: what fleetmgr host adopt takes over for
+// a machine it adopts, too.
+var enrollIdentitySteps = []engine.Step{
+	{
+		Title: "Look at {{.host}}",
+		Why:   "What is done already decides which of the next steps run.",
+		Do:    engine.Func(lookAtHost),
+	},
+	{
+		Title: "Choose the commit to switch {{.host}} to",
+		Why: "It does not run a configuration with secrets from this repository yet. Unless --switch-to names one, it gets a commit a key you trust has signed, as its own sync will take no other: " +
+			"for a private configuration the one fleetmgr install prep would install, otherwise the newest commit of main.",
+		When: needsSwitch,
+		Do:   engine.Func(chooseSwitch),
+	},
+	{
+		Title: "Create {{.host}}'s identity",
+		Why: "Its age key decrypts its secrets, its deploy key fetches them, and its configuration key fetches a private configuration. All are made on the host and never leave it; init makes only what is missing. " +
+			"A host without fleetmgr's tools yet runs init from the fleet-manager commit checked above, before its switch, which for a private configuration needs the key.",
+		When: func(x *engine.Ctx) (bool, string) {
+			if x.Value("has_identity") == "true" && x.Value("has_config_key") == "true" {
+				return false, "it has one"
+			}
+			return true, ""
 		},
-		adminSudoStep,
-		{
-			Title: "Look at {{.host}}",
-			Why:   "What is done already decides which of the next steps run.",
-			Do:    engine.Func(lookAtHost),
+		Do: engine.Func(createIdentity),
+	},
+	{
+		Title: "Copy its enrollment file here",
+		Why:   "It holds the public halves only. Copied over SSH to a host whose key is known, so it cannot be swapped on the way; the checksums must match.",
+		Do:    engine.Func(copyEnrollment),
+	},
+	{
+		Title: "Enroll {{.host}} in the secrets repository",
+		Why:   "fleetmgr secrets host-enroll creates its branch, host/{{.host}}, with its empty file encrypted to it and to your recovery recipient, each step shown.",
+		When:  enrolledWithThisIdentity,
+		Do:    engine.Func(runHostEnroll),
+	},
+	{
+		Title: "Push host/{{.host}}",
+		Why:   "{{.host}} fetches its branch from GitHub; it accepts the commit only if it is signed by an allowed key.",
+		When:  aheadOfUpstream,
+		Do:    secrets.PushBranch(),
+	},
+	{
+		Title: "Register {{.host}}'s deploy key, read-only",
+		Why:   "It is how {{.host}} fetches the private secrets repository. Read-only: a host never writes to it.",
+		Do:    engine.Func(registerDeployKey),
+	},
+	{
+		Title: "Register {{.host}}'s configuration key, read-only",
+		Why:   "Its configuration comes over SSH, from a private repository, and this key is how {{.host}} fetches it. Read-only, like the deploy key.",
+		When: func(x *engine.Ctx) (bool, string) {
+			if !sshURL(x.Value("config_url")) {
+				return false, "its configuration repository needs no key: " + x.Value("config_url") + " is not an SSH address"
+			}
+			return true, ""
 		},
-		{
-			Title: "Choose the commit to switch {{.host}} to",
-			Why: "It does not run a configuration with secrets from this repository yet. Unless --switch-to names one, it gets a commit a key you trust has signed, as its own sync will take no other: " +
-				"for a private configuration the one fleetmgr install prep would install, otherwise the newest commit of main.",
-			When: needsSwitch,
-			Do:   engine.Func(chooseSwitch),
-		},
-		{
-			Title: "Create {{.host}}'s identity",
-			Why: "Its age key decrypts its secrets, its deploy key fetches them, and its configuration key fetches a private configuration. All are made on the host and never leave it; init makes only what is missing. " +
-				"A host without fleetmgr's tools yet runs init from the fleet-manager commit checked above, before its switch, which for a private configuration needs the key.",
-			When: func(x *engine.Ctx) (bool, string) {
-				if x.Value("has_identity") == "true" && x.Value("has_config_key") == "true" {
-					return false, "it has one"
-				}
+		Do: engine.Func(registerConfigKey),
+	},
+}
+
+// enrollChecksSteps make sure a switch can work before it is made.
+var enrollChecksSteps = []engine.Step{
+	{
+		Title: "Check its configuration fits {{.host}} as it is",
+		Why: "Without a reinstall, the configuration must describe the disks the machine has and boot the way it boots: " +
+			"a root or boot filesystem it does not have, or a UEFI boot loader on a machine without UEFI, would leave it unbootable after the switch.",
+		When: needsSwitch,
+		Do:   engine.Func(checkFits),
+	},
+	{
+		Title: "Check host/{{.host}} holds the secrets the configuration declares",
+		Why: "After the switch the host's sync refuses a snapshot that lacks a secret the configuration declares, such as the keys of an account that takes them from its secrets. " +
+			"The branch is read as it is in git, without decrypting; if something is missing, this stops before the switch with the command that adds it.",
+		When: needsSwitch,
+		Do:   engine.Func(checkBranchHoldsSecrets),
+	},
+	{
+		Title: "Warn that /etc/nixos on {{.host}} will be replaced",
+		Why: "/etc/nixos belongs to the fleet's configuration: nothing it holds now is kept. This step changes nothing; it shows what is there and asks, before the switch, " +
+			"so that you can copy what you need first.",
+		When: warnsAboutEtcNixos,
+		Do:   engine.Func(warnAboutEtcNixos),
+	},
+}
+
+// enrollFinishSteps follow the switch: /etc/nixos, the first sync, a check.
+var enrollFinishSteps = []engine.Step{
+	{
+		Title: "Make /etc/nixos the configuration repository's checkout",
+		Why: "The sync owns /etc/nixos and fetches the repository the configuration names. What was there is deleted, and the first-boot clone, fleetmgr-bootstrap, " +
+			"makes the checkout at the commit the host runs and records it as the first the machine accepted.",
+		When: func(x *engine.Ctx) (bool, string) {
+			if x.Value("switched") == "true" {
 				return true, ""
-			},
-			Do: engine.Func(createIdentity),
-		},
-		{
-			Title: "Copy its enrollment file here",
-			Why:   "It holds the public halves only. Copied over SSH to a host whose key is known, so it cannot be swapped on the way; the checksums must match.",
-			Do:    engine.Func(copyEnrollment),
-		},
-		{
-			Title: "Enroll {{.host}} in the secrets repository",
-			Why:   "fleetmgr secrets host-enroll creates its branch, host/{{.host}}, with its empty file encrypted to it and to your recovery recipient, each step shown.",
-			When:  enrolledWithThisIdentity,
-			Do:    engine.Func(runHostEnroll),
-		},
-		{
-			Title: "Push host/{{.host}}",
-			Why:   "{{.host}} fetches its branch from GitHub; it accepts the commit only if it is signed by an allowed key.",
-			When:  aheadOfUpstream,
-			Do:    secrets.PushBranch(),
-		},
-		{
-			Title: "Register {{.host}}'s deploy key, read-only",
-			Why:   "It is how {{.host}} fetches the private secrets repository. Read-only: a host never writes to it.",
-			Do:    engine.Func(registerDeployKey),
-		},
-		{
-			Title: "Register {{.host}}'s configuration key, read-only",
-			Why:   "Its configuration comes over SSH, from a private repository, and this key is how {{.host}} fetches it. Read-only, like the deploy key.",
-			When: func(x *engine.Ctx) (bool, string) {
-				if !sshURL(x.Value("config_url")) {
-					return false, "its configuration repository needs no key: " + x.Value("config_url") + " is not an SSH address"
-				}
+			}
+			if ok, _ := needsSwitch(x); ok && x.Options.DryRun {
 				return true, ""
-			},
-			Do: engine.Func(registerConfigKey),
+			}
+			return false, "this run did not switch the host; its sync owns /etc/nixos"
 		},
-		{
-			Title: "Check its configuration fits {{.host}} as it is",
-			Why: "Without a reinstall, the configuration must describe the disks the machine has and boot the way it boots: " +
-				"a root or boot filesystem it does not have, or a UEFI boot loader on a machine without UEFI, would leave it unbootable after the switch.",
-			When: needsSwitch,
-			Do:   engine.Func(checkFits),
-		},
-		{
-			Title: "Check host/{{.host}} holds the secrets the configuration declares",
-			Why: "After the switch the host's sync refuses a snapshot that lacks a secret the configuration declares, such as the keys of an account that takes them from its secrets. " +
-				"The branch is read as it is in git, without decrypting; if something is missing, this stops before the switch with the command that adds it.",
-			When: needsSwitch,
-			Do:   engine.Func(checkBranchHoldsSecrets),
-		},
-		{
-			Title: "Warn that /etc/nixos on {{.host}} will be replaced",
-			Why: "/etc/nixos belongs to the fleet's configuration: nothing it holds now is kept. This step changes nothing; it shows what is there and asks, before the switch, " +
-				"so that you can copy what you need first.",
-			When: warnsAboutEtcNixos,
-			Do:   engine.Func(warnAboutEtcNixos),
-		},
-	}, trialSwitchSteps(needsSwitch), []engine.Step{
-		{
-			Title: "Make /etc/nixos the configuration repository's checkout",
-			Why: "The sync owns /etc/nixos and fetches the repository the configuration names. What was there is deleted, and the first-boot clone, fleetmgr-bootstrap, " +
-				"makes the checkout at the commit the host runs and records it as the first the machine accepted.",
-			When: func(x *engine.Ctx) (bool, string) {
-				if x.Value("switched") == "true" {
-					return true, ""
-				}
-				if ok, _ := needsSwitch(x); ok && x.Options.DryRun {
-					return true, ""
-				}
-				return false, "this run did not switch the host; its sync owns /etc/nixos"
-			},
-			Do: engine.Func(remakeEtcNixos),
-		},
-		{
-			Title: "Sync {{.host}}",
-			Why:   "Its first sync with secrets: fetch and verify them, then its configuration.",
-			When:  wantSync,
-			Do:    fleetmgr.StillRunning(fleetmgr.OnHost("sudo -n systemctl start config-auto-update"), "the sync", "config-auto-update", "{{.user}}"),
-		},
-		{
-			Title: "Check {{.host}}",
-			Why:   "fleetmgr host check, as support with nothing forwarded: this also shows support works.",
-			When:  wantSync,
-			Do: engine.Cmd("fleetmgr", "host", "check", "{{.host}}", "--address", "{{.address}}", "--flake", "{{.flake}}").
-				ReadOnly().Interactive(),
-		},
-	}),
+		Do: engine.Func(remakeEtcNixos),
+	},
+	{
+		Title: "Sync {{.host}}",
+		Why:   "Its first sync with secrets: fetch and verify them, then its configuration.",
+		When:  wantSync,
+		Do:    fleetmgr.StillRunning(fleetmgr.OnHost("sudo -n systemctl start config-auto-update"), "the sync", "config-auto-update", "{{.user}}"),
+	},
+	{
+		Title: "Check {{.host}}",
+		Why:   "fleetmgr host check, as support with nothing forwarded: this also shows support works.",
+		When:  wantSync,
+		Do: engine.Cmd("fleetmgr", "host", "check", "{{.host}}", "--address", "{{.address}}", "--flake", "{{.flake}}").
+			ReadOnly().Interactive(),
+	},
 }
 
 func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
