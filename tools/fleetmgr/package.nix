@@ -29,7 +29,7 @@ let
       # runbooks for the test that they are current.
       fileset = lib.fileset.unions [ ./go.mod ./go.sum ./main.go ./flows ./internal ./runbooks ];
     };
-    vendorHash = "sha256-nlulmgHFiI8/r6t5Dh6Ze0OxEW91Be4YfE5X2Id6+UM=";
+    vendorHash = "sha256-FcI33sF4quOU6NkCxKlhghPA7ZS4aJbYZss0wRYyHgI=";
     # The setup test runs git against a temporary repository.
     nativeCheckInputs = [ git ];
     env.CGO_ENABLED = "0";
