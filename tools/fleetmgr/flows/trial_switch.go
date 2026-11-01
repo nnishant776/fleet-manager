@@ -33,9 +33,13 @@ var trialMinutesInput = engine.Input{
 var storePath = regexp.MustCompile(`^/nix/store/[0-9a-df-np-sv-z]{32}-[A-Za-z0-9+._?=-]+$`)
 
 // trialSwitchSteps switch the host to its new configuration, for the steps
-// when says should.
-func trialSwitchSteps(when func(*engine.Ctx) (bool, string)) []engine.Step {
-	return []engine.Step{
+// when says should. afterBuild come between the build and the trial, when the
+// new system is known and nothing has changed yet.
+func trialSwitchSteps(when func(*engine.Ctx) (bool, string), afterBuild ...engine.Step) []engine.Step {
+	for i := range afterBuild {
+		afterBuild[i].When = when
+	}
+	steps := []engine.Step{
 		{
 			Title: "Fetch {{.host}}'s secrets before the switch",
 			Why: "The new system takes its secrets, support's keys among them, from the host's snapshot of the secrets repository, which only its sync makes. " +
@@ -49,6 +53,9 @@ func trialSwitchSteps(when func(*engine.Ctx) (bool, string)) []engine.Step {
 			When:  when,
 			Do:    engine.Func(buildNewSystem),
 		},
+	}
+	steps = append(steps, afterBuild...)
+	return append(steps, []engine.Step{
 		{
 			Title: "Try the new system on {{.host}}, with a way back",
 			Why: "A timer is armed first: unless fleetmgr confirms the new system within {{.trial-minutes}} minutes, the host goes back to the one it runs now. " +
@@ -68,7 +75,7 @@ func trialSwitchSteps(when func(*engine.Ctx) (bool, string)) []engine.Step {
 			When:  when,
 			Do:    engine.Func(makeBootDefault),
 		},
-	}
+	}...)
 }
 
 // secretsTool is the command that runs the secrets sync on the host: its own,
