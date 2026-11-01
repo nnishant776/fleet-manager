@@ -9,7 +9,7 @@ setup, onboarding a machine and a user, login and sudo keys, host secrets,
 day-2 work, emergency access and troubleshooting. The examples use host
 `laptop1`, users `alice` and `bob`, and the maintainer. How it all works is in
 [Secrets](secrets.md); each command also has a page of its own in the
-[runbooks](../tools/fleet/runbooks/README.md).
+[runbooks](../tools/fleetmgr/runbooks/README.md).
 
 <!-- book:sections -->
 In this chapter:

@@ -34,7 +34,7 @@ each one says at its start what it covers and what it builds on. Every chapter
 begins with links to the chapters before and after it, the contents, and a
 list of its sections. Links into another chapter name it, as in
 "[Trust model](secrets.md#trust-model) in *Secrets*". Each `fleet` command
-also has a page of its own in the [runbooks](../tools/fleet/runbooks/README.md),
+also has a page of its own in the [runbooks](../tools/fleetmgr/runbooks/README.md),
 written from the command itself.
 
 ## Conventions

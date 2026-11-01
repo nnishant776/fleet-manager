@@ -1,4 +1,4 @@
-# fleet, the guided command-line tool in tools/fleet.
+# fleet, the guided command-line tool in tools/fleetmgr.
 #
 # On pull requests it is checked: formatting, go vet and the tests, then the
 # flake's own check, which also catches a vendorHash that no longer matches
@@ -19,12 +19,12 @@ name: fleet
 on:
   pull_request:
     paths:
-      - "tools/fleet/**"
+      - "tools/fleetmgr/**"
       - ".github/workflows/fleet.yml"
   push:
     branches: [main]
     paths:
-      - "tools/fleet/**"
+      - "tools/fleetmgr/**"
       - ".github/workflows/fleet.yml"
   workflow_dispatch:
 
@@ -39,11 +39,11 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: tools/fleet/go.mod
-          cache-dependency-path: tools/fleet/go.sum
+          go-version-file: tools/fleetmgr/go.mod
+          cache-dependency-path: tools/fleetmgr/go.sum
 
       - name: Format, vet and test
-        working-directory: tools/fleet
+        working-directory: tools/fleetmgr
         env:
           CGO_ENABLED: "0"
         run: |
@@ -81,11 +81,11 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: tools/fleet/go.mod
-          cache-dependency-path: tools/fleet/go.sum
+          go-version-file: tools/fleetmgr/go.mod
+          cache-dependency-path: tools/fleetmgr/go.sum
 
       - name: Build the static binaries
-        working-directory: tools/fleet
+        working-directory: tools/fleetmgr
         env:
           CGO_ENABLED: "0"
         run: |

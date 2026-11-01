@@ -1,0 +1,105 @@
+<!-- Written by `fleet docs` from tools/fleetmgr/flows; edit the flows, not this. -->
+
+# fleet secrets user-keys
+
+Set the SSH keys that may log in as the user, or unlock their sudo, on that host.
+
+Stores public keys, one per line, as authorized_keys and sudo_keys in
+users/\<user>/\<host>.yaml on the host's branch, host/\<host>, encrypted to that host and your
+recovery recipient (the file is created if it is not there yet), then commits and pushes the branch.
+Each line is checked with ssh-keygen first, so that a typo cannot lock anyone out. Hosts read them
+when accounts.\<user>.secrets.authorizedKeys or secrets.sudoKeys is on, at each login, with no
+rebuild. --authorized-keys and --sudo-keys replace the keys stored, so list every key that should stay.
+--add-… and --remove-… change them instead: they read the stored keys, add the keys not there yet or
+remove the ones given (keys are matched by type and key material, so options such as from= and the
+comment do not matter), and keep the other lines as they are. A removal that would leave no key is
+refused; a change that changes nothing makes no commit.
+
+```
+fleet secrets user-keys [USER] [HOST] [flags]
+
+fleet secrets user-keys alice laptop1 --authorized-keys alice.keys
+fleet secrets user-keys admin laptop1 --authorized-keys admin.keys --sudo-keys admin-sudo.keys
+fleet secrets user-keys support laptop1 --add-authorized-keys new.pub
+fleet secrets user-keys support laptop1 --remove-authorized-keys old.pub
+```
+
+## Flags
+
+| Flag | |
+|---|---|
+| `--repo` | Your clone of the secrets repository, left on main, or the name of a repository (fleet repo list), which means the tool's own clone of it; defaults to FLEET_SECRETS_REPO, then this directory |
+| `--recovery` | Your passphrase-encrypted age identity (age -p). Empty: sops uses SOPS_AGE_KEY_FILE or SOPS_AGE_KEY |
+| `--user` | The user's name: lowercase letters, digits and '-' |
+| `--host` | The host's name: lowercase letters, digits and '-' |
+| `--authorized-keys` | SSH public keys that may log in as the user, one per line, replacing those stored; empty to leave them as they are |
+| `--add-authorized-keys` | SSH public keys to add to those stored; empty to add none |
+| `--remove-authorized-keys` | SSH public keys to remove from those stored, matched by type and key material; empty to remove none |
+| `--sudo-keys` | SSH public keys that unlock the user's sudo, one per line, replacing those stored; empty to leave them as they are |
+| `--add-sudo-keys` | SSH public keys to add to the sudo keys stored; empty to add none |
+| `--remove-sudo-keys` | SSH public keys to remove from the sudo keys stored, matched by type and key material; empty to remove none |
+
+Every command also takes `--dry-run` (show every step and command; look, but
+change nothing), `-y`/`--yes` (run changes without asking) and `--verbose`.
+A value that is neither given nor has a default is asked for on a terminal.
+
+## Steps
+
+1. **Bring the tool's clone up to date.** You named a repository, so the command works in the tool's own clone of it. It is fetched, and main's newest commit is taken only if it is signed by a key you trust and follows the commit you trusted last; the clone then stands there.
+
+2. **Check the keys.** A line that is not a public key would be stored as it is and lock out whoever relies on it; each non-empty line must be one for ssh-keygen.
+
+3. **Open the secrets repository.** The change builds on the host's branch and encrypts for the recipients that branch names, so git must check its signatures against keys a pushed commit cannot change. New files are encrypted to the host and to your recovery recipient, which fleet setup caches.
+
+   ```
+   $ cd REPO && git rev-parse --git-dir
+   $ cd REPO && sh -c 'f="$(git config --get gpg.ssh.allowedSignersFile)" || exit 0
+case "$f" in \~/*) f="$HOME/${f#\~/}" ;; esac
+case "$f" in /*) ;; *) f="$(git rev-parse --show-toplevel)/$f" ;; esac
+if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; then echo "inside $f"; fi'
+   $ cd REPO && git config --local --default '' --get core.hooksPath
+   ```
+
+4. **Look up host/HOST.** A host's branch is host/\<name>; a host that has none is not enrolled.
+
+5. **Unlock your recovery identity.** Decrypted into this run's memory only, for the sops commands below. age asks for its passphrase.
+
+   ```
+   $ age -d RECOVERY
+   ```
+
+6. **Look up where USER's files on HOST are kept.** A user that hosts/HOST.yaml lists keeps their files on a branch of their own, user/USER, and a new file is encrypted to the user as well; any other user's files are on the host's branch. The list is encrypted, so this needs your recovery identity.
+
+7. **Open a worktree of BRANCH.** The change is made in a temporary worktree of the branch, so that your checkout stays on main and the commit holds this change and nothing else. It goes away at the end, or when the run stops.
+
+8. **Create users/USER/HOST.yaml.** It does not exist yet; it is created empty and encrypted to HOST, the user too when the user is listed, and your recovery recipient.
+
+9. **Work out the keys to store.** Added and removed keys are applied to the keys stored now, which are read with your recovery identity; a key list that would end up empty is refused, and one that does not change is left alone.
+
+10. **Store the login keys in users/USER/HOST.yaml.** As the key authorized_keys, which hosts read when accounts.\<user>.secrets.authorizedKeys is on.
+
+   ```
+   $ cd WORK && sops set --value-stdin users/USER/HOST.yaml '["authorized_keys"]'   # the login keys on stdin
+   ```
+
+11. **Store the sudo keys in users/USER/HOST.yaml.** As the key sudo_keys, which hosts read when accounts.\<user>.secrets.sudoKeys is on.
+
+   ```
+   $ cd WORK && sops set --value-stdin users/USER/HOST.yaml '["sudo_keys"]'   # the sudo keys on stdin
+   ```
+
+12. **Commit.** Signed with your key, if this checkout signs; hosts accept only signed commits. Push the branch afterwards.
+
+13. **Remove the worktree.** It was only for this change; the commit is on BRANCH in your clone.
+
+   ```
+   $ cd REPO && git worktree remove --force WORK
+   ```
+
+14. **Push BRANCH.** HOST fetches this branch from the forge; it accepts the commit only if it is signed by an allowed key.
+
+   ```
+   $ cd REPO && git push origin BRANCH
+   ```
+
+It needs `git`, `yq`, `sops`, `age`, `ssh-keygen` on the PATH; `fleet doctor` says where to get them.

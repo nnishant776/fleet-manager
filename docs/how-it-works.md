@@ -627,7 +627,7 @@ table under [What manages it](#what-manages-it). Rotating support's key is the
 one with more steps: `fleet support-key rotate` makes a new key and adds it
 next to the old one, syncs with the old key, tests the new one, removes the old
 one, syncs again, and checks that the old key is refused. The commands are in
-[The fleet tool](fleet-tool.md), with a page each in the [runbooks](../tools/fleet/runbooks/README.md).
+[The fleet tool](fleet-tool.md), with a page each in the [runbooks](../tools/fleetmgr/runbooks/README.md).
 
 ## A newer fleet-manager, CI and releases
 
@@ -654,7 +654,7 @@ re-sign its commit (`git commit --amend -S --no-edit`), then merge that
 locally and push.
 
 **CI for the tool.** A pull request or a push to `main` that changes
-`tools/fleet` runs `gofmt`, `go vet`, the Go tests and
+`tools/fleetmgr` runs `gofmt`, `go vet`, the Go tests and
 `nix build .#checks.x86_64-linux.fleet`. A push to `main` then builds static
 `fleet` binaries for Linux and macOS, on x86_64 and aarch64. It publishes them
 as the latest release, `fleet-<commit>`, with `SHA256SUMS` and a signed

@@ -42,7 +42,7 @@ explains the pieces, and the [guide](docs/README.md) has the rest.
 ├── tests/                           # VM and evaluation checks wired into the flake's `checks`
 │   │                                # one folder per area: boot, fleet, lib (shared helpers), networking, pi-gw, rpi-image, secrets, users
 │   └── secrets/                     # also holds secrets-harness, the local stand-in for the secrets repository
-├── tools/fleet/                     # fleet, the guided command-line tool; runbooks/ has a page per command
+├── tools/fleetmgr/                     # fleet, the guided command-line tool; runbooks/ has a page per command
 └── modules/
     ├── conf/                        # the conf.* vocabulary: options/<concern>.nix, role.nix, machineType.nix
     ├── common/                      # configuration valid on both platforms
@@ -187,7 +187,7 @@ nix profile upgrade fleet                   # later, for a newer version
 
 Install it from a checkout you have checked, not with `github:` straight from
 main; [The fleet tool](docs/fleet-tool.md) says why, and how it runs. Each
-command has a page in the [runbooks](tools/fleet/runbooks/README.md).
+command has a page in the [runbooks](tools/fleetmgr/runbooks/README.md).
 
 ### Checking the flake
 

@@ -107,9 +107,9 @@ In this chapter:
   which every fetch over SSH is checked against.
 - In the code: [`fleet/allowed_signers`](../fleet/allowed_signers);
   [`lib/forge-host-keys.nix`](../lib/forge-host-keys.nix);
-  [`tools/fleet/flows/trust.go`](../tools/fleet/flows/trust.go),
-  [`repo.go`](../tools/fleet/flows/repo.go) and
-  [`repo_sync.go`](../tools/fleet/flows/repo_sync.go), the tools' copies and
+  [`tools/fleetmgr/flows/trust.go`](../tools/fleetmgr/flows/trust.go),
+  [`repo.go`](../tools/fleetmgr/flows/repo.go) and
+  [`repo_sync.go`](../tools/fleetmgr/flows/repo_sync.go), the tools' copies and
   clones.
 
 ## Secrets
@@ -129,18 +129,18 @@ In this chapter:
 ## A private fleet
 
 - In the code: [`lib/mkFleet.nix`](../lib/mkFleet.nix), host branches
-  included; [`tools/fleet/flows/inventory_publish.go`](../tools/fleet/flows/inventory_publish.go),
-  [`inventory_pin.go`](../tools/fleet/flows/inventory_pin.go),
-  [`inventory_import.go`](../tools/fleet/flows/inventory_import.go) and
-  [`host_enroll.go`](../tools/fleet/flows/host_enroll.go).
+  included; [`tools/fleetmgr/flows/inventory_publish.go`](../tools/fleetmgr/flows/inventory_publish.go),
+  [`inventory_pin.go`](../tools/fleetmgr/flows/inventory_pin.go),
+  [`inventory_import.go`](../tools/fleetmgr/flows/inventory_import.go) and
+  [`host_enroll.go`](../tools/fleetmgr/flows/host_enroll.go).
 
 ## The fleet tool
 
 - [Using artifact attestations](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds),
   for `gh attestation verify` on a release.
-- In the code: [`tools/fleet/`](../tools/fleet/); each command is a flow in
-  [`tools/fleet/flows/`](../tools/fleet/flows/), and its runbook in
-  [`tools/fleet/runbooks/`](../tools/fleet/runbooks/README.md) is written from
+- In the code: [`tools/fleetmgr/`](../tools/fleetmgr/); each command is a flow in
+  [`tools/fleetmgr/flows/`](../tools/fleetmgr/flows/), and its runbook in
+  [`tools/fleetmgr/runbooks/`](../tools/fleetmgr/runbooks/README.md) is written from
   it.
 
 ## Configuration reference
@@ -168,7 +168,7 @@ In this chapter:
 - [mdBook's SUMMARY.md format](https://rust-lang.github.io/mdBook/format/summary.html),
   which [`SUMMARY.md`](SUMMARY.md) follows.
 - `fleet docs` writes the contents, the page turns and the index from it; see
-  its [runbook](../tools/fleet/runbooks/docs.md).
+  its [runbook](../tools/fleetmgr/runbooks/docs.md).
 
 <!-- book:bottom -->
 ---

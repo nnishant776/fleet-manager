@@ -74,10 +74,10 @@
     # One set of packages per system any host uses, as for the apps.
     systems = builtins.attrNames apps;
 
-    # fleet, the guided tool (tools/fleet): `fleet` brings the tools it runs,
+    # fleet, the guided tool (tools/fleetmgr): `fleet` brings the tools it runs,
     # `fleet-static` is the bare static binary for machines without Nix.
     packages = lib.genAttrs systems (system:
-      let fleet = nixpkgs.legacyPackages.${system}.callPackage ./tools/fleet/package.nix { };
+      let fleet = nixpkgs.legacyPackages.${system}.callPackage ./tools/fleetmgr/package.nix { };
       in {
         inherit fleet;
         fleet-static = fleet.static;
@@ -97,7 +97,7 @@
         cp -r ${self} src
         chmod -R u+w src
         cd src
-        fleet docs --check --out tools/fleet/runbooks --guide docs
+        fleet docs --check --out tools/fleetmgr/runbooks --guide docs
         touch $out
       '';
       # The fleet-secrets port against the shell tool, command by command.

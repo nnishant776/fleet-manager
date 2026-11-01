@@ -12,7 +12,7 @@ anything, and checks the result. `fleet` alone shows a menu, and
 
 This chapter covers installing it, running it without prompts, what a run
 that stops leaves behind, and how the installer gets it. Each command has a
-page of its own in the [runbooks](../tools/fleet/runbooks/README.md).
+page of its own in the [runbooks](../tools/fleetmgr/runbooks/README.md).
 
 <!-- book:sections -->
 In this chapter:
@@ -61,7 +61,7 @@ so the same command, run again, goes on from there.
 
 ## Runbooks
 
-Each command has a page in [`tools/fleet/runbooks`](../tools/fleet/runbooks/README.md)
+Each command has a page in [`tools/fleetmgr/runbooks`](../tools/fleetmgr/runbooks/README.md)
 with its flags and its steps. `fleet docs` writes the pages from the commands
 themselves, and the tests fail when they are out of date.
 

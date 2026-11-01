@@ -18,7 +18,7 @@ let
   lib = pkgs.lib;
   mkHost = import ../../lib/mkHost.nix { inherit inputs; };
   hostNode = mkHost.modulesFor { hostName = "newhost"; hostDir = ./enroll-host; };
-  remakeScript = ../../tools/fleet/flows/remake-etc-nixos.sh;
+  remakeScript = ../../tools/fleetmgr/flows/remake-etc-nixos.sh;
 
   fixtures = pkgs.runCommand "fleet-enroll-fixtures" {
     nativeBuildInputs = with pkgs; [ age openssh git ];
