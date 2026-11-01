@@ -48,7 +48,9 @@ let
   modulesFor = args: {
     modules = commonModulesFor args ++ [
       {
-        system.stateVersion = "26.05";
+        # A default: a machine brought in with its own configuration keeps
+        # the stateVersion it was installed with.
+        system.stateVersion = lib.mkDefault "26.05";
         conf.platform = "nixos";
       }
       ../modules/linux
