@@ -109,6 +109,11 @@
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
         fleetmgr = self.packages.x86_64-linux.fleetmgr;
       };
+      fleet-host-new = import ./tests/fleet/host-new.nix {
+        pkgs = nixpkgs.legacyPackages.x86_64-linux;
+        fleetmgr = self.packages.x86_64-linux.fleetmgr;
+        secretsSync = self.packages.x86_64-linux.fleetmgr-secrets-sync;
+      };
       inventory-publish = import ./tests/fleet/publish.nix {
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
         fleetmgr = self.packages.x86_64-linux.fleetmgr;
