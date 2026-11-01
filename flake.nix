@@ -175,6 +175,17 @@
         inherit inputs;
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
       };
+      # What fleetmgr host adopt writes for a machine, from the skeleton
+      # (laptop1, and server1 for BIOS with GRUB) and with its configuration
+      # copied (laptop2), evaluates
+      # through mkHost; the Go tests keep the files what the generator writes.
+      adopt-golden =
+        let
+          mk = import ./lib/mkHost.nix { inherit inputs; };
+          hosts = ./tools/fleetmgr/flows/testdata/adopt/config/hosts;
+          drv = h: builtins.unsafeDiscardStringContext (mk { hostName = h; hostDir = hosts + "/${h}"; }).config.system.build.toplevel.drvPath;
+        in
+        nixpkgs.legacyPackages.x86_64-linux.writeText "adopt-golden" (drv "laptop1" + "\n" + drv "laptop2" + "\n" + drv "server1" + "\n");
       # mkHost's system.stateVersion is a default, which a host's own wins over.
       mkhost-state-version =
         let
