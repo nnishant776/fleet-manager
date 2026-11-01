@@ -33,12 +33,15 @@ let
   stubNix = pkgs.writeShellScript "nix" ''
     hosts=$INV/config/hosts
     field() { grep -h "$1" "$hosts/$2/default.nix" | head -1 | sed 's/.*= \(".*"\);.*/\1/'; }
-    case "$*" in
+    # The host an attribute path names: nixosConfigurations.<host>.config…
+    all="$*"; h=''${all#*nixosConfigurations.}; h=''${h%%.*}
+    case "$all" in
       *"#fleetLayout"*) echo '{"hostBranches":true,"hosts":"config/hosts","users":"config/users","shared":[]}' ;;
       *"config.conf.fleet.personal.enable else null"*) echo null ;;
       *"c.config.conf.fleet.repo.url) cs"*) echo '{"alpha":"ssh://git@forge/inventory.git"}' ;;
       *"c.config.conf.secrets.repo.url) cs"*) echo '{"alpha":"ssh://git@forge/secrets.git"}' ;;
       *darwinConfigurations*) echo '{}' ;;
+      *"attrNames c.config.conf.users.accounts"*) echo '{"alpha":[],"laptop3":["alice","bob"],"laptop4":["alice","bob"]}' ;;
       *"toplevel.drvPath) cs"*)
         if [ -e "$HOME/fail-eval" ]; then
           echo "error: The option \`networking.hostName' has conflicting definition values:" >&2
@@ -46,13 +49,10 @@ let
         fi
         echo '{"alpha":"/nix/store/alpha.drv","laptop3":"/nix/store/laptop3.drv","laptop4":"/nix/store/laptop4.drv"}' ;;
       *"path:"*"toplevel.drvPath"*) echo /nix/store/branch.drv ;;
-      *"nixosConfigurations."*".config.conf.fleet.repo.url"*)
-        h=''${*#*nixosConfigurations.}; field repo.url "''${h%%.*}" ;;
-      *"nixosConfigurations."*".config.conf.fleet.repo.ref"*)
-        h=''${*#*nixosConfigurations.}; echo "\"host/''${h%%.*}\"" ;;
+      *"nixosConfigurations."*".config.conf.fleet.repo.url"*) field repo.url "$h" ;;
+      *"nixosConfigurations."*".config.conf.fleet.repo.ref"*) echo "\"host/$h\"" ;;
       *"allowedSignersFile"*) cat "$INV/fleet/allowed_signers" ;;
-      *"nixosConfigurations."*".config.conf.secrets.repo.url"*)
-        h=''${*#*nixosConfigurations.}; field secrets.repo.url "''${h%%.*}" ;;
+      *"nixosConfigurations."*".config.conf.secrets.repo.url"*) field secrets.repo.url "$h" ;;
       *) echo "stub nix: not expected: $*" >&2; exit 1 ;;
     esac
   '';
@@ -137,10 +137,10 @@ pkgs.testers.runNixOSTest {
         return status, out
 
     def files(branch):
-        return forge.succeed(f"git -C /var/lib/forge/inventory.git ls-tree -r --name-only {branch}").split()
+        return forge.succeed(f"su git -c 'git -C /var/lib/forge/inventory.git ls-tree -r --name-only {branch}'").split()
 
     def verified(ref):
-        forge.succeed(f"git -C /var/lib/forge/inventory.git -c gpg.ssh.allowedSignersFile=${fixtures}/allowed_signers verify-commit {ref}")
+        forge.succeed(f"su git -c 'git -C /var/lib/forge/inventory.git -c gpg.ssh.allowedSignersFile=${fixtures}/allowed_signers verify-commit {ref}'")
 
     with subtest("a machine is adopted from a skeleton, with its host key compared and its admin's sudo password"):
         status, out = adopt(f"--skeleton --grub-device /dev/vda --host-key {print_}")
@@ -152,7 +152,7 @@ pkgs.testers.runNixOSTest {
                      "committed: feat(hosts): laptop3, adopted from the machine as it ran"]:
             assert want in out, f"output lacks {want!r}"
         forge.succeed("grep -q '^laptop3 ssh-ed25519 ' /home/git/.ssh/known_hosts")
-        d = forge.succeed("git -C /var/lib/forge/inventory.git show main:config/hosts/laptop3/default.nix")
+        d = forge.succeed("su git -c 'git -C /var/lib/forge/inventory.git show main:config/hosts/laptop3/default.nix'")
         for want in ['system.stateVersion = "24.11";', 'boot.loader.grub.device = "/dev/vda";',
                      'users.accounts.alice = {', 'privileged = true;', 'groups = [ "audio" ];',
                      'secrets.password = true;', 'secrets.authorizedKeys = true;',
