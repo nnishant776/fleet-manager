@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -29,6 +30,8 @@ func Mount(root *cobra.Command, flows []*Flow, groups Groups, menu []Section) {
 	root.PersistentFlags().BoolVarP(&opts.Yes, "yes", "y", false, "run changes without asking first")
 	root.PersistentFlags().BoolVar(&opts.DryRun, "dry-run", false, "show every step and command; look, but change nothing")
 	root.PersistentFlags().BoolVar(&opts.Verbose, "verbose", false, "show all of each command's output")
+	root.PersistentFlags().BoolVar(&opts.Resume, "resume", false, "go on with the answers an earlier, unfinished run of this kept, without asking")
+	root.PersistentFlags().BoolVar(&opts.Forget, "forget", false, "drop the answers an earlier, unfinished run of this kept")
 
 	for _, f := range flows {
 		parent := root
@@ -44,21 +47,19 @@ func Mount(root *cobra.Command, flows []*Flow, groups Groups, menu []Section) {
 		if !u.Interactive() {
 			return cmd.Help()
 		}
-		var rows []ui.MenuRow
-		var listed []*Flow
-		for _, s := range menu {
-			for i, f := range s.Flows {
-				row := ui.MenuRow{Label: f.Title, Path: strings.Join(f.Path, " "), Guide: guideOf(f)}
-				if i == 0 {
-					row.Section = s.Name
-				}
-				rows = append(rows, row)
-				listed = append(listed, f)
-			}
+		byPath := map[string]*Flow{}
+		for _, f := range flows {
+			byPath[strings.Join(f.Path, " ")] = f
 		}
-		// Choose, run, and come back to the menu, until the person quits.
+		// Choose, run, and come back to the menu, until the person quits. The
+		// rows are made again each time, since a run may leave, or finish,
+		// an unfinished one.
 		choice := 0
 		for {
+			rows, listed := menuRows(menu, byPath, time.Now())
+			if choice >= len(rows) {
+				choice = 0
+			}
 			var err error
 			choice, err = u.Menu("What do you want to do?", rows, choice)
 			if errors.Is(err, ui.ErrCancelled) {
@@ -67,7 +68,15 @@ func Mount(root *cobra.Command, flows []*Flow, groups Groups, menu []Section) {
 			if err != nil {
 				return err
 			}
-			err = runFlow(cmd.Context(), listed[choice], *opts, map[string]string{})
+			run := *opts
+			flags := map[string]string{}
+			if l := listed[choice]; l.unfinished != nil {
+				run.Resume = true
+				if len(l.flow.Args) > 0 && l.unfinished.Subject != "" {
+					flags[l.flow.Args[0]] = l.unfinished.Subject
+				}
+			}
+			err = runFlow(cmd.Context(), listed[choice].flow, run, flags)
 			if cmd.Context().Err() != nil {
 				return err
 			}
@@ -80,6 +89,47 @@ func Mount(root *cobra.Command, flows []*Flow, groups Groups, menu []Section) {
 			}
 		}
 	}
+}
+
+// menuEntry is what a menu row runs: a flow, and for a row that goes on with
+// an unfinished run, that run.
+type menuEntry struct {
+	flow       *Flow
+	unfinished *Unfinished
+}
+
+// menuRows are the menu's rows: the unfinished runs first, in a section of
+// their own, then the menu's sections.
+func menuRows(menu []Section, byPath map[string]*Flow, now time.Time) ([]ui.MenuRow, []menuEntry) {
+	var rows []ui.MenuRow
+	var listed []menuEntry
+	for _, u := range ListUnfinished(now) {
+		f := byPath[u.Flow]
+		if f == nil {
+			continue
+		}
+		label := "Go on: " + f.Title
+		if u.Subject != "" {
+			label += ", " + u.Subject
+		}
+		row := ui.MenuRow{Label: label, Path: u.Flow, Guide: guideOf(f)}
+		if len(rows) == 0 {
+			row.Section = "Unfinished"
+		}
+		rows = append(rows, row)
+		listed = append(listed, menuEntry{flow: f, unfinished: &u})
+	}
+	for _, s := range menu {
+		for i, f := range s.Flows {
+			row := ui.MenuRow{Label: f.Title, Path: strings.Join(f.Path, " "), Guide: guideOf(f)}
+			if i == 0 {
+				row.Section = s.Name
+			}
+			rows = append(rows, row)
+			listed = append(listed, menuEntry{flow: f})
+		}
+	}
+	return rows, listed
 }
 
 func child(parent *cobra.Command, name, short string) *cobra.Command {
@@ -191,6 +241,8 @@ func runFlow(ctx context.Context, f *Flow, opts Options, flags map[string]string
 		Values:  map[string]string{},
 		Stdin:   os.Stdin,
 		flags:   flags,
+		// A fleetmgr command a flow runs is part of that flow's run.
+		Resumable: os.Getenv(SubrunEnv) == "",
 	}
 	x.UI.Bind(ctx)
 	err := Run(x, f)
