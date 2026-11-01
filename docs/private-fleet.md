@@ -216,9 +216,47 @@ yet. Bring a Pi in once it runs, as in the next section.
 
 ## Bringing in a running NixOS machine
 
-Add its folder to the inventory, push, publish its branch, then run
-`fleetmgr host enroll <host> --flake <checkout of it>`. For a machine that does
-not run a fleet configuration yet, enroll does this in order:
+**With `fleetmgr host adopt`.** For a machine that runs NixOS but no fleet
+configuration, one command does all of it:
+
+```bash
+fleetmgr host adopt laptop1 --address 192.168.1.20 --admin alice --skeleton \
+  --support-keys support.pub --flake inventory --repo secrets
+```
+
+It needs an account with sudo on the machine (`--admin`) that the key in
+`--key` logs in to; its sudo may ask for a password, which fleetmgr asks for
+once, or reads from `--admin-password-stdin`. It compares the machine's host
+key with the fingerprint its console shows. Then it reads the machine and
+writes the host's folder:
+
+- **`--skeleton`**: a minimal `default.nix`, with the machine's platform, boot
+  loader, network, timezone, locale, release and accounts, beside its
+  `hardware-configuration.nix`. A role and a machine type are guessed and
+  asked for (`--role`, `--machine-type`). On a BIOS machine with GRUB,
+  `--grub-device` names the disk if fleetmgr cannot tell.
+- **`--copy-config`**: the machine's own configuration, unchanged in
+  `previous/`, which a `default.nix` imports, adding only what the fleet
+  needs. It puts aside what a host with secrets refuses: login keys and
+  passwords in the configuration. A configuration that reads `<nixpkgs>` or
+  files outside `/etc/nixos`, or that sets what the fleet's modules set too,
+  does not evaluate as it is. fleetmgr says why, with a hint, and leaves the
+  folder for you to change in the inventory checkout; run it again to go on.
+  A flake in `/etc/nixos` cannot be copied, since its inputs are not the
+  inventory's: use the skeleton.
+
+Either way the machine's `/etc/nixos` is kept in `previous/`, and the files
+are shown before they are written. Look at what comes from the machine for
+anything that does not belong in the inventory, such as a password in clear
+text. Then fleetmgr commits, pushes and publishes the host's branch, stores
+the accounts' password hashes and login keys in the secrets as the machine
+has them, with support's from `--support-keys`, lists the services that would
+stop, and goes on as `host enroll` does, below.
+
+**With `fleetmgr host enroll`.** Add its folder to the inventory, push, publish
+its branch, then run `fleetmgr host enroll <host> --flake <checkout of it>`. For a
+machine that does not run a fleet configuration yet, enroll does this in
+order:
 
 1. Checks the commit to install, as `fleetmgr install prep` does.
 2. Makes the host's identity with `fleetmgr-secrets-sync` from the checked
@@ -230,11 +268,17 @@ not run a fleet configuration yet, enroll does this in order:
    and stops before the switch, with the command that adds what is missing.
 6. Shows what `/etc/nixos` holds, warns that all of it is deleted after the
    switch, and asks. If you say no, nothing changes.
-7. Switches, fetching the private configuration with the host's own key.
-8. Replaces `/etc/nixos` with the fleet's checkout, made by the first-boot
+7. Has the host fetch its secrets, then builds the new system on the host,
+   fetching the private configuration with the host's own key.
+8. Switches for a trial: a timer is armed that brings back the system the
+   host ran before after `--trial-minutes` (5 by default), and the new system
+   is activated. Only once `support` logs in to it is the timer stopped and
+   the new system made the boot default. A system that cuts the host off goes
+   back by itself.
+9. Replaces `/etc/nixos` with the fleet's checkout, made by the first-boot
    clone at the commit the host now runs. This runs as a unit on the host,
    so a dropped connection cannot leave the host without a checkout.
-9. Syncs the host and runs `fleetmgr host check` (`--sync=false` leaves this out).
+10. Syncs the host and runs `fleetmgr host check` (`--sync=false` leaves this out).
 
 The configuration has to describe the machine as it is, since nothing is
 reinstalled:
@@ -276,7 +320,8 @@ fleet-manager.
       branch holds every secret it declares;
    3. warns that `/etc/nixos` is replaced, and asks;
    4. switches the host to its configuration there, on its branch, fetched
-      with that key;
+      with that key, for a trial that goes back by itself unless `support`
+      logs in;
    5. replaces `/etc/nixos` with a checkout of the new repository;
    6. syncs the host and runs `fleetmgr host check`, unless `--sync=false`.
 
