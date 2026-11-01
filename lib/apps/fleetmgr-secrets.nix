@@ -10,12 +10,12 @@
 # that fleetmgr setup fills.
 { pkgs }:
 pkgs.writeShellApplication {
-  name = "fleet-secrets";
+  name = "fleetmgr-secrets";
   runtimeInputs = with pkgs; [ sops age openssh mkpasswd yq-go git coreutils util-linux ];
   text = ''
     usage() {
       cat >&2 <<'EOF'
-    usage: fleet-secrets [--repo DIR] [--recovery FILE] COMMAND ...
+    usage: fleetmgr-secrets [--repo DIR] [--recovery FILE] COMMAND ...
 
       host-enroll HOST --from FILE|-   admit a new host: create its branch host/HOST
       host-rekey  HOST --from FILE|-   point a known host at a new identity
@@ -45,7 +45,7 @@ pkgs.writeShellApplication {
     }
 
     die() {
-      echo "fleet-secrets: $*" >&2
+      echo "fleetmgr-secrets: $*" >&2
       exit 1
     }
 
@@ -57,7 +57,7 @@ pkgs.writeShellApplication {
         --repo)      repo="''${2:?--repo needs a value}"; shift 2 ;;
         --recovery)  recovery="''${2:?--recovery needs a value}"; shift 2 ;;
         -h|--help)   usage 0 ;;
-        -*)          echo "fleet-secrets: unknown option '$1'" >&2; usage ;;
+        -*)          echo "fleetmgr-secrets: unknown option '$1'" >&2; usage ;;
         *)           break ;;
       esac
     done
@@ -661,7 +661,7 @@ pkgs.writeShellApplication {
       host-retire)    cmd_host_retire "$@" ;;
       user-password)  cmd_user_password "$@" ;;
       user-key)       cmd_user_key "$@" ;;
-      *)              echo "fleet-secrets: unknown command '$command'" >&2; usage ;;
+      *)              echo "fleetmgr-secrets: unknown command '$command'" >&2; usage ;;
     esac
   '';
 }

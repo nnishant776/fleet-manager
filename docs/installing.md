@@ -168,7 +168,7 @@ A host with `conf.secrets.repo.url` also needs to be enrolled, which happens
 during the install (the full flow is under [Onboarding a machine](secrets-runbooks.md#onboarding-a-machine) in *Secrets runbooks*).
 After `nixos-install`, `os-install` creates the host's identity under
 `/mnt/var/lib/fleet`, prints the enrollment file and a QR code of it, and
-waits. On the maintainer's machine, `fleet-secrets host-enroll <host> --from
+waits. On the maintainer's machine, `fleetmgr-secrets host-enroll <host> --from
 <file>` admits the host; back at the installer, pressing Enter fetches the
 host's secrets and checks that they decrypt. These flags control the step:
 

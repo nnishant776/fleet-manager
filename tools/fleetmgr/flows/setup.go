@@ -13,7 +13,7 @@ import (
 	"github.com/nnishant776/fleet-manager/tools/fleetmgr/internal/secrets"
 )
 
-// Setup is the maintainer's one-time setup, as the fleet-secrets README
+// Setup is the maintainer's one-time setup, as docs/secrets-runbooks.md
 // describes it, with every step that is done already skipped.
 var Setup = &engine.Flow{
 	Path:  []string{"setup"},

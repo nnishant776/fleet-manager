@@ -149,7 +149,7 @@ written from the command itself.
   - [A run that stops](fleetmgr.md#a-run-that-stops)
   - [Runbooks](fleetmgr.md#runbooks)
   - [On the installer](fleetmgr.md#on-the-installer)
-  - [fleetmgr and fleet-secrets](fleetmgr.md#fleetmgr-and-fleet-secrets)
+  - [fleetmgr and fleetmgr-secrets](fleetmgr.md#fleetmgr-and-fleetmgr-secrets)
 - [11. Secrets runbooks](secrets-runbooks.md)
   - [Maintainer: one-time setup](secrets-runbooks.md#maintainer-one-time-setup)
   - [Onboarding a machine](secrets-runbooks.md#onboarding-a-machine)

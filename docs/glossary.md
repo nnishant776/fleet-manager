@@ -76,14 +76,14 @@ In this chapter: [A](#a) · [B](#b) · [C](#c) · [D](#d) · [E](#e) · [F](#f) 
   [What the install does](installing.md#what-the-install-does).
 - **`fleetmgr`**: The guided tool that walks through the fleet's procedures, on
   the maintainer's machine. See [The fleetmgr tool](fleetmgr.md).
+- **`fleetmgr-secrets`**: The maintainer's shell tool for the secrets repository;
+  `fleetmgr secrets …` does the same and more. See
+  [The tools](secrets.md#the-tools).
 - **fleet host**: A machine with `conf.fleet.repo.url`, which syncs from its
   configuration. See
   [What a NixOS host does at each sync](how-it-works.md#what-a-nixos-host-does-at-each-sync).
 - **`fleet-identity`**: The host's command that prints its enrollment file, or
   exports its identity for a reinstall. See [The tools](secrets.md#the-tools).
-- **`fleet-secrets`**: The maintainer's shell tool for the secrets repository;
-  `fleetmgr secrets …` does the same and more. See
-  [The tools](secrets.md#the-tools).
 - **`fleet-secrets-sync`**: The host's program that fetches, verifies and
   snapshots its secrets. See [On the host](secrets.md#on-the-host).
 - **`fleet-sync-now`**: Starts the sync at once, for a privileged account at the

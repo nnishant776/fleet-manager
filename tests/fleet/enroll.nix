@@ -39,7 +39,7 @@ let
     # What fleetmgr setup caches for the maintainer's tools.
     age-keygen -y "$out/recovery.key" > "$out/recovery.pub"
 
-    # A secrets repository as fleet-secrets starts: main holds a README, and
+    # A secrets repository as fleetmgr-secrets starts: main holds a README, and
     # there is no host branch yet.
     git init -q --bare -b main "$out/secrets.git"
     git init -q -b main "$TMPDIR/secrets"
@@ -48,7 +48,7 @@ let
       echo "# Secrets" > README.md
       printf '*.enroll\n' > .gitignore
       git add -A
-      signed_git commit -q -m "fleet-secrets, empty"
+      signed_git commit -q -m "fleetmgr-secrets, empty"
       git push -q "$out/secrets.git" main
     )
   '';

@@ -1,4 +1,4 @@
-# Runs the shell fleet-secrets (lib/apps/fleet-secrets.nix) and its Go port
+# Runs the shell fleetmgr-secrets (lib/apps/fleetmgr-secrets.nix) and its Go port
 # (`fleetmgr secrets …`) through the same commands, on two copies of one scratch
 # repository, and checks after every command that they left it the same:
 # - the same branches (one host/<name> per host, and user/<name> for users the
@@ -12,12 +12,12 @@
 # with the same comment. After the re-key and the retirement it also checks
 # who can still decrypt what. A last part enrolls users (the port only) and
 # runs the commands for a listed user, whose files are on user/<name>.
-# Run it with `nix build .#checks.x86_64-linux.fleet-secrets-parity`.
+# Run it with `nix build .#checks.x86_64-linux.fleetmgr-secrets-parity`.
 { pkgs, fleetmgr }:
 let
-  shellTool = import ../../lib/apps/fleet-secrets.nix { inherit pkgs; };
+  shellTool = import ../../lib/apps/fleetmgr-secrets.nix { inherit pkgs; };
 in
-pkgs.runCommand "fleet-secrets-parity" {
+pkgs.runCommand "fleetmgr-secrets-parity" {
   nativeBuildInputs = with pkgs; [ git sops age yq-go openssh mkpasswd perl jq diffutils ];
 } ''
   set -euo pipefail
@@ -75,7 +75,7 @@ pkgs.runCommand "fleet-secrets-parity" {
     git -C $repo remote add origin "file://$PWD/origin-$repo.git"
   done
 
-  sh_tool() { (cd sh && ${shellTool}/bin/fleet-secrets "$@"); }
+  sh_tool() { (cd sh && ${shellTool}/bin/fleetmgr-secrets "$@"); }
   go_tool() { ${fleetmgr}/bin/fleetmgr secrets "$@" --repo go --yes; }
 
   # Unpacks a branch of a repository into out/REPO, to read its files.

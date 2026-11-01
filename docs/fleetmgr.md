@@ -22,7 +22,7 @@ In this chapter:
 - [A run that stops](#a-run-that-stops)
 - [Runbooks](#runbooks)
 - [On the installer](#on-the-installer)
-- [fleetmgr and fleet-secrets](#fleetmgr-and-fleet-secrets)
+- [fleetmgr and fleetmgr-secrets](#fleetmgr-and-fleetmgr-secrets)
 <!-- /book:sections -->
 
 ## Installing it
@@ -75,10 +75,10 @@ it with Nix instead. With `REV`, as the line from `fleetmgr install prep` gives
 it, `bootstrap` builds `fleetmgr` from that commit rather than taking the latest
 release, which is whatever `main` had when CI last ran.
 
-## fleetmgr and fleet-secrets
+## fleetmgr and fleetmgr-secrets
 
-`fleetmgr secrets …` does what `fleet-secrets` does, with the same files and
-commit messages. `nix run .#fleet-secrets` is still the shell version. Three
+`fleetmgr secrets …` does what `fleetmgr-secrets` does, with the same files and
+commit messages. `nix run .#fleetmgr-secrets` is still the shell version. Three
 commands are only in `fleetmgr`: `fleetmgr secrets user-keys`, which stores a user's login
 and sudo keys and pushes the branch (see [Secrets](secrets.md)), and
 `fleetmgr secrets user-enroll` and `user-retire`. So are the

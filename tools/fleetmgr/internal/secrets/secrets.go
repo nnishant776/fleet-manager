@@ -1,9 +1,9 @@
-// Package secrets is the port of fleet-secrets (lib/apps/fleet-secrets.nix):
+// Package secrets is the port of fleetmgr-secrets (lib/apps/fleetmgr-secrets.nix):
 // the maintainer's side of the secrets repository. It runs the same yq, sops,
 // git, mkpasswd and ssh-keygen commands as the shell tool, in the same order,
 // and leaves the repository in the same state: the same branches, one
 // host/<name> per host, the same files on them, encrypted to the same
-// recipients, and the same commit messages. tests/fleet-secrets-parity runs
+// recipients, and the same commit messages. tests/fleet/secrets-parity.nix runs
 // both and compares.
 //
 // A command for a host works in a temporary worktree of its branch, so the
@@ -359,7 +359,7 @@ func OpenWork() engine.Step {
 			dir := "<worktree>"
 			if !x.Options.DryRun {
 				var err error
-				if dir, err = os.MkdirTemp("", "fleet-secrets-"); err != nil {
+				if dir, err = os.MkdirTemp("", "fleetmgr-secrets-"); err != nil {
 					return err
 				}
 			}
@@ -642,7 +642,7 @@ func Set(file, key, value, note string) *engine.Command {
 // signersOutsideCheckout prints "inside FILE" when git's
 // gpg.ssh.allowedSignersFile lies inside a git checkout, where a pushed commit
 // could add the key that signs it; fleetmgr setup points it at your own copy
-// (fleetmgr trust signers). The shell fleet-secrets runs the same check.
+// (fleetmgr trust signers). The shell fleetmgr-secrets runs the same check.
 const signersOutsideCheckout = `f="$(git config --get gpg.ssh.allowedSignersFile)" || exit 0
 case "$f" in \~/*) f="$HOME/${f#\~/}" ;; esac
 case "$f" in /*) ;; *) f="$(git rev-parse --show-toplevel)/$f" ;; esac

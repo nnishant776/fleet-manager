@@ -6,13 +6,13 @@
 let
   app = drv: { type = "app"; program = pkgs.lib.getExe drv; };
 in {
-  os-install    = app (import ./os-install.nix { inherit pkgs self; });
-  system-switch = app (import ./system-switch.nix { inherit pkgs; });
-  home-switch   = app (import ./home-switch.nix { inherit pkgs; });
-  check-purity  = app (import ./check-purity.nix { inherit pkgs; });
-  fleet-secrets = app (import ./fleet-secrets.nix { inherit pkgs; });
+  os-install       = app (import ./os-install.nix { inherit pkgs self; });
+  system-switch    = app (import ./system-switch.nix { inherit pkgs; });
+  home-switch      = app (import ./home-switch.nix { inherit pkgs; });
+  check-purity     = app (import ./check-purity.nix { inherit pkgs; });
+  fleetmgr-secrets = app (import ./fleetmgr-secrets.nix { inherit pkgs; });
   # The guided tool; tools/fleetmgr/package.nix.
-  fleetmgr      = app (pkgs.callPackage ../../tools/fleetmgr/package.nix { });
+  fleetmgr         = app (pkgs.callPackage ../../tools/fleetmgr/package.nix { });
 } // pkgs.lib.optionalAttrs (libraryApps && pkgs.stdenv.hostPlatform.isLinux) {
   # On demand only: builds a Raspberry Pi SD image, never part of a rebuild.
   rpi-image = app (import ./rpi-image { inherit pkgs self; });

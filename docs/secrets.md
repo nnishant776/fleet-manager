@@ -109,7 +109,7 @@ conf.users.accounts.alice = { fullName = "Alice"; };   # password from secrets; 
 ```
 
 The secrets repository is checked against the same signers file, so its
-commits, including the ones `fleet-secrets` makes, must be signed too. Set up
+commits, including the ones `fleetmgr-secrets` makes, must be signed too. Set up
 commit signing in that checkout as well (see
 [Signing commits and trusting them](signing-and-trust.md)).
 
@@ -294,7 +294,7 @@ How to set one is under
 
 ## The tools
 
-Two commands carry the work. `fleet-secrets` (`nix run .#fleet-secrets`) is the
+Two commands carry the work. `fleetmgr-secrets` (`nix run .#fleetmgr-secrets`) is the
 maintainer's tool, run in a clone of the secrets repository, with `--recovery
 ~/.fleet/recovery.age` for the passphrase-protected recovery identity: `host-enroll`,
 `host-rekey`, `host-retire`, `user-password` and `user-key`. The clone stays on
@@ -332,7 +332,7 @@ test without a hosting service, `nix run .#secrets-harness` stands in for the
 secrets repository and the configuration upstream; see
 [`tests/secrets/README.md`](../tests/secrets/README.md).
 
-`fleetmgr secrets …`, the Go port, does the same as `fleet-secrets`, the shell
+`fleetmgr secrets …`, the Go port, does the same as `fleetmgr-secrets`, the shell
 tool, for `host-enroll`, `host-rekey`, `host-retire`, `user-password` and
 `user-key`. `user-keys`, `user-enroll` and `user-retire` exist only in the Go
 port. The runbooks use `fleetmgr secrets`.

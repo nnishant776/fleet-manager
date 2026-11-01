@@ -388,7 +388,7 @@ pkgs.writeShellApplication {
         if $noEnroll; then
           enrollSkipped=true
         elif $interactive; then
-          echo "On the maintainer's machine: fleet-secrets host-enroll $host --from <that file>"
+          echo "On the maintainer's machine: fleetmgr-secrets host-enroll $host --from <that file>"
           if ! read -r -p "Enroll the host now on the maintainer's machine, then press Enter (Ctrl-D skips) " _; then
             echo
             enrollSkipped=true

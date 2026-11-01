@@ -128,7 +128,7 @@ func TestUserPasswordChangesTheFilesOfTheHostsAndPushesTheBranch(t *testing.T) {
 		"git fetch -q origin +refs/heads/user/dave:refs/remotes/origin/user/dave",
 		"git -c gpg.ssh.allowedSignersFile=",
 		"age -d ",
-		"git worktree add -q "+filepath.Join(os.TempDir(), "fleet-secrets-"),
+		"git worktree add -q "+filepath.Join(os.TempDir(), "fleetmgr-secrets-"),
 		`sops set --value-stdin users/dave/nas.yaml '["password"]'`,
 		`sops set --value-stdin users/dave/pi.yaml '["password"]'`,
 		"git add users/dave/nas.yaml users/dave/pi.yaml",

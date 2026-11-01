@@ -24,7 +24,7 @@ explains the pieces, and the [guide](docs/README.md) has the rest.
 ├── fleet/
 │   └── allowed_signers              # keys the fleet accepts on commits; see docs/signing-and-trust.md
 ├── lib/
-│   ├── apps/                        # os-install, system-switch, home-switch, check-purity, fleet-secrets, fleetmgr; rpi-image and secrets-harness on Linux; darwin-rebuild on macOS
+│   ├── apps/                        # os-install, system-switch, home-switch, check-purity, fleetmgr-secrets, fleetmgr; rpi-image and secrets-harness on Linux; darwin-rebuild on macOS
 │   ├── mkFleet.nix                  # lib.mkFleet: a fleet's systems, homes and apps from its host folders; see docs/private-fleet.md
 │   ├── mkHost.nix                   # host factory (NixOS / nix-darwin)
 │   ├── secrets-sync.nix             # fleet-secrets-sync and fleet-identity, used by the sync and os-install

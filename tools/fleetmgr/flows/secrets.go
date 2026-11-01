@@ -10,8 +10,8 @@ import (
 	"github.com/nnishant776/fleet-manager/tools/fleetmgr/internal/secrets"
 )
 
-// The port of fleet-secrets: the same five commands, arguments, branches,
-// files and commit messages as lib/apps/fleet-secrets.nix, as guided steps.
+// The port of fleetmgr-secrets: the same five commands, arguments, branches,
+// files and commit messages as lib/apps/fleetmgr-secrets.nix, as guided steps.
 // Each host has a branch, host/<name>; a command works in a temporary
 // worktree of it.
 

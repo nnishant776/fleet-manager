@@ -122,7 +122,7 @@ In this chapter:
 - In the code: [`lib/secrets-sync.nix`](../lib/secrets-sync.nix),
   `fleet-secrets-sync` and `fleet-identity`;
   [`modules/linux/secrets/`](../modules/linux/secrets/), sops and the users'
-  secrets; [`lib/apps/fleet-secrets.nix`](../lib/apps/fleet-secrets.nix), the
+  secrets; [`lib/apps/fleetmgr-secrets.nix`](../lib/apps/fleetmgr-secrets.nix), the
   shell tool; [`tests/secrets/`](../tests/secrets/), with the local stand-in
   for the secrets repository.
 

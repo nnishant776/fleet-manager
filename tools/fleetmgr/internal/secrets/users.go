@@ -137,7 +137,7 @@ func WorktreeAt(x *engine.Ctx, branch, ref string) (string, error) {
 	dir := "<worktree>"
 	if !x.Options.DryRun {
 		var err error
-		if dir, err = os.MkdirTemp("", "fleet-secrets-"); err != nil {
+		if dir, err = os.MkdirTemp("", "fleetmgr-secrets-"); err != nil {
 			return "", err
 		}
 	}

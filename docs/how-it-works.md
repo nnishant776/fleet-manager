@@ -94,7 +94,7 @@ flowchart TB
 
 - **fleet-manager**, this repository, is the library: the `conf.*` vocabulary
   and the modules behind it, `lib.mkFleet`, the tools (`os-install`,
-  `system-switch`, `home-switch`, `fleetmgr`, `fleet-secrets`), the tests and this
+  `system-switch`, `home-switch`, `fleetmgr`, `fleetmgr-secrets`), the tests and this
   book. Its `hosts/` holds examples and test hosts.
 - **The configuration** is the flake the machines build: a folder per host and
   per user. It can be fleet-manager itself, or a private **inventory** that

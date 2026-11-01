@@ -100,8 +100,8 @@
         fleetmgr docs --check --out tools/fleetmgr/runbooks --guide docs
         touch $out
       '';
-      # The fleet-secrets port against the shell tool, command by command.
-      fleet-secrets-parity = import ./tests/fleet/secrets-parity.nix {
+      # The fleetmgr-secrets port against the shell tool, command by command.
+      fleetmgr-secrets-parity = import ./tests/fleet/secrets-parity.nix {
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
         fleetmgr = self.packages.x86_64-linux.fleetmgr;
       };

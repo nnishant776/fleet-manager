@@ -248,7 +248,7 @@ in
               if [ "$attempt" -ge 5 ]; then
                 if grep -q 'Permission denied (publickey)' "$tmp/err"; then
                   echo "fleet-secrets-sync: the forge rejected this host's deploy key; it has to be enrolled:" >&2
-                  echo "fleet-secrets-sync: show it with 'fleet-identity' and run 'fleet-secrets host-enroll $host --from FILE' on the maintainer's machine" >&2
+                  echo "fleet-secrets-sync: show it with 'fleet-identity' and run 'fleetmgr-secrets host-enroll $host --from FILE' on the maintainer's machine" >&2
                 fi
                 fail 10 "fetch of $what from $repo failed after $attempt attempts"
               fi

@@ -109,7 +109,7 @@ line, a full commit hash, and is readable by you only.
 - `fleetmgr install prep`, `fleetmgr inventory publish` (`main` and each host's
   branch), `fleetmgr host enroll`, the commands that change a host's or user's
   files in the secrets repository (`fleetmgr host secret`, `fleetmgr secrets …`) and
-  `fleetmgr user …` check and record. So does the shell `fleet-secrets`, in the
+  `fleetmgr user …` check and record. So does the shell `fleetmgr-secrets`, in the
   same files. `host-retire` and `user-retire` remove the branch's record.
 - If the history was rewritten on purpose, a repository that has a name
   (`fleetmgr repo add`) is reviewed and accepted with `fleetmgr repo sync <name>

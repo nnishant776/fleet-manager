@@ -8,7 +8,7 @@ import "github.com/nnishant776/fleet-manager/tools/fleetmgr/internal/engine"
 // Groups describes the intermediate commands.
 var Groups = engine.Groups{
 	"host":        "Work on one host: check it, its secrets, its enrollment",
-	"secrets":     "The secrets repository: hosts, users' passwords and keys (the fleet-secrets port)",
+	"secrets":     "The secrets repository: hosts, users' passwords and keys (the fleetmgr-secrets port)",
 	"inventory":   "A private inventory: each host's own branch",
 	"support-key": "The key that opens the support account",
 	"trust":       "The keys you trust, kept outside every checkout",

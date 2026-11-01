@@ -11,7 +11,7 @@ package fleetmgr
 // <state>/repos/<host>/<owner>/<repo>/trusted/<branch>; a branch with a / is
 // a nested path (trusted/host/laptop1). A tip is accepted when there is no
 // record yet (it becomes the record) or the record is that commit or an
-// ancestor of it (the record moves to it). The shell fleet-secrets keeps the
+// ancestor of it (the record moves to it). The shell fleetmgr-secrets keeps the
 // same files.
 
 import (
