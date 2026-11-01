@@ -21,7 +21,9 @@ in {
   config = lib.mkMerge [
     {
       boot.loader.${loaderModule}.enable = true;
-      boot.loader.efi.canTouchEfiVariables = hwdCfg.boot.efiVariables;
+      # A default: a configuration that brings its own loader (loader = null)
+      # may set it.
+      boot.loader.efi.canTouchEfiVariables = lib.mkDefault hwdCfg.boot.efiVariables;
     }
 
     # A separate set: Nix does not allow the dynamic `${loader}` path above and a
