@@ -26,12 +26,14 @@ var HostEnroll = &engine.Flow{
 	Title: "Enroll a running host in the secrets setup",
 	Short: "Enroll a running host: identity, enrollment, deploy key, first sync",
 	Long: "For a host that already runs, and whose configuration in this repository sets\n" +
-		"conf.secrets.repo.url. fleetmgr logs in as its admin account through an agent that\n" +
-		"holds one key only, switches the host to that configuration if it does not run\n" +
-		"it yet or runs another repository's, creates its identity, copies its enrollment file here and checks it,\n" +
-		"enrolls it in the secrets repository and pushes, registers its deploy key\n" +
-		"read-only, then syncs the host and checks it. Steps that are done already are\n" +
-		"skipped, so it can be run again after a failure.",
+		"conf.secrets.repo.url. fleetmgr records the host's key, once you have compared its\n" +
+		"fingerprint with the host's console, and logs in as its admin account through an agent\n" +
+		"that holds one key only. The admin's sudo may take that key, a rule, or its password, which\n" +
+		"is asked for once and held in memory. fleetmgr switches the host to that configuration if it\n" +
+		"does not run it yet or runs another repository's, creates its identity, copies its\n" +
+		"enrollment file here and checks it, enrolls it in the secrets repository and pushes,\n" +
+		"registers its deploy key read-only, then syncs the host and checks it. Steps that are\n" +
+		"done already are skipped, so it can be run again after a failure.",
 	Example: "  fleetmgr host enroll pi1 --key ~/.ssh/admin_key --repo ~/Projects/secrets",
 	Args:    []string{"host"},
 	Inputs: []engine.Input{
@@ -40,7 +42,7 @@ var HostEnroll = &engine.Flow{
 			Pattern: secrets.NamePattern, Choices: fleetmgr.Hosts},
 		{Name: "address", Prompt: "Address to reach it at", Help: "A name or IP address for SSH; defaults to the host's name",
 			Default: func(x *engine.Ctx) (string, error) { return x.Value("host"), nil }},
-		{Name: "admin", Prompt: "Account with sudo by SSH key", Help: "The account to log in as until the host has support; admin by default",
+		{Name: "admin", Prompt: "Admin account", Help: "The account with sudo to log in as until the host has support; admin by default",
 			Default: func(*engine.Ctx) (string, error) { return "admin", nil }},
 		{Name: "user", Prompt: "Support account", Help: "The account for the steps after the switch; support by default, which needs nothing forwarded",
 			Default: func(*engine.Ctx) (string, error) { return "support", nil }},
@@ -53,6 +55,8 @@ var HostEnroll = &engine.Flow{
 				}
 				return "", nil
 			}},
+		fleetmgr.HostKeyInput,
+		fleetmgr.AdminPasswordInput,
 		secrets.RepoInput,
 		secrets.RecoveryInput,
 		{Name: "switch-to", Prompt: "Configuration to switch the host to, if it needs a switch",
@@ -65,14 +69,16 @@ var HostEnroll = &engine.Flow{
 			Help: "Sync the host at the end and run fleetmgr host check (default true)", Bool: true,
 			Default: func(*engine.Ctx) (string, error) { return "true", nil }},
 	},
-	Needs:   []string{"ssh", "ssh-agent", "ssh-add", "git", "sops", "age"},
+	Needs:   []string{"ssh", "ssh-agent", "ssh-add", "ssh-keygen", "ssh-keyscan", "git", "sops", "age"},
 	Cleanup: fleetmgr.StopAgent,
 	Steps: []engine.Step{
+		knowHostKeyStep,
 		{
 			Title: "Start an agent that holds one key",
-			Why:   "{{.admin}}'s sudo checks its key through the forwarded agent. Only this agent is forwarded, never yours, which holds your signing key.",
+			Why:   "{{.admin}}'s sudo may check its key through the forwarded agent. Only this agent is forwarded, never yours, which holds your signing key.",
 			Do:    engine.Func(fleetmgr.StartAgent),
 		},
+		adminSudoStep,
 		{
 			Title: "Look at {{.host}}",
 			Why:   "What is done already decides which of the next steps run.",
@@ -238,7 +244,7 @@ id support >/dev/null 2>&1 && echo has_support=true || echo has_support=false`).
 		}
 	}
 	if x.Value("sudo") != "true" {
-		return fmt.Errorf("%s has no sudo with the key in the agent: is %s one of its sudoSshKeys?", x.Value("admin"), x.Value("key"))
+		return fmt.Errorf("%s's sudo did not work on %s, though the step before found it did", x.Value("admin"), x.Value("address"))
 	}
 	report := func(fact, yes, no string) {
 		if x.Value(fact) == "true" {

@@ -41,6 +41,8 @@ func enrollHost(identity, enrolled, tamper bool) func(engine.Spec) (engine.Resul
 		switch {
 		case s.Name == "ssh-agent":
 			return engine.Result{Stdout: "SSH_AUTH_SOCK=/tmp/a.sock; export SSH_AUTH_SOCK;\nSSH_AGENT_PID=4242; export SSH_AGENT_PID;\n"}, nil
+		case s.Name == "ssh" && strings.Contains(last, "echo sudo=key"):
+			return engine.Result{Stdout: "sudo=key\n"}, nil
 		case s.Name == "ssh" && strings.Contains(last, "has_tooling"):
 			return engine.Result{Stdout: "login=admin\nsudo=true\nhas_tooling=true\n" +
 				"has_identity=" + map[bool]string{true: "true", false: "false"}[identity] + "\n" +
@@ -366,7 +368,7 @@ func TestEnrollDecliningTheWarningChangesNothing(t *testing.T) {
 	fake := &engine.Fake{Respond: gitFacts(listsEtcNixos(withEtcNixos(noTooling(enrollHost(false, false, false)), "git", false, "https://example.org/mine.git"), "origin: x\n"))}
 	x := &engine.Ctx{
 		Context: context.Background(), UI: ui.NewWith(&out, nil), Runner: fake,
-		Values: map[string]string{"host": "pi", "etc_nixos": "git", "admin": "admin", "address": "pi", "agent": "/tmp/a.sock"}, Stdin: strings.NewReader(""),
+		Values: map[string]string{"host": "pi", "etc_nixos": "git", "admin": "admin", "address": "pi", "agent": "/tmp/a.sock", "admin_prelude": ""}, Stdin: strings.NewReader(""),
 		LookPath: func(t string) (string, error) { return "/fake/bin/" + t, nil },
 	}
 	// Nobody to ask and no --yes: the same stop as an answer of no, which

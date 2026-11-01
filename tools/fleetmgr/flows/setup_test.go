@@ -24,6 +24,12 @@ import (
 func gitFacts(respond func(engine.Spec) (engine.Result, error)) func(engine.Spec) (engine.Result, error) {
 	return func(s engine.Spec) (engine.Result, error) {
 		res, err := respond(s)
+		// An admin whose sudo takes the key in the agent, as on the hosts these
+		// tests stand for.
+		if err == nil && res.Stdout == "" && s.Name == "ssh" && len(s.Args) > 0 && strings.Contains(s.Args[len(s.Args)-1], "echo sudo=key") {
+			res.Stdout = "sudo=key\n"
+			return res, nil
+		}
 		if err != nil || res.Stdout != "" || s.Name != "git" {
 			return res, err
 		}
