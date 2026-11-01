@@ -176,6 +176,18 @@ same way, so an unsigned or older commit is never pinned by mistake.
 
 ## Installing a host from it
 
+`fleetmgr host new <host> --flake <checkout of it> --repo <secrets checkout>`
+does everything on your side of a new host's install in one run. Part one asks
+what the host is (its platform, role, machine type, boot, disk, network and
+accounts; each answer is also a flag), writes its folder
+`config/hosts/<host>/default.nix`, commits, pushes and publishes its branch,
+and prints the line to run on the installer. It then waits for the installer's
+enrollment file: copy it to the path it names, or run the command again later
+with `--from <file>`. Part two sets up the host's secrets, pushes its branch
+and registers its keys, and the installer goes on. Each step looks first and
+skips what is done, so you can run it again at any time. The steps below are
+what it does for you.
+
 Run `fleetmgr install prep <host> --flake <checkout of it>` on your machine, and
 the line it prints on the installer
 (see [First run](../README.md#first-run) in the README). It sets
