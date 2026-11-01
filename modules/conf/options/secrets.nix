@@ -23,7 +23,7 @@
         description = ''
           Branch of the secrets repository to track. Each host has a branch
           of its own, `host/<name>`, holding its files and no other host's;
-          `fleet secrets host-enroll` creates it.
+          `fleetmgr secrets host-enroll` creates it.
         '';
       };
     };

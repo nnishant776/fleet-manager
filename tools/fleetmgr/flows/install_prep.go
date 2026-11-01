@@ -28,13 +28,13 @@ var InstallPrep = &engine.Flow{
 	Title: "Prepare a host's install from checked commits",
 	Short: "Check the commits a host's install takes, and print the line to run on the installer",
 	Long: "Run on your machine, in the configuration checkout, before installing a host.\n" +
-		"fleet checks that the checkout's newest commit is signed by a key in its\n" +
+		"fleetmgr checks that the checkout's newest commit is signed by a key in its\n" +
 		"fleet/allowed_signers and pushed, and so is the fleet-manager commit its\n" +
 		"flake.lock pins, which the installer comes from. It then prints one line to run\n" +
 		"on the machine booted from the NixOS installer: it fetches bootstrap by that\n" +
 		"commit, checks it against a checksum worked out here, and installs exactly\n" +
 		"those commits, so that a push to main since cannot change what gets installed.",
-	Example: "  fleet install prep nas1 --flake ~/Projects/inventory",
+	Example: "  fleetmgr install prep nas1 --flake ~/Projects/inventory",
 	Args:    []string{"host"},
 	Inputs: []engine.Input{
 		fleetmgr.FlakeInput,
@@ -50,7 +50,7 @@ var InstallPrep = &engine.Flow{
 		},
 		{
 			Title: "Check the fleet-manager commit the installer comes from",
-			Why:   "bootstrap, fleet and os-install come from fleet-manager. It is the commit the configuration's flake.lock pins, fetched with git and checked against the same signers file.",
+			Why:   "bootstrap, fleetmgr and os-install come from fleet-manager. It is the commit the configuration's flake.lock pins, fetched with git and checked against the same signers file.",
 			Do:    engine.Func(checkInstallerCommit),
 		},
 		{
@@ -118,7 +118,7 @@ func checkConfigCommit(x *engine.Ctx) error {
 	}
 	x.Values["main_rev"] = x.Value("inv")
 	// With lib.mkFleet's hostBranches, the host installs from its own branch,
-	// which fleet inventory publish cut from this commit.
+	// which fleetmgr inventory publish cut from this commit.
 	var l layout
 	if out, err := engine.Silently(x, nil, "nix", "eval", "--json", x.Value("flake")+"#fleetLayout"); err == nil {
 		_ = json.Unmarshal([]byte(out), &l)
@@ -157,7 +157,7 @@ func checkHostBranch(x *engine.Ctx, l layout) error {
 	steps := []*engine.Command{
 		publishGit("fetch", "-q", "origin", "+refs/heads/{{.config_ref}}:refs/remotes/origin/{{.config_ref}}").
 			Explain(func(engine.Result) string {
-				return "{{.config_ref}} could not be fetched: is it published? fleet inventory publish {{.host}} makes it"
+				return "{{.config_ref}} could not be fetched: is it published? fleetmgr inventory publish {{.host}} makes it"
 			}).OK("fetched {{.config_ref}}"),
 		publishGit("rev-parse", "refs/remotes/origin/{{.config_ref}}^{commit}").Capture("branch_rev").OK("its newest commit is {{.branch_rev}}"),
 		publishGit("-c", "gpg.ssh.allowedSignersFile={{.signers}}", "verify-commit", "{{.branch_rev}}").
@@ -187,7 +187,7 @@ func checkHostBranch(x *engine.Ctx, l layout) error {
 		return err
 	}
 	if got, _ := engine.Silently(x, nil, "git", "-C", x.Value("flake"), "rev-parse", x.Value("branch_rev")+"^{tree}"); got != want {
-		return fmt.Errorf("%s was not published from %s: run fleet inventory publish %s, then this again",
+		return fmt.Errorf("%s was not published from %s: run fleetmgr inventory publish %s, then this again",
 			x.Value("config_ref"), x.Value("main_rev"), x.Value("host"))
 	}
 	x.UI.OK(x.Value("config_ref") + " is published from " + x.Value("main_rev"))

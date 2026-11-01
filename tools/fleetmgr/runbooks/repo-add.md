@@ -1,11 +1,11 @@
-<!-- Written by `fleet docs` from tools/fleetmgr/flows; edit the flows, not this. -->
+<!-- Written by `fleetmgr docs` from tools/fleetmgr/flows; edit the flows, not this. -->
 
-# fleet repo add
+# fleetmgr repo add
 
 Clone a repository for the tools to work in, check its keys and main, and give it a name.
 
 The tools keep their own clone of each repository, under ~/.local/share/fleet/repos
-(XDG_DATA_HOME), which nobody edits. fleet repo add clones it, keeps your copy of the
+(XDG_DATA_HOME), which nobody edits. fleetmgr repo add clones it, keeps your copy of the
 keys that sign its commits (the repository's own fleet/allowed_signers, or those of
 the repository named by --signers-from, for one without), checks main and the hosts'
 branches, and names the clone. After that --flake NAME and --repo NAME mean the clone,
@@ -17,12 +17,12 @@ says which: fleet-manager, whose address it knows, then your inventory, then you
 secrets repository, whose commits are checked against your inventory's keys.
 
 ```
-fleet repo add [URL] [flags]
+fleetmgr repo add [URL] [flags]
 
-fleet repo add        (three times: fleet-manager, your inventory, your secrets repository)
-fleet repo add git@github.com:example-org/fleet-manager.git
-fleet repo add git@github.com:example-org/inventory.git
-fleet repo add git@github.com:example-org/secrets.git --signers-from inventory
+fleetmgr repo add        (three times: fleet-manager, your inventory, your secrets repository)
+fleetmgr repo add git@github.com:example-org/fleet-manager.git
+fleetmgr repo add git@github.com:example-org/inventory.git
+fleetmgr repo add git@github.com:example-org/secrets.git --signers-from inventory
 ```
 
 ## Flags
@@ -32,7 +32,7 @@ fleet repo add git@github.com:example-org/secrets.git --signers-from inventory
 | `--url` | The address git clones it from: SSH or https (a local one needs file://) |
 | `--name` | What --flake and --repo take for it; the last part of its address by default |
 | `--signers-from` | For a repository without fleet/allowed_signers, such as the secrets repository: the name of the repository whose keys sign its commits; your inventory's when the secrets repository is the one asked for |
-| `--signing-key` | The SSH private key that signs commits made in the clone; made by fleet setup |
+| `--signing-key` | The SSH private key that signs commits made in the clone; made by fleetmgr setup |
 | `--git-name` | The author name of the commits made in the clone; by default the one git uses where you run this |
 | `--git-email` | The author email of the commits made in the clone, such as your forge's noreply address; by default the one git uses where you run this |
 
@@ -52,7 +52,7 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 5. **Set who commits in it.** The commits the tools make in the clone, such as publish's and the secrets commands', carry your name and email, as in your checkouts.
 
-6. **Sign the commits made in it.** Hosts accept only signed commits, so the clone is set to sign the ones made in it with your signing key, as fleet setup does for your checkouts.
+6. **Sign the commits made in it.** Hosts accept only signed commits, so the clone is set to sign the ones made in it with your signing key, as fleetmgr setup does for your checkouts.
 
 7. **Install the secrets repository's commit check.** Its pre-commit hook refuses anything under hosts/ or users/ that is not ciphertext. Git runs a hook as you, with your agent at hand, so what is installed is a copy you have read, not the repository's own file, which anyone who can push could change.
 
@@ -60,7 +60,7 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 9. **Next.** How to use it.
 
-   > Use the name wherever a command takes --flake or --repo: fleet inventory publish --flake NAME
+   > Use the name wherever a command takes --flake or --repo: fleetmgr inventory publish --flake NAME
    > Edit in a checkout of your own; never edit the tool's clone by hand.
 
-It needs `git` on the PATH; `fleet doctor` says where to get them.
+It needs `git` on the PATH; `fleetmgr doctor` says where to get them.

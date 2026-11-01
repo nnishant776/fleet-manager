@@ -1,11 +1,11 @@
-# fleet, the guided command-line tool (tools/fleetmgr). Two packages:
+# fleetmgr, the guided command-line tool (tools/fleetmgr). Two packages:
 #   static  the bare binary, built without cgo, so it is fully static on Linux
 #           and needs only the system on macOS; for machines without Nix.
 #   (main)  that binary wrapped with every tool it runs on its PATH, so it works
 #           on any machine with Nix. nix itself is left to the machine, whose
 #           daemon it has to talk to.
 # The version is fixed here and the source is only tools/fleetmgr, so a host that
-# installs fleet rebuilds it when fleet changes, not on every commit.
+# installs fleetmgr rebuilds it when fleetmgr changes, not on every commit.
 {
   lib,
   buildGoModule,
@@ -22,7 +22,7 @@
 }:
 let
   static = buildGoModule {
-    pname = "fleet-static";
+    pname = "fleetmgr-static";
     inherit version;
     src = lib.fileset.toSource {
       root = ./.;
@@ -34,11 +34,9 @@ let
     nativeCheckInputs = [ git ];
     env.CGO_ENABLED = "0";
     ldflags = [ "-s" "-w" "-X main.version=${version}" ];
-    # Go names the binary after the module's last element, fleetmgr; the command is fleet.
-    postInstall = "mv $out/bin/fleetmgr $out/bin/fleet";
     meta = {
       description = "Guided procedures for this fleet: hosts, secrets, users and keys";
-      mainProgram = "fleet";
+      mainProgram = "fleetmgr";
     };
   };
 
@@ -46,11 +44,11 @@ let
   tools = [ git openssh sops age yq-go mkpasswd gh ];
 in
 symlinkJoin {
-  name = "fleet-${version}";
+  name = "fleetmgr-${version}";
   paths = [ static ];
   nativeBuildInputs = [ makeWrapper ];
   postBuild = ''
-    wrapProgram $out/bin/fleet --prefix PATH : ${lib.makeBinPath tools}
+    wrapProgram $out/bin/fleetmgr --prefix PATH : ${lib.makeBinPath tools}
   '';
   passthru = { inherit static; };
   meta = static.meta;

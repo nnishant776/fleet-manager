@@ -20,7 +20,7 @@ const enrollDoc = "version: 1\nhost: pi\ncreated: 2026-10-18T12:14:02Z\n" +
 	"age_recipient: age1testrecipient\n" +
 	"deploy_pubkey: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDdBK90 fleet-deploy@pi\n"
 
-// enrollHost answers like a host with fleet's tooling. identity and enrolled
+// enrollHost answers like a host with fleetmgr's tooling. identity and enrolled
 // say how far its enrollment got; tamper corrupts the enrollment checksum.
 func enrollHost(identity, enrolled, tamper bool) func(engine.Spec) (engine.Result, error) {
 	sum := sha256.Sum256([]byte(enrollDoc))
@@ -28,14 +28,14 @@ func enrollHost(identity, enrolled, tamper bool) func(engine.Spec) (engine.Resul
 	if tamper {
 		sumLine = strings.Repeat("0", 64) + "  /var/lib/fleet/pi.enroll\n"
 	}
-	// The host's branch exists once fleet secrets host-enroll has run.
+	// The host's branch exists once fleetmgr secrets host-enroll has run.
 	created := false
 	return func(s engine.Spec) (engine.Result, error) {
 		last := ""
 		if len(s.Args) > 0 {
 			last = s.Args[len(s.Args)-1]
 		}
-		if s.Name == "fleet" && strings.Contains(strings.Join(s.Args, " "), "host-enroll") {
+		if s.Name == "fleetmgr" && strings.Contains(strings.Join(s.Args, " "), "host-enroll") {
 			created = true
 		}
 		switch {
@@ -466,7 +466,7 @@ func TestEnrollRefusesAHostEnrolledWithAnotherIdentity(t *testing.T) {
 		}
 		return base(s)
 	})
-	if err == nil || !strings.Contains(err.Error()+out, "fleet secrets host-rekey pi --from") {
+	if err == nil || !strings.Contains(err.Error()+out, "fleetmgr secrets host-rekey pi --from") {
 		t.Fatalf("got %v\n%s", err, out)
 	}
 	for _, unwanted := range []string{"secrets host-enroll", "git push"} {
@@ -574,7 +574,7 @@ func TestEnrollDoesNotSwitchAMachineItsConfigurationDoesNotFit(t *testing.T) {
 	}
 }
 
-// A host without fleet's tools makes its identity before the switch, with
+// A host without fleetmgr's tools makes its identity before the switch, with
 // fleet-secrets-sync from the fleet-manager commit checked for it.
 func TestEnrollMakesTheIdentityBeforeTheSwitch(t *testing.T) {
 	err, fake, out := runSwitch(t, noTooling(enrollHost(false, false, false)))
@@ -600,7 +600,7 @@ func TestEnrollMakesTheIdentityBeforeTheSwitch(t *testing.T) {
 	}
 }
 
-// privateEnroll answers like pi, running NixOS without fleet's tools, whose
+// privateEnroll answers like pi, running NixOS without fleetmgr's tools, whose
 // configuration is private (git@github.com:example-org/inventory.git), and
 // like the checkout of that inventory in dir.
 func privateEnroll(dir string) func(engine.Spec) (engine.Result, error) {

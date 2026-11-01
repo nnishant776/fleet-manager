@@ -23,9 +23,9 @@ var HostSecret = &engine.Flow{
 		"is kept today, so it never appears on screen. Then it shows the lines that\n" +
 		"make the host's configuration use it, and with --sync syncs the host and\n" +
 		"checks the secret arrived.",
-	Example: "  fleet host secret pi1 wifi/home\n" +
-		"  fleet host secret pi1 hotspot/wls1a2b3c4d5e6f --from-host /var/lib/hotspot/wls1a2b3c4d5e6f\n" +
-		"  printf %s \"$psk\" | fleet host secret pi-gw wifi/home --value-stdin --yes",
+	Example: "  fleetmgr host secret pi1 wifi/home\n" +
+		"  fleetmgr host secret pi1 hotspot/wls1a2b3c4d5e6f --from-host /var/lib/hotspot/wls1a2b3c4d5e6f\n" +
+		"  printf %s \"$psk\" | fleetmgr host secret pi-gw wifi/home --value-stdin --yes",
 	Args: []string{"host", "name"},
 	Inputs: []engine.Input{
 		secrets.RepoInput,
@@ -75,7 +75,7 @@ var HostSecret = &engine.Flow{
 	Needs: []string{"git", "yq", "sops", "age"},
 	Steps: []engine.Step{
 		secrets.Open(true),
-		secrets.ExistingBranch("host '{{.host}}' is not enrolled; enroll it first (fleet host enroll, or fleet secrets host-enroll)", true),
+		secrets.ExistingBranch("host '{{.host}}' is not enrolled; enroll it first (fleetmgr host enroll, or fleetmgr secrets host-enroll)", true),
 		{
 			Title: "Read the current value off {{.host}}",
 			Why:   "As {{.user}}, with nothing forwarded; the value is kept in memory and never shown.",

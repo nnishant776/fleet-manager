@@ -106,7 +106,7 @@ func TestSetupPutsBackAllowedSignersFromItsCopy(t *testing.T) {
 	if got, _ := os.ReadFile(signers); string(got) != before {
 		t.Errorf("allowed_signers is %q, want it as it was, %q\n%s", got, before, out)
 	}
-	if !strings.Contains(out.String(), "fleet/allowed_signers is as it was, from the copy fleet kept") {
+	if !strings.Contains(out.String(), "fleet/allowed_signers is as it was, from the copy fleetmgr kept") {
 		t.Errorf("output:\n%s", out)
 	}
 }

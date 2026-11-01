@@ -1,6 +1,6 @@
 # 4. Roles and machine types
 
-<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->
+<!-- book:top — written by `fleetmgr docs` from SUMMARY.md and the headings; do not edit -->
 [← 3. Building a Raspberry Pi image](raspberry-pi.md) · [Contents](README.md) · [5. Accounts and homes →](accounts.md)
 <!-- /book:top -->
 
@@ -77,7 +77,7 @@ resolve from other options. A plain assignment always wins.
 | `conf.users.accounts.<name>.manageAccount` | `true` on NixOS, `false` on macOS (accounts come from MDM) | `lib/flakeLib.nix` |
 | `conf.users.accounts.<name>.fullName` | the username | `modules/conf/options/users.nix` |
 | `conf.desktop.greeter.wallpaper` | the bundled `wallhaven-j5oy7m.jpg`; `null` gives ReGreet's plain background | `modules/linux/desktop/greeter/wallpaper.nix` |
-| `conf.hardware.disk.volumes` | `fleet` (`64M`, `/var/lib/fleet`), `swap` (`16G`), `root` (`100%FREE`, `/`), each field a default, when `hardware.disk.enable` | `modules/linux/baseline/disk.nix` |
+| `conf.hardware.disk.volumes` | `fleetmgr` (`64M`, `/var/lib/fleet`), `swap` (`16G`), `root` (`100%FREE`, `/`), each field a default, when `hardware.disk.enable` | `modules/linux/baseline/disk.nix` |
 | `users.mutableUsers` | `false` when `conf.fleet.repo.url` is set, so accounts and passwords are exactly what the configuration declares | `modules/linux/host/users.nix` |
 | `programs.nix-ld.enable` | follows `conf.development.enable` | `modules/linux/development/nix-ld.nix` |
 | `services.sshguard.enable` | on only while sshd accepts passwords | `modules/linux/sharing/ssh.nix` |
@@ -117,7 +117,7 @@ turn the implied option off.
 | `conf.hardware.boot.mode = "bios"` | • `hardware.boot.loader` defaults to `"grub"`; GRUB without `grubPasswordHash` gives a warning |
 | `conf.hardware.boot.loader = "uboot"` | • `boot.loader.generic-extlinux-compatible`, with GRUB off and at most 10 generations in the menu<br>• With `hardware.disk.enable`: `/boot` is marked legacy BIOS bootable, where U-Boot looks<br>• `mode = "bios"` or `efiVariables` is a build error<br>• With the splash on there is no menu; the newest generation boots |
 | `conf.hardware.boot.splash.enable` | • Plymouth, quiet kernel and systemd output, hidden generation menu<br>• With `hardware.graphics.enable`: the Intel or AMD driver loads in the initrd (early KMS) |
-| `conf.hardware.disk.enable` | • Default `fleet`, `swap` and `root` volumes; `fleet` must stay enabled at `/var/lib/fleet`<br>• On a laptop: a warning when `encrypt = false`<br>• Build errors unless `hardware.disk.device` is set, at most one volume is `100%FREE`, and every filesystem volume has a mountpoint |
+| `conf.hardware.disk.enable` | • Default `fleetmgr`, `swap` and `root` volumes; `fleetmgr` must stay enabled at `/var/lib/fleet`<br>• On a laptop: a warning when `encrypt = false`<br>• Build errors unless `hardware.disk.device` is set, at most one volume is `100%FREE`, and every filesystem volume has a mountpoint |
 
 
 

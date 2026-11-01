@@ -15,7 +15,7 @@ import (
 // Groups describes the intermediate commands, such as "host", by name.
 type Groups map[string]string
 
-// Section is one part of the menu `fleet` shows when run alone.
+// Section is one part of the menu `fleetmgr` shows when run alone.
 type Section struct {
 	Name  string
 	Flows []*Flow
@@ -217,7 +217,7 @@ func flagHelp(in Input) string {
 
 // restArg is the name of the last positional argument when the flow lets it
 // take every word that remains (Flow.Rest), such as the hosts of
-// fleet user password [HOST]...; otherwise empty.
+// fleetmgr user password [HOST]...; otherwise empty.
 func (f *Flow) restArg() string {
 	if !f.Rest || len(f.Args) == 0 {
 		return ""

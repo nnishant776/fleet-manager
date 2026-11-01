@@ -21,14 +21,14 @@ var TrustSigners = &engine.Flow{
 	Path:  []string{"trust", "signers"},
 	Title: "Trust a repository's signing keys",
 	Short: "Keep your own copy of a checkout's fleet/allowed_signers, which its commits are checked against",
-	Long: "fleet checks commits against your own copy of each repository's signers, kept in\n" +
+	Long: "fleetmgr checks commits against your own copy of each repository's signers, kept in\n" +
 		"$XDG_STATE_HOME/fleet (~/.local/state/fleet), not against the checkout's file: a\n" +
-		"pushed commit could add the key that signs it. The first time, fleet shows the\n" +
+		"pushed commit could add the key that signs it. The first time, fleetmgr shows the\n" +
 		"checkout's keys and keeps them once you approve. After that it takes a change only\n" +
 		"when the commit that made it is signed by a key you already trust, and shows the\n" +
 		"keys added and removed first.",
-	Example: "  fleet trust signers --flake ~/Projects/inventory\n" +
-		"  fleet trust signers --flake /etc/nixos",
+	Example: "  fleetmgr trust signers --flake ~/Projects/inventory\n" +
+		"  fleetmgr trust signers --flake /etc/nixos",
 	Inputs: []engine.Input{fleetmgr.FlakeInput},
 	Needs:  []string{"git"},
 	Steps: []engine.Step{
@@ -199,7 +199,7 @@ func signersChange(added, removed []fleetmgr.SignerKey) string {
 
 // trustedSignersFor is your copy of the keys for the repository at address,
 // which its commits are checked against, or an error saying how to make one:
-// fleet trust signers in checkout.
+// fleetmgr trust signers in checkout.
 func trustedSignersFor(x *engine.Ctx, address, checkout string) (string, error) {
 	path, _, err := fleetmgr.TrustedSigners(address)
 	switch {
@@ -208,7 +208,7 @@ func trustedSignersFor(x *engine.Ctx, address, checkout string) (string, error) 
 		return path, nil
 	case errors.Is(err, fleetmgr.ErrNoSignersCopy):
 		id, _ := fleetmgr.RepoID(address)
-		return "", fmt.Errorf("you trust no keys for %s yet, and its commits are checked against your own copy of them: run fleet trust signers --flake %s", id, checkout)
+		return "", fmt.Errorf("you trust no keys for %s yet, and its commits are checked against your own copy of them: run fleetmgr trust signers --flake %s", id, checkout)
 	case err != nil:
 		return "", err
 	}
@@ -244,7 +244,7 @@ func compareSigners(x *engine.Ctx) error {
 	switch {
 	case errors.Is(err, fleetmgr.ErrNoSignersCopy):
 		x.UI.Note("You trust no keys for " + id + " yet, and its commits are checked against your own copy of them. " +
-			"Run fleet trust signers --flake " + flake + " to make one.")
+			"Run fleetmgr trust signers --flake " + flake + " to make one.")
 		return nil
 	case err != nil:
 		return err
@@ -256,7 +256,7 @@ func compareSigners(x *engine.Ctx) error {
 	}
 	x.UI.Note("The checkout's keys for " + id + " differ from the ones you trust:")
 	x.UI.Text(signersChange(added, removed))
-	x.UI.Note("If you expected this change, update the repository's trust: fleet trust signers --flake " + flake +
+	x.UI.Note("If you expected this change, update the repository's trust: fleetmgr trust signers --flake " + flake +
 		". Until then, its commits are checked against the keys you trust.")
 	return nil
 }

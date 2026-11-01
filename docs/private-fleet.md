@@ -1,7 +1,7 @@
 # 9. A private fleet
 
-<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->
-[← 8. Secrets](secrets.md) · [Contents](README.md) · [10. The fleet tool →](fleet-tool.md)
+<!-- book:top — written by `fleetmgr docs` from SUMMARY.md and the headings; do not edit -->
+[← 8. Secrets](secrets.md) · [Contents](README.md) · [10. The fleetmgr tool →](fleetmgr.md)
 <!-- /book:top -->
 
 How a fleet keeps its hosts and users in a private repository, the inventory,
@@ -70,7 +70,7 @@ keys come from there only, so the only key material in the inventory is
 
 Your signature on that commit vouches for the fleet-manager it pins, so pin a
 commit whose signature you have checked, by its hash. Check it in a
-fleet-manager checkout of your own, set up by `fleet setup` to check
+fleet-manager checkout of your own, set up by `fleetmgr setup` to check
 signatures:
 
 ```bash
@@ -84,7 +84,7 @@ The input is `git+https://`, not `github:`. With git, the files Nix gets are
 the ones the commit's hash names. A `github:` input is a tarball that GitHub
 makes, and nothing checks it against the commit.
 
-Give the tools a clone of the inventory of their own, with `fleet repo add`
+Give the tools a clone of the inventory of their own, with `fleetmgr repo add`
 ([The tools' own clones](signing-and-trust.md#the-tools-own-clones) in *Signing commits and trusting them*). The
 commands below then take its name for `--flake`, such as `--flake inventory`;
 a path to a checkout works as well.
@@ -104,7 +104,7 @@ conf.fleet.repo.url = "git@github.com:example-org/inventory.git";
 ```
 
 The key has to be a read-only deploy key of the private repository.
-`fleet host enroll <host> --flake <checkout>` registers it with `gh`.
+`fleetmgr host enroll <host> --flake <checkout>` registers it with `gh`.
 
 ## Each host gets only its own files
 
@@ -122,7 +122,7 @@ checkout or its Nix store. `main` stays the full inventory: you edit there,
 and CI checks it. After pushing a change to `main`, run this on your machine:
 
 ```bash
-fleet inventory publish --flake <checkout>
+fleetmgr inventory publish --flake <checkout>
 ```
 
 It checks that main's newest commit is signed by a key you trust, follows the
@@ -137,9 +137,9 @@ its configuration key to fetch the other branches, since GitHub's deploy keys
 cannot be limited to a branch.
 
 To sync a host right away, instead of at its next sync, run
-`fleet host sync <host>`: it starts the host's sync, waits, and shows what the
+`fleetmgr host sync <host>`: it starts the host's sync, waits, and shows what the
 host runs, its secrets and its health.
-`fleet inventory publish --flake <checkout> --sync` publishes and then syncs
+`fleetmgr inventory publish --flake <checkout> --sync` publishes and then syncs
 every host whose branch changed, one after another, and checks that each runs
 the commit just pushed.
 
@@ -154,7 +154,7 @@ against that user's own key. It builds with the fleet-manager that
 
 ## Its own CI
 
-fleet-manager's CI never sees an inventory's hosts: it tests the `fleet` tool,
+fleet-manager's CI never sees an inventory's hosts: it tests the `fleetmgr` tool,
 and its weekly flake update evaluates only fleet-manager's own example and test
 hosts. So the inventory needs a check of its own:
 `nix run .#check-purity` evaluates every host, and CI should run it on every
@@ -164,7 +164,7 @@ push and pull request.
 
 The inventory pins one
 commit of fleet-manager in its `flake.lock`. To move it, run
-`fleet inventory pin --flake inventory` (the name of the clone, or a checkout),
+`fleetmgr inventory pin --flake inventory` (the name of the clone, or a checkout),
 then publish as above. It takes fleet-manager's newest main, or the commit
 you give with `--to`, only if a key you trust signed it. It shows the commits
 the pin moves over, and pins only if each is signed by a key you trust. It
@@ -176,7 +176,7 @@ same way, so an unsigned or older commit is never pinned by mistake.
 
 ## Installing a host from it
 
-Run `fleet install prep <host> --flake <checkout of it>` on your machine, and
+Run `fleetmgr install prep <host> --flake <checkout of it>` on your machine, and
 the line it prints on the installer
 (see [First run](../README.md#first-run) in the README). It sets
 `FLAKE=git+ssh://git@github.com/example-org/inventory?ref=host/<host>&rev=<commit>`,
@@ -195,11 +195,11 @@ things in this order:
    a QR code of it.
 2. On your machine, in the secrets repository, set up what the host needs
    before it boots:
-   - `fleet secrets host-enroll <host> --from <the file>` (does not push);
-   - support's keys, `fleet secrets user-keys support <host>
+   - `fleetmgr secrets host-enroll <host> --from <the file>` (does not push);
+   - support's keys, `fleetmgr secrets user-keys support <host>
      --authorized-keys support.keys` (pushes). Without them the host has no
      way in until they are added and it syncs;
-   - each user's password, `fleet secrets user-password <user> <host>` (does
+   - each user's password, `fleetmgr secrets user-password <user> <host>` (does
      not push);
    - then push the host's branch: `git push origin host/<host>`.
 
@@ -217,10 +217,10 @@ yet. Bring a Pi in once it runs, as in the next section.
 ## Bringing in a running NixOS machine
 
 Add its folder to the inventory, push, publish its branch, then run
-`fleet host enroll <host> --flake <checkout of it>`. For a machine that does
+`fleetmgr host enroll <host> --flake <checkout of it>`. For a machine that does
 not run a fleet configuration yet, enroll does this in order:
 
-1. Checks the commit to install, as `fleet install prep` does.
+1. Checks the commit to install, as `fleetmgr install prep` does.
 2. Makes the host's identity with `fleet-secrets-sync` from the checked
    fleet-manager commit.
 3. Enrolls the host and registers both of its keys.
@@ -234,7 +234,7 @@ not run a fleet configuration yet, enroll does this in order:
 8. Replaces `/etc/nixos` with the fleet's checkout, made by the first-boot
    clone at the commit the host now runs. This runs as a unit on the host,
    so a dropped connection cannot leave the host without a checkout.
-9. Syncs the host and runs `fleet host check` (`--sync=false` leaves this out).
+9. Syncs the host and runs `fleetmgr host check` (`--sync=false` leaves this out).
 
 The configuration has to describe the machine as it is, since nothing is
 reinstalled:
@@ -255,21 +255,21 @@ reinstalled:
 ## Moving a host fleet-manager defines
 
 A host that fleet-manager defines already moves into an inventory with
-`fleet inventory import <host> --flake <inventory>`. It copies the host's
+`fleetmgr inventory import <host> --flake <inventory>`. It copies the host's
 folder and its users' folders from a commit of fleet-manager, changes only
 the path to `fleet/allowed_signers` and the address the host fetches from,
 checks the host in the inventory, commits, pushes and publishes its branch.
 It refuses a host without secrets, and says what to set in fleet-manager
 first. It ends by listing the commands that finish the move:
-`fleet host enroll`, `fleet host check`, and removing the host from
+`fleetmgr host enroll`, `fleetmgr host check`, and removing the host from
 fleet-manager.
 
 ## Moving a running host to it
 
 1. Copy the host's folder to the inventory, with `repo.url` set to the
    inventory's SSH address, and push. With host branches, publish its
-   branch too: `fleet inventory publish <host> --flake <checkout of it>`.
-2. Run `fleet host enroll <host> --flake <checkout of it>`. It sees that
+   branch too: `fleetmgr inventory publish <host> --flake <checkout of it>`.
+2. Run `fleetmgr host enroll <host> --flake <checkout of it>`. It sees that
    the host runs a configuration from another repository, and:
    1. adds the configuration key on the host and registers it;
    2. checks the configuration fits the machine, and that the host's secrets
@@ -278,7 +278,7 @@ fleet-manager.
    4. switches the host to its configuration there, on its branch, fetched
       with that key;
    5. replaces `/etc/nixos` with a checkout of the new repository;
-   6. syncs the host and runs `fleet host check`, unless `--sync=false`.
+   6. syncs the host and runs `fleetmgr host check`, unless `--sync=false`.
 
    The first-boot clone records the commit it checks out as the first the
    host accepted from there, so the sync goes on from it. Nothing in
@@ -289,5 +289,5 @@ fleet-manager.
 <!-- book:bottom -->
 ---
 
-[← 8. Secrets](secrets.md) · [Contents](README.md) · [10. The fleet tool →](fleet-tool.md)
+[← 8. Secrets](secrets.md) · [Contents](README.md) · [10. The fleetmgr tool →](fleetmgr.md)
 <!-- /book:bottom -->

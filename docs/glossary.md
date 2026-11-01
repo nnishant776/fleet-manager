@@ -1,6 +1,6 @@
 # Appendix C. Glossary
 
-<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->
+<!-- book:top — written by `fleetmgr docs` from SUMMARY.md and the headings; do not edit -->
 [← Appendix B. Things to know](things-to-know.md) · [Contents](README.md) · [Appendix D. Further reading →](further-reading.md)
 <!-- /book:top -->
 
@@ -33,7 +33,7 @@ In this chapter: [A](#a) · [B](#b) · [C](#c) · [D](#d) · [E](#e) · [F](#f) 
 ## B
 
 - **`bootstrap`**: The script a first run fetches. It installs Nix where it is
-  missing, then hands over to `fleet install`, `system-switch` or nix-darwin.
+  missing, then hands over to `fleetmgr install`, `system-switch` or nix-darwin.
   See [First run](../README.md#first-run).
 
 ## C
@@ -74,15 +74,15 @@ In this chapter: [A](#a) · [B](#b) · [C](#c) · [D](#d) · [E](#e) · [F](#f) 
 - **first-boot clone**: `fleet-bootstrap`, which clones the configuration into
   `/etc/nixos` at the first boot, at the commit the system was built from. See
   [What the install does](installing.md#what-the-install-does).
-- **`fleet`**: The guided tool that walks through the fleet's procedures, on
-  the maintainer's machine. See [The fleet tool](fleet-tool.md).
+- **`fleetmgr`**: The guided tool that walks through the fleet's procedures, on
+  the maintainer's machine. See [The fleetmgr tool](fleetmgr.md).
 - **fleet host**: A machine with `conf.fleet.repo.url`, which syncs from its
   configuration. See
   [What a NixOS host does at each sync](how-it-works.md#what-a-nixos-host-does-at-each-sync).
 - **`fleet-identity`**: The host's command that prints its enrollment file, or
   exports its identity for a reinstall. See [The tools](secrets.md#the-tools).
 - **`fleet-secrets`**: The maintainer's shell tool for the secrets repository;
-  `fleet secrets …` does the same and more. See
+  `fleetmgr secrets …` does the same and more. See
   [The tools](secrets.md#the-tools).
 - **`fleet-secrets-sync`**: The host's program that fetches, verifies and
   snapshots its secrets. See [On the host](secrets.md#on-the-host).
@@ -148,7 +148,7 @@ In this chapter: [A](#a) · [B](#b) · [C](#c) · [D](#d) · [E](#e) · [F](#f) 
   [Trust model](secrets.md#trust-model).
 - **recovery recipient**: The public half of the recovery identity. Every file
   is encrypted to it. See [Trust model](secrets.md#trust-model).
-- **release**: A build of the `fleet` tool that CI publishes on the forge: static
+- **release**: A build of the `fleetmgr` tool that CI publishes on the forge: static
   binaries, with their `SHA256SUMS` and attestations. See
   [A newer fleet-manager, CI and releases](how-it-works.md#a-newer-fleet-manager-ci-and-releases).
 - **role**: What a machine is for, `conf.role`, which sets its defaults. See
@@ -156,8 +156,8 @@ In this chapter: [A](#a) · [B](#b) · [C](#c) · [D](#d) · [E](#e) · [F](#f) 
 - **rollback on failure**: Going back to the previous generation when a new
   system fails to activate. See
   [What a NixOS host does at each sync](how-it-works.md#what-a-nixos-host-does-at-each-sync).
-- **runbook**: A page of one `fleet` command, written from the command itself.
-  See [Runbooks](fleet-tool.md#runbooks).
+- **runbook**: A page of one `fleetmgr` command, written from the command itself.
+  See [Runbooks](fleetmgr.md#runbooks).
 
 ## S
 
@@ -184,7 +184,7 @@ In this chapter: [A](#a) · [B](#b) · [C](#c) · [D](#d) · [E](#e) · [F](#f) 
 
 ## T
 
-- **tools' own clones**: The clones `fleet repo add` keeps for the tools
+- **tools' own clones**: The clones `fleetmgr repo add` keeps for the tools
   alone, fetched and checked before each use. See
   [The tools' own clones](signing-and-trust.md#the-tools-own-clones).
 - **trusted commit**: On the maintainer's machine, the last commit the tools
@@ -197,7 +197,7 @@ In this chapter: [A](#a) · [B](#b) · [C](#c) · [D](#d) · [E](#e) · [F](#f) 
   repository, which the hosts that list them read. See
   [Users with a branch of their own](secrets.md#users-with-a-branch-of-their-own).
 - **user identity**: A user's own age key and SSH signing key, made by
-  `fleet user init`. See [Trust model](secrets.md#trust-model).
+  `fleetmgr user init`. See [Trust model](secrets.md#trust-model).
 
 ## W
 

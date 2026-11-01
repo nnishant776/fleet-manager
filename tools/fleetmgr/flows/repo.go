@@ -33,7 +33,7 @@ var cloneSync = engine.Step{
 			}
 			dir := x.Value(in)
 			if !fileExists(dir) {
-				return fmt.Errorf("the clone of %s is not in %s: run fleet repo add again with its address", name, dir)
+				return fmt.Errorf("the clone of %s is not in %s: run fleetmgr repo add again with its address", name, dir)
 			}
 			x.UI.OK(name + " is the tool's clone in " + dir)
 			if err := fleetmgr.SyncClone(x, dir); err != nil {
@@ -103,7 +103,7 @@ func nextRepo(x *engine.Ctx) (string, error) {
 	switch {
 	case fm == "":
 		x.Values["repo_role"] = "fleet-manager"
-		x.UI.Note("Adding fleet-manager first, from " + fleetmgr.UpstreamURL + ". Run fleet repo add again afterwards for your inventory, " +
+		x.UI.Note("Adding fleet-manager first, from " + fleetmgr.UpstreamURL + ". Run fleetmgr repo add again afterwards for your inventory, " +
 			"and once more for your secrets repository.")
 		return fleetmgr.UpstreamURL, nil
 	case len(inventories) == 0:
@@ -118,7 +118,7 @@ func nextRepo(x *engine.Ctx) (string, error) {
 			", your inventory, as the hosts check them.")
 	default:
 		x.Values["repo_kind"] = "another repository to add"
-		x.UI.Note("fleet-manager, your inventory and your secrets repository are added; fleet repo sync keeps them up to date.")
+		x.UI.Note("fleet-manager, your inventory and your secrets repository are added; fleetmgr repo sync keeps them up to date.")
 	}
 	return "", nil
 }
@@ -129,7 +129,7 @@ var RepoAdd = &engine.Flow{
 	Title: "Keep a clone of a repository for the tools",
 	Short: "Clone a repository for the tools to work in, check its keys and main, and give it a name",
 	Long: "The tools keep their own clone of each repository, under ~/.local/share/fleet/repos\n" +
-		"(XDG_DATA_HOME), which nobody edits. fleet repo add clones it, keeps your copy of the\n" +
+		"(XDG_DATA_HOME), which nobody edits. fleetmgr repo add clones it, keeps your copy of the\n" +
 		"keys that sign its commits (the repository's own fleet/allowed_signers, or those of\n" +
 		"the repository named by --signers-from, for one without), checks main and the hosts'\n" +
 		"branches, and names the clone. After that --flake NAME and --repo NAME mean the clone,\n" +
@@ -139,10 +139,10 @@ var RepoAdd = &engine.Flow{
 		"Without an address it takes the next of your repositories that is not added yet, and\n" +
 		"says which: fleet-manager, whose address it knows, then your inventory, then your\n" +
 		"secrets repository, whose commits are checked against your inventory's keys.",
-	Example: "  fleet repo add        (three times: fleet-manager, your inventory, your secrets repository)\n" +
-		"  fleet repo add git@github.com:example-org/fleet-manager.git\n" +
-		"  fleet repo add git@github.com:example-org/inventory.git\n" +
-		"  fleet repo add git@github.com:example-org/secrets.git --signers-from inventory",
+	Example: "  fleetmgr repo add        (three times: fleet-manager, your inventory, your secrets repository)\n" +
+		"  fleetmgr repo add git@github.com:example-org/fleet-manager.git\n" +
+		"  fleetmgr repo add git@github.com:example-org/inventory.git\n" +
+		"  fleetmgr repo add git@github.com:example-org/secrets.git --signers-from inventory",
 	Args: []string{"url"},
 	Inputs: []engine.Input{
 		{Name: "url", Prompt: "Address of {{.repo_kind}}",
@@ -160,7 +160,7 @@ var RepoAdd = &engine.Flow{
 				}
 				return "", nil
 			}},
-		{Name: "signing-key", Prompt: "Signing key", Help: "The SSH private key that signs commits made in the clone; made by fleet setup",
+		{Name: "signing-key", Prompt: "Signing key", Help: "The SSH private key that signs commits made in the clone; made by fleetmgr setup",
 			Default: func(*engine.Ctx) (string, error) {
 				home, err := os.UserHomeDir()
 				return filepath.Join(home, ".ssh", "fleet_manager_config_signing_key"), err
@@ -203,10 +203,10 @@ var RepoAdd = &engine.Flow{
 		},
 		{
 			Title: "Sign the commits made in it",
-			Why:   "Hosts accept only signed commits, so the clone is set to sign the ones made in it with your signing key, as fleet setup does for your checkouts.",
+			Why:   "Hosts accept only signed commits, so the clone is set to sign the ones made in it with your signing key, as fleetmgr setup does for your checkouts.",
 			When: func(x *engine.Ctx) (bool, string) {
 				if !fileExists(x.Value("signing-key") + ".pub") {
-					return false, x.Value("signing-key") + ".pub does not exist: run fleet setup first"
+					return false, x.Value("signing-key") + ".pub does not exist: run fleetmgr setup first"
 				}
 				return true, ""
 			},
@@ -242,7 +242,7 @@ var RepoAdd = &engine.Flow{
 		{
 			Title: "Next",
 			Why:   "How to use it.",
-			Do: engine.Show("Use the name wherever a command takes --flake or --repo: fleet inventory publish --flake {{.name}}\n" +
+			Do: engine.Show("Use the name wherever a command takes --flake or --repo: fleetmgr inventory publish --flake {{.name}}\n" +
 				"Edit in a checkout of your own; never edit the tool's clone by hand."),
 		},
 	},
@@ -323,7 +323,7 @@ func repoTrustKeys(x *engine.Ctx) error {
 	}
 	id, ok := names[from]
 	if !ok {
-		return fmt.Errorf("%q is not the name of a repository: fleet repo list shows the names, fleet repo add makes one", from)
+		return fmt.Errorf("%q is not the name of a repository: fleetmgr repo list shows the names, fleetmgr repo add makes one", from)
 	}
 	other, err := fleetmgr.ClonePathOfID(id)
 	if err != nil {
@@ -338,7 +338,7 @@ func repoTrustKeys(x *engine.Ctx) error {
 		return err
 	}
 	if !fileExists(copyPath) {
-		return fmt.Errorf("you trust no keys for %s yet: run fleet repo add for it first, with its own fleet/allowed_signers", id)
+		return fmt.Errorf("you trust no keys for %s yet: run fleetmgr repo add for it first, with its own fleet/allowed_signers", id)
 	}
 	x.UI.OK("its commits are checked against your copy of the keys of " + from + " (" + id + ")")
 	return setGitConfig(x, path, "gpg.ssh.allowedSignersFile", copyPath)
@@ -375,7 +375,7 @@ func chooseSignersFrom(x *engine.Ctx, names map[string]string) (string, error) {
 	id := x.Value("repo_id")
 	if len(choices) == 0 {
 		return "", fmt.Errorf("%s has no fleet/allowed_signers, so its commits are checked against the keys of another repository, "+
-			"and none is added yet: add that one first (fleet repo add ADDRESS), then this one with --signers-from NAME. %s", id, signersFromWhy)
+			"and none is added yet: add that one first (fleetmgr repo add ADDRESS), then this one with --signers-from NAME. %s", id, signersFromWhy)
 	}
 	if !x.UI.Interactive() {
 		return "", fmt.Errorf("%s has no fleet/allowed_signers, so its commits are checked against the keys of another repository: "+
@@ -443,7 +443,7 @@ func repoTrustHosts(x *engine.Ctx) error {
 	return nil
 }
 
-// gitIdentity is the default of an author setting: what git uses where fleet
+// gitIdentity is the default of an author setting: what git uses where fleetmgr
 // runs, from the checkout there or the global settings; empty when unset, so
 // that it is asked for.
 func gitIdentity(key string) func(*engine.Ctx) (string, error) {
@@ -493,10 +493,10 @@ var RepoList = &engine.Flow{
 	Path:  []string{"repo", "list"},
 	Title: "The tools' clones of your repositories",
 	Short: "List the names of the tools' clones, and the commits you trust in each",
-	Long: "Each name that fleet repo add made, with its repository, address and clone, the\n" +
+	Long: "Each name that fleetmgr repo add made, with its repository, address and clone, the\n" +
 		"commit the clone stands at, and the commit you trust for each branch. Repositories\n" +
 		"that have trusted commits or a copy of their keys but no name are listed apart.",
-	Example: "  fleet repo list",
+	Example: "  fleetmgr repo list",
 	Steps: []engine.Step{{
 		Title: "List them",
 		Why:   "What is kept in ~/.local/state/fleet (names, trusted commits, keys) and ~/.local/share/fleet (the clones).",
@@ -551,7 +551,7 @@ func listRepos(x *engine.Ctx) error {
 		lines = append(lines, "")
 	}
 	if len(names) == 0 {
-		lines = append(lines, "No names yet: fleet repo add ADDRESS makes one.", "")
+		lines = append(lines, "No names yet: fleetmgr repo add ADDRESS makes one.", "")
 	}
 	ids, err := fleetmgr.KnownIDs()
 	if err != nil {

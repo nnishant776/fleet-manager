@@ -42,7 +42,7 @@ type adoptEnv struct {
 func newAdoptEnv(t *testing.T) *adoptEnv {
 	t.Helper()
 	e := newImportEnv(t)
-	// The recovery recipient fleet setup caches, in the state folder the
+	// The recovery recipient fleetmgr setup caches, in the state folder the
 	// environment made.
 	state, err := fleetmgr.StateDir()
 	if err != nil {
@@ -267,10 +267,10 @@ func TestHostAdoptStoresTheOwnersSecretsAndPrintsTheDeclaration(t *testing.T) {
 		"secrets.password = true;",
 		"secrets.authorizedKeys = true;",
 		"and remove conf.fleet.personal.enable = true (or set it to false).",
-		"fleet inventory publish laptop1 --flake " + a.inv + " --sync",
-		"fleet host check laptop1 --flake " + a.inv,
+		"fleetmgr inventory publish laptop1 --flake " + a.inv + " --sync",
+		"fleetmgr host check laptop1 --flake " + a.inv,
 		"alice keeps their uid, files and password.",
-		"their password and keys change through you, fleet secrets user-password / user-keys",
+		"their password and keys change through you, fleetmgr secrets user-password / user-keys",
 		"passwd on the machine no longer sticks, and ~/.ssh/authorized_keys no longer admits them.",
 	} {
 		if !strings.Contains(next, want) {
@@ -362,7 +362,7 @@ func TestHostAdoptEnrollsTheOwnerFirstWithTheirEnrollmentFile(t *testing.T) {
 		}
 	}
 	a.inventoryUntouched(t, fake)
-	for _, want := range []string{"alice's password hash, keys and enrollment are in the secrets.", "they change their password and keys with fleet user password / fleet user keys"} {
+	for _, want := range []string{"alice's password hash, keys and enrollment are in the secrets.", "they change their password and keys with fleetmgr user password / fleetmgr user keys"} {
 		if !strings.Contains(flat(out), want) {
 			t.Errorf("the next steps lack %q:\n%s", want, out)
 		}
@@ -389,7 +389,7 @@ func TestHostAdoptDryRunChangesNothing(t *testing.T) {
 			t.Errorf("changed something: %s", c)
 		}
 	}
-	for _, want := range []string{"dry run", "fleet secrets user-enroll alice", "fleet secrets user-password alice laptop1 --hash-stdin", "fleet secrets user-keys alice laptop1"} {
+	for _, want := range []string{"dry run", "fleetmgr secrets user-enroll alice", "fleetmgr secrets user-password alice laptop1 --hash-stdin", "fleetmgr secrets user-keys alice laptop1"} {
 		if !strings.Contains(flat(out), want) {
 			t.Errorf("the output lacks %q:\n%s", want, out)
 		}

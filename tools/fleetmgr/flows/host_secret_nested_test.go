@@ -10,7 +10,7 @@ import (
 	"github.com/nnishant776/fleet-manager/tools/fleetmgr/internal/engine"
 )
 
-// cacheRecovery gives the test the recovery recipient fleet setup caches, and a
+// cacheRecovery gives the test the recovery recipient fleetmgr setup caches, and a
 // temporary folder of its own, where the commands make their worktrees.
 func cacheRecovery(t *testing.T) {
 	t.Helper()

@@ -35,10 +35,10 @@ var SupportKeyRotate = &engine.Flow{
 		"the old key is refused. Optionally the new line accepts logins only from given\n" +
 		"addresses (from=). On a host whose configuration sets\n" +
 		"conf.fleet.support.keysFromSecrets, the keys are changed in the host's secrets\n" +
-		"(fleet secrets user-keys, pushed) instead of its configuration, and the syncs\n" +
+		"(fleetmgr secrets user-keys, pushed) instead of its configuration, and the syncs\n" +
 		"apply them without a rebuild.",
-	Example: "  fleet support-key rotate pi1 --old-key ~/.ssh/admin_key --new-key ~/.ssh/fleet_support --kind hardware\n" +
-		"  fleet support-key rotate pi1 --old-key ~/.ssh/admin_key --new-key ~/.ssh/fleet_support --from 192.168.0.0/24",
+	Example: "  fleetmgr support-key rotate pi1 --old-key ~/.ssh/admin_key --new-key ~/.ssh/fleet_support --kind hardware\n" +
+		"  fleetmgr support-key rotate pi1 --old-key ~/.ssh/admin_key --new-key ~/.ssh/fleet_support --from 192.168.0.0/24",
 	Args: []string{"host"},
 	Inputs: []engine.Input{
 		fleetmgr.FlakeInput,
@@ -178,7 +178,7 @@ func keysFromSecrets(x *engine.Ctx) bool {
 }
 
 // setSupportKeys changes support's login keys in its file on the host's
-// branch of the secrets repository, with fleet secrets user-keys, which merges
+// branch of the secrets repository, with fleetmgr secrets user-keys, which merges
 // into the keys stored and pushes: adding the new key, or removing the old
 // one. Other keys in the file, and their options, stay.
 func setSupportKeys(x *engine.Ctx, adding bool) error {
@@ -193,7 +193,7 @@ func setSupportKeys(x *engine.Ctx, adding bool) error {
 			x.UI.Skip("dry run: not written")
 			return nil
 		}
-		dir, err := os.MkdirTemp("", "fleet-support-keys-")
+		dir, err := os.MkdirTemp("", "fleetmgr-support-keys-")
 		if err != nil {
 			return err
 		}
@@ -213,6 +213,6 @@ func setSupportKeys(x *engine.Ctx, adding bool) error {
 	if x.Options.Yes {
 		args = append(args, "--yes")
 	}
-	_, err := engine.Cmd("fleet", args...).ReadOnly().Interactive().OK("support's keys are changed in the secrets and pushed").Run(x)
+	_, err := engine.Cmd("fleetmgr", args...).ReadOnly().Interactive().OK("support's keys are changed in the secrets and pushed").Run(x)
 	return err
 }

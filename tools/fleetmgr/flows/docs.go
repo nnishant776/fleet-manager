@@ -33,7 +33,7 @@ var Docs = &engine.Flow{
 		"Run it after changing a flow or the guide, and commit the pages with the\n" +
 		"change; the tests fail while the runbooks are out of date, and --check fails\n" +
 		"while any page is, or a link leads nowhere.",
-	Example: "  fleet docs\n  fleet docs --check\n  fleet docs --out /tmp/runbooks --guide /tmp/docs",
+	Example: "  fleetmgr docs\n  fleetmgr docs --check\n  fleetmgr docs --out /tmp/runbooks --guide /tmp/docs",
 	Inputs: []engine.Input{
 		{Name: "out", Prompt: "Directory for the pages", Help: "Where the pages go; " + RunbookDir + " in the checkout this is run in by default",
 			Default: atTop(RunbookDir)},
@@ -90,7 +90,7 @@ func indexCommands() []book.Command {
 	var cmds []book.Command
 	for _, f := range All() {
 		cmds = append(cmds, book.Command{
-			Name:    "fleet " + strings.Join(f.Path, " "),
+			Name:    "fleetmgr " + strings.Join(f.Path, " "),
 			Runbook: "../" + RunbookDir + "/" + engine.RunbookFile(f),
 		})
 	}
@@ -146,19 +146,19 @@ func writeDocs(x *engine.Ctx) error {
 		for _, name := range changed {
 			path := filepath.Join(out, name)
 			if old, err := os.ReadFile(path); err == nil {
-				problems = append(problems, at(path, book.FirstChange(string(old), runbooks[name]), "out of date; fleet docs writes it"))
+				problems = append(problems, at(path, book.FirstChange(string(old), runbooks[name]), "out of date; fleetmgr docs writes it"))
 			} else {
-				problems = append(problems, at(path, 1, "missing; fleet docs writes it"))
+				problems = append(problems, at(path, 1, "missing; fleetmgr docs writes it"))
 			}
 		}
 		for _, name := range gone {
-			problems = append(problems, at(filepath.Join(out, name), 1, "no command writes it; fleet docs removes it"))
+			problems = append(problems, at(filepath.Join(out, name), 1, "no command writes it; fleetmgr docs removes it"))
 		}
 		for _, c := range pages {
 			if c.New {
-				problems = append(problems, at(c.File, 1, "missing; fleet docs writes it"))
+				problems = append(problems, at(c.File, 1, "missing; fleetmgr docs writes it"))
 			} else {
-				problems = append(problems, at(c.File, c.Line, "out of date; fleet docs rewrites it"))
+				problems = append(problems, at(c.File, c.Line, "out of date; fleetmgr docs rewrites it"))
 			}
 		}
 		for _, p := range warnings {

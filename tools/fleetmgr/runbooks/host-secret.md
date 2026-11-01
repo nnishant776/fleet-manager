@@ -1,6 +1,6 @@
-<!-- Written by `fleet docs` from tools/fleetmgr/flows; edit the flows, not this. -->
+<!-- Written by `fleetmgr docs` from tools/fleetmgr/flows; edit the flows, not this. -->
 
-# fleet host secret
+# fleetmgr host secret
 
 Add or change a host secret: encrypt, commit, push, and show how the configuration uses it.
 
@@ -13,18 +13,18 @@ make the host's configuration use it, and with --sync syncs the host and
 checks the secret arrived.
 
 ```
-fleet host secret [HOST] [NAME] [flags]
+fleetmgr host secret [HOST] [NAME] [flags]
 
-fleet host secret pi1 wifi/home
-fleet host secret pi1 hotspot/wls1a2b3c4d5e6f --from-host /var/lib/hotspot/wls1a2b3c4d5e6f
-printf %s "$psk" | fleet host secret pi-gw wifi/home --value-stdin --yes
+fleetmgr host secret pi1 wifi/home
+fleetmgr host secret pi1 hotspot/wls1a2b3c4d5e6f --from-host /var/lib/hotspot/wls1a2b3c4d5e6f
+printf %s "$psk" | fleetmgr host secret pi-gw wifi/home --value-stdin --yes
 ```
 
 ## Flags
 
 | Flag | |
 |---|---|
-| `--repo` | Your clone of the secrets repository, left on main, or the name of a repository (fleet repo list), which means the tool's own clone of it; defaults to FLEET_SECRETS_REPO, then this directory |
+| `--repo` | Your clone of the secrets repository, left on main, or the name of a repository (fleetmgr repo list), which means the tool's own clone of it; defaults to FLEETMGR_SECRETS_REPO, then this directory |
 | `--recovery` | Your passphrase-encrypted age identity (age -p). Empty: sops uses SOPS_AGE_KEY_FILE or SOPS_AGE_KEY |
 | `--host` | The host's name: lowercase letters, digits and '-' |
 | `--name` | Its key in hosts/\<host>.yaml, and its file under /run/secrets: letters, digits, - and _, with / to group secrets, as hotspot/wls1a2b3c4d5e6f |
@@ -42,7 +42,7 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 1. **Bring the tool's clone up to date.** You named a repository, so the command works in the tool's own clone of it. It is fetched, and main's newest commit is taken only if it is signed by a key you trust and follows the commit you trusted last; the clone then stands there.
 
-2. **Open the secrets repository.** The change builds on the host's branch and encrypts for the recipients that branch names, so git must check its signatures against keys a pushed commit cannot change. New files are encrypted to the host and to your recovery recipient, which fleet setup caches.
+2. **Open the secrets repository.** The change builds on the host's branch and encrypts for the recipients that branch names, so git must check its signatures against keys a pushed commit cannot change. New files are encrypted to the host and to your recovery recipient, which fleetmgr setup caches.
 
    ```
    $ cd REPO && git rev-parse --git-dir
@@ -103,4 +103,4 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'sudo -n stat -L -c '\''%U %a'\'' /run/secrets/NAME 2>/dev/null || echo missing'
    ```
 
-It needs `git`, `yq`, `sops`, `age` on the PATH; `fleet doctor` says where to get them.
+It needs `git`, `yq`, `sops`, `age` on the PATH; `fleetmgr doctor` says where to get them.

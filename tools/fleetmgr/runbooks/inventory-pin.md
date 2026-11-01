@@ -1,11 +1,11 @@
-<!-- Written by `fleet docs` from tools/fleetmgr/flows; edit the flows, not this. -->
+<!-- Written by `fleetmgr docs` from tools/fleetmgr/flows; edit the flows, not this. -->
 
-# fleet inventory pin
+# fleetmgr inventory pin
 
 Pin fleet-manager's newest trusted commit, or a given one, in the inventory, check every host, commit and push.
 
 An inventory builds its hosts from fleet-manager, at the commit its flake.lock pins.
-This moves that pin. fleet brings its clone of fleet-manager up to date, which only
+This moves that pin. fleetmgr brings its clone of fleet-manager up to date, which only
 takes a commit signed by a key you trust, and pins main's newest commit, or the one
 you give with --to. Every commit the pin moves over must be signed by a key you trust
 too, not only the newest. It shows the commits, and asks before it pins an older one.
@@ -15,17 +15,17 @@ it commits flake.lock, signed, and pushes it once you approve. The hosts take th
 fleet-manager when you publish the inventory after that.
 
 ```
-fleet inventory pin [flags]
+fleetmgr inventory pin [flags]
 
-fleet inventory pin --flake inventory
-fleet inventory pin --to 3f2a9c1 --flake inventory
+fleetmgr inventory pin --flake inventory
+fleetmgr inventory pin --to 3f2a9c1 --flake inventory
 ```
 
 ## Flags
 
 | Flag | |
 |---|---|
-| `--flake` | A checkout or a flake reference, or the name of a repository (fleet repo list), which means the tool's own clone of it; defaults to this directory's flake, then /etc/nixos |
+| `--flake` | A checkout or a flake reference, or the name of a repository (fleetmgr repo list), which means the tool's own clone of it; defaults to this directory's flake, then /etc/nixos |
 | `--to` | A fleet-manager commit or branch to pin; its newest main by default |
 
 Every command also takes `--dry-run` (show every step and command; look, but
@@ -55,7 +55,7 @@ A value that is neither given nor has a default is asked for on a terminal.
 10. **Next.** The pin is on main only. Each host fetches its own branch, so it gets the new fleet-manager once you publish.
 
    > Hosts fetch their own branches, not main: publish them now, and each host takes the new fleet-manager at its next sync:
-   > fleet inventory publish --flake FLAKE_GIVEN
-   > Publish and sync the hosts at once: fleet inventory publish --flake FLAKE_GIVEN --sync, or one host: fleet host sync \<host> --flake FLAKE_GIVEN
+   > fleetmgr inventory publish --flake FLAKE_GIVEN
+   > Publish and sync the hosts at once: fleetmgr inventory publish --flake FLAKE_GIVEN --sync, or one host: fleetmgr host sync \<host> --flake FLAKE_GIVEN
 
-It needs `git`, `nix` on the PATH; `fleet doctor` says where to get them.
+It needs `git`, `nix` on the PATH; `fleetmgr doctor` says where to get them.

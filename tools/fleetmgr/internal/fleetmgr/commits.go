@@ -98,5 +98,5 @@ func checkRangeSigned(x *engine.Ctx, dir, address, tip string) error {
 		}
 	}
 	return fmt.Errorf("%d of the commits on main since %s, the commit you trusted, are not signed by a key you trust:\n  %s\n"+
-		"Review them with fleet repo sync %s", len(bad), short(rec), strings.Join(bad, "\n  "), where)
+		"Review them with fleetmgr repo sync %s", len(bad), short(rec), strings.Join(bad, "\n  "), where)
 }

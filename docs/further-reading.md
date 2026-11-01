@@ -1,6 +1,6 @@
 # Appendix D. Further reading
 
-<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->
+<!-- book:top — written by `fleetmgr docs` from SUMMARY.md and the headings; do not edit -->
 [← Appendix C. Glossary](glossary.md) · [Contents](README.md) · [Appendix E. Index →](index.md)
 <!-- /book:top -->
 
@@ -20,7 +20,7 @@ In this chapter:
 - [Signing commits and trusting them](#signing-commits-and-trusting-them)
 - [Secrets](#secrets)
 - [A private fleet](#a-private-fleet)
-- [The fleet tool](#the-fleet-tool)
+- [The fleetmgr tool](#the-fleetmgr-tool)
 - [Configuration reference](#configuration-reference)
 - [This book](#this-book)
 <!-- /book:sections -->
@@ -134,7 +134,7 @@ In this chapter:
   [`inventory_import.go`](../tools/fleetmgr/flows/inventory_import.go) and
   [`host_enroll.go`](../tools/fleetmgr/flows/host_enroll.go).
 
-## The fleet tool
+## The fleetmgr tool
 
 - [Using artifact attestations](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds),
   for `gh attestation verify` on a release.
@@ -167,7 +167,7 @@ In this chapter:
 
 - [mdBook's SUMMARY.md format](https://rust-lang.github.io/mdBook/format/summary.html),
   which [`SUMMARY.md`](SUMMARY.md) follows.
-- `fleet docs` writes the contents, the page turns and the index from it; see
+- `fleetmgr docs` writes the contents, the page turns and the index from it; see
   its [runbook](../tools/fleetmgr/runbooks/docs.md).
 
 <!-- book:bottom -->

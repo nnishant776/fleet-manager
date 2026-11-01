@@ -19,7 +19,7 @@ var HostCheck = &engine.Flow{
 		"runs, whether its last sync succeeded, whether a problem is recorded for\n" +
 		"everyone to see, what its secrets snapshot holds, and whether any unit failed.\n" +
 		"It changes nothing, so it never asks.",
-	Example: "  fleet host check pi1\n  fleet host check pi-gw --address 192.168.0.9",
+	Example: "  fleetmgr host check pi1\n  fleetmgr host check pi-gw --address 192.168.0.9",
 	Args:    []string{"host"},
 	Inputs:  fleetmgr.HostInputs(),
 	Needs:   []string{"ssh", "nix"},

@@ -380,7 +380,7 @@ func TestShortAndRepeatedFlags(t *testing.T) {
 		})}},
 	}
 	run := func(args ...string) error {
-		root := &cobra.Command{Use: "fleet", SilenceUsage: true, SilenceErrors: true}
+		root := &cobra.Command{Use: "fleetmgr", SilenceUsage: true, SilenceErrors: true}
 		Mount(root, []*Flow{f}, nil, nil)
 		root.SetArgs(args)
 		return root.Execute()
@@ -420,7 +420,7 @@ func TestRestArgumentTakesTheWordsThatRemain(t *testing.T) {
 		{[]string{"change", "token"}, []string{"token", ""}},
 		{[]string{"change", "token", "pi", "--host", "nas"}, []string{"token", "nas\npi"}},
 	} {
-		root := &cobra.Command{Use: "fleet", SilenceUsage: true, SilenceErrors: true}
+		root := &cobra.Command{Use: "fleetmgr", SilenceUsage: true, SilenceErrors: true}
 		Mount(root, []*Flow{f}, nil, nil)
 		root.SetArgs(tc.args)
 		got = nil
@@ -433,7 +433,7 @@ func TestRestArgumentTakesTheWordsThatRemain(t *testing.T) {
 	}
 	// Without Rest, a second word is too many.
 	f.Rest = false
-	root := &cobra.Command{Use: "fleet", SilenceUsage: true, SilenceErrors: true}
+	root := &cobra.Command{Use: "fleetmgr", SilenceUsage: true, SilenceErrors: true}
 	Mount(root, []*Flow{f}, nil, nil)
 	root.SetArgs([]string{"change", "token", "nas", "pi"})
 	if err := root.Execute(); err == nil {
@@ -504,7 +504,7 @@ func TestFancySummaryListsEveryStep(t *testing.T) {
 			t.Errorf("summary lacks %q:\n%s", want, box)
 		}
 	}
-	if !strings.HasPrefix(strings.TrimLeft(s, " "), "fleet · t") {
+	if !strings.HasPrefix(strings.TrimLeft(s, " "), "fleetmgr · t") {
 		t.Errorf("header: %q", s[:40])
 	}
 }

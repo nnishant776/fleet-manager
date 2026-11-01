@@ -173,7 +173,7 @@ pkgs.writeShellApplication {
           cp -- "$ramState/$host.enroll" "$enrollOut"
           echo "os-install: enrollment file copied to $enrollOut"
         fi
-        echo "On the maintainer's machine: fleet secrets host-enroll $host --from <that file>,"
+        echo "On the maintainer's machine: fleetmgr secrets host-enroll $host --from <that file>,"
         echo "push host/$host, then register its deploy key read-only on the secrets"
         echo "repository and its configuration key read-only on the configuration repository."
       fi
@@ -182,7 +182,7 @@ pkgs.writeShellApplication {
       identity="$ramState/identity.yaml"
 
       # git+ssh://git@github.com/o/r?ref=x&rev=y is what git clones, a branch,
-      # and the commit to install, which fleet install prep checked; without
+      # and the commit to install, which fleetmgr install prep checked; without
       # ?rev=, the newest commit there.
       url="''${flake#git+}"
       url="''${url%%\?*}"

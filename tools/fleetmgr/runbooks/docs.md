@@ -1,6 +1,6 @@
-<!-- Written by `fleet docs` from tools/fleetmgr/flows; edit the flows, not this. -->
+<!-- Written by `fleetmgr docs` from tools/fleetmgr/flows; edit the flows, not this. -->
 
-# fleet docs
+# fleetmgr docs
 
 Write the runbook pages, tools/fleetmgr/runbooks, from the flows themselves, and the parts of the guide that follow from its order and headings.
 
@@ -19,11 +19,11 @@ change; the tests fail while the runbooks are out of date, and --check fails
 while any page is, or a link leads nowhere.
 
 ```
-fleet docs [flags]
+fleetmgr docs [flags]
 
-fleet docs
-fleet docs --check
-fleet docs --out /tmp/runbooks --guide /tmp/docs
+fleetmgr docs
+fleetmgr docs --check
+fleetmgr docs --out /tmp/runbooks --guide /tmp/docs
 ```
 
 ## Flags

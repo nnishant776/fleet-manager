@@ -1,35 +1,35 @@
-<!-- Written by `fleet docs` from tools/fleetmgr/flows; edit the flows, not this. -->
+<!-- Written by `fleetmgr docs` from tools/fleetmgr/flows; edit the flows, not this. -->
 
-# fleet install
+# fleetmgr install
 
 Install a host from the configuration onto this machine's disks, from the installer.
 
-Run on a machine booted from the NixOS installer. fleet checks the network,
+Run on a machine booted from the NixOS installer. fleetmgr checks the network,
 helps pick the host and the disks to erase, says what os-install will ask for,
 then runs os-install, which erases the disks, installs, and creates the host's
 identity when it fetches secrets. Afterwards it checks the new disk and lists
 what follows the first boot. The flags are os-install's.
 
 ```
-fleet install [HOST] [flags]
+fleetmgr install [HOST] [flags]
 
-fleet install
-fleet install -H laptop1 -d /dev/nvme0n1
-fleet install -H nas1 -d main=/dev/nvme0n1 -d data=/dev/sda --enroll-out /media/usb/nas1.enroll
+fleetmgr install
+fleetmgr install -H laptop1 -d /dev/nvme0n1
+fleetmgr install -H nas1 -d main=/dev/nvme0n1 -d data=/dev/sda --enroll-out /media/usb/nas1.enroll
 ```
 
 ## Flags
 
 | Flag | |
 |---|---|
-| `--flake` | A checkout or a flake reference, or the name of a repository (fleet repo list), which means the tool's own clone of it; defaults to this directory's flake, then /etc/nixos |
+| `--flake` | A checkout or a flake reference, or the name of a repository (fleetmgr repo list), which means the tool's own clone of it; defaults to this directory's flake, then /etc/nixos |
 | `-H`, `--host` | The host to install (hosts/\<name>); chosen from a list when not given |
 | `-d`, `--disk` | [NAME=]DEVICE for a disk of the host's layout, as os-install takes it; chosen from a list when not given; may be given more than once |
 | `--identity` | An identity document from 'fleet-identity --export' on the old install, instead of a new identity |
 | `--no-enroll` | Do not wait for the host to be enrolled; it retries after boot |
 | `--enroll-out` | A path, for example on a mounted USB stick |
-| `--rev` | A full commit hash from fleet install prep: os-install comes from it, not from main |
-| `--unpinned` | Install a private host's newest commit with the newest os-install, as before fleet install prep; refused otherwise |
+| `--rev` | A full commit hash from fleetmgr install prep: os-install comes from it, not from main |
+| `--unpinned` | Install a private host's newest commit with the newest os-install, as before fleetmgr install prep; refused otherwise |
 
 Every command also takes `--dry-run` (show every step and command; look, but
 change nothing), `-y`/`--yes` (run changes without asking) and `--verbose`.
@@ -41,9 +41,9 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 2. **Compare the checkout's keys with the ones you trust.** Commits are checked against your own copy of each repository's keys, not against the checkout's fleet/allowed_signers. A difference means the keys changed since you trusted them: expected if you changed them, worth a look if not.
 
-3. **Check this is the NixOS installer.** An install erases disks. Anywhere but a machine booted from the installer, a typo, or an older fleet that takes a subcommand for a host name, would start one on the machine you are on.
+3. **Check this is the NixOS installer.** An install erases disks. Anywhere but a machine booted from the installer, a typo, or an older fleetmgr that takes a subcommand for a host name, would start one on the machine you are on.
 
-4. **Check what is installed.** An install should run, and install, only commits whose signatures were checked on your machine: fleet install prep there checks them and prints the line that pins them. Otherwise it takes what main has now, which anyone who can push could have changed.
+4. **Check what is installed.** An install should run, and install, only commits whose signatures were checked on your machine: fleetmgr install prep there checks them and prints the line that pins them. Otherwise it takes what main has now, which anyone who can push could have changed.
 
 5. **Check the network.** Everything comes over the network: the configuration and fleet-manager, and the packages from the binary cache. A cable usually works by itself; Wi-Fi needs joining.
 
@@ -59,4 +59,4 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 11. **Reboot.** The machine is ready to start from its own disk.
 
-It needs `nix` on the PATH; `fleet doctor` says where to get them.
+It needs `nix` on the PATH; `fleetmgr doctor` says where to get them.

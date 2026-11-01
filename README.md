@@ -24,7 +24,7 @@ explains the pieces, and the [guide](docs/README.md) has the rest.
 ├── fleet/
 │   └── allowed_signers              # keys the fleet accepts on commits; see docs/signing-and-trust.md
 ├── lib/
-│   ├── apps/                        # os-install, system-switch, home-switch, check-purity, fleet-secrets, fleet; rpi-image and secrets-harness on Linux; darwin-rebuild on macOS
+│   ├── apps/                        # os-install, system-switch, home-switch, check-purity, fleet-secrets, fleetmgr; rpi-image and secrets-harness on Linux; darwin-rebuild on macOS
 │   ├── mkFleet.nix                  # lib.mkFleet: a fleet's systems, homes and apps from its host folders; see docs/private-fleet.md
 │   ├── mkHost.nix                   # host factory (NixOS / nix-darwin)
 │   ├── secrets-sync.nix             # fleet-secrets-sync and fleet-identity, used by the sync and os-install
@@ -42,7 +42,7 @@ explains the pieces, and the [guide](docs/README.md) has the rest.
 ├── tests/                           # VM and evaluation checks wired into the flake's `checks`
 │   │                                # one folder per area: boot, fleet, lib (shared helpers), networking, pi-gw, rpi-image, secrets, users
 │   └── secrets/                     # also holds secrets-harness, the local stand-in for the secrets repository
-├── tools/fleetmgr/                     # fleet, the guided command-line tool; runbooks/ has a page per command
+├── tools/fleetmgr/                  # fleetmgr, the guided command-line tool; runbooks/ has a page per command
 └── modules/
     ├── conf/                        # the conf.* vocabulary: options/<concern>.nix, role.nix, machineType.nix
     ├── common/                      # configuration valid on both platforms
@@ -74,7 +74,7 @@ itself — and then hands over to the flake's own tools:
 | Running on | It does |
 |---|---|
 | macOS | installs Lix if needed, then switches to `<hostname>` with the nix-darwin this flake pins |
-| NixOS installer ISO | runs `fleet install`, a guided `os-install`: built from `REV` when given, otherwise downloaded from the latest release and checked against its `SHA256SUMS`; if neither works, `os-install` by itself. `<hostname>` is optional, and further arguments are passed on |
+| NixOS installer ISO | runs `fleetmgr install`, a guided `os-install`: built from `REV` when given, otherwise downloaded from the latest release and checked against its `SHA256SUMS`; if neither works, `os-install` by itself. `<hostname>` is optional, and further arguments are passed on |
 | an installed NixOS host | runs `system-switch` for `<hostname>` (default: this machine's hostname), building from the same flake |
 | another Linux | installs Lix and stops; only Home Manager is supported there |
 
@@ -167,26 +167,26 @@ every account (`safe.directory` in `/etc/gitconfig`). So these commands work
 without anything in your own git configuration, even before your home
 configuration exists. Other root-owned repositories are not trusted.
 
-### The `fleet` tool
+### The `fleetmgr` tool
 
-`fleet` walks through the fleet's procedures one step at a time: installing a
+`fleetmgr` walks through the fleet's procedures one step at a time: installing a
 machine, enrolling a host, secrets, the support key, and checks. Each step says
 what it does and why, shows the exact command, asks before it changes
-anything, and checks the result. `fleet` alone shows a menu, and
-`fleet <command> --help` explains a command.
+anything, and checks the result. `fleetmgr` alone shows a menu, and
+`fleetmgr <command> --help` explains a command.
 
 It is not installed anywhere by default.
 Install it yourself where you want it:
 
 ```bash
-nix profile install /etc/nixos#fleet        # on a NixOS machine of the fleet
-nix profile install .#fleet                 # or from a checkout you have checked
-nix run .#fleet -- host check pi1   # once, without installing
-nix profile upgrade fleet                   # later, for a newer version
+nix profile install /etc/nixos#fleetmgr     # on a NixOS machine of the fleet
+nix profile install .#fleetmgr              # or from a checkout you have checked
+nix run .#fleetmgr -- host check pi1   # once, without installing
+nix profile upgrade fleetmgr                # later, for a newer version
 ```
 
 Install it from a checkout you have checked, not with `github:` straight from
-main; [The fleet tool](docs/fleet-tool.md) says why, and how it runs. Each
+main; [The fleetmgr tool](docs/fleetmgr.md) says why, and how it runs. Each
 command has a page in the [runbooks](tools/fleetmgr/runbooks/README.md).
 
 ### Checking the flake

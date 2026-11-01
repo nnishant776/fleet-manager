@@ -25,7 +25,7 @@ var Setup = &engine.Flow{
 		"recipient, cached so that the secrets commands can encrypt to it without asking\n" +
 		"for the passphrase. Each step that is done already is skipped, so it is safe to\n" +
 		"run again.",
-	Example: "  fleet setup --config ~/Projects/nixos-config --repo ~/Projects/secrets",
+	Example: "  fleetmgr setup --config ~/Projects/nixos-config --repo ~/Projects/secrets",
 	Inputs: []engine.Input{
 		{Name: "config", Prompt: "Configuration checkout", Help: "The fleet-manager checkout; defaults to this directory's flake, then /etc/nixos",
 			Default: func(x *engine.Ctx) (string, error) {
@@ -72,7 +72,7 @@ var Setup = &engine.Flow{
 		},
 		{
 			Title: "Cache your recovery identity's recipient",
-			Why: "The public half. Every secrets file is encrypted to it as well as to its host, and fleet secrets reads it from the cache, fleet/recovery.pub in your state folder (XDG_STATE_HOME), " +
+			Why: "The public half. Every secrets file is encrypted to it as well as to its host, and fleetmgr secrets reads it from the cache, fleet/recovery.pub in your state folder (XDG_STATE_HOME), " +
 				"so that it never needs the passphrase for that. age asks for the passphrase once, if the cache is missing.",
 			When: recipientNotCached,
 			Do:   engine.Func(cacheRecipient),
@@ -109,8 +109,8 @@ var Setup = &engine.Flow{
 		},
 		{
 			Title: "Keep your copy of the configuration repository's keys",
-			Why: "fleet and git check commits against your own copy of the keys, kept outside every checkout, not against fleet/allowed_signers, which a pushed commit could change. " +
-				"The first copy is the one you approve now; fleet trust signers takes later changes.",
+			Why: "fleetmgr and git check commits against your own copy of the keys, kept outside every checkout, not against fleet/allowed_signers, which a pushed commit could change. " +
+				"The first copy is the one you approve now; fleetmgr trust signers takes later changes.",
 			When: func(x *engine.Ctx) (bool, string) {
 				if !fileExists(filepath.Join(x.Value("config"), "fleet", "allowed_signers")) {
 					return false, "the checkout has no fleet/allowed_signers yet"
@@ -130,7 +130,7 @@ var Setup = &engine.Flow{
 			Why:   "With that, hosts can be enrolled.",
 			Do: engine.Show("Push the allowed_signers commit to fleet-manager's main if one was made, merging\n" +
 				"locally: GitHub's merge buttons drop the signature. Then, for each host:\n" +
-				"  fleet host enroll <host>"),
+				"  fleetmgr host enroll <host>"),
 		},
 	},
 }

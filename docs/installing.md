@@ -1,6 +1,6 @@
 # 2. Installing a machine
 
-<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->
+<!-- book:top — written by `fleetmgr docs` from SUMMARY.md and the headings; do not edit -->
 [← 1. How it works](how-it-works.md) · [Contents](README.md) · [3. Building a Raspberry Pi image →](raspberry-pi.md)
 <!-- /book:top -->
 
@@ -31,13 +31,13 @@ only commits whose signatures you have checked, run this on your own machine,
 in a checkout of the configuration:
 
 ```bash
-fleet install prep <hostname>
+fleetmgr install prep <hostname>
 ```
 
 It checks that the checkout's newest commit is signed by a key you trust and
 pushed, and so is the fleet-manager commit the installer comes from. The keys
 you trust are your own copy of each repository's `fleet/allowed_signers`, kept
-by `fleet trust signers` (see
+by `fleetmgr trust signers` (see
 [Signing commits and trusting them](signing-and-trust.md)). Then it prints a line to run on the new machine instead.
 That line fetches `bootstrap` by that commit, checks it against a SHA-256
 worked out on your machine, and runs it with `REV` and `FLAKE` pinned to those
@@ -101,7 +101,7 @@ The layout is always one shape: an LVM volume group `main` over the primary
 disk and every `extraDevices` disk, holding the volumes the host declares. With
 `encrypt = true` each physical volume is wrapped in a LUKS2 container; with
 `false` (a VM, say) it is bare. `encrypt` is the only encryption switch; there
-is no second layout. A `fleet` volume (64 MB, mounted at `/var/lib/fleet`, in
+is no second layout. A `fleetmgr` volume (64 MB, mounted at `/var/lib/fleet`, in
 the initrd) is always present: it holds the host's secrets identity and
 survives a rebuild, or a manual reinstall that keeps it. `os-install` erases
 the whole disk, so after an `os-install` the host identity only carries over
@@ -177,7 +177,7 @@ host's secrets and checks that they decrypt. These flags control the step:
 | `--identity FILE` | Restore a host identity exported by `fleet-identity --export` instead of generating one; no enrollment is needed |
 | `--no-enroll` | Do not wait for enrollment; the host boots with locked accounts and retries the secrets fetch until it is enrolled |
 | `--enroll-out PATH` | Also copy the enrollment file to `PATH`, for example a mounted USB stick |
-| `--flake git+ssh://…` | A private flake, which the host reads with its own configuration key: the identity is made first, the install waits until its keys are registered, then clones the flake and installs from it. With `?rev=<commit>`, as `fleet install prep` gives it, it installs exactly that commit, and stops if the repository does not have it. See [A private fleet](private-fleet.md) |
+| `--flake git+ssh://…` | A private flake, which the host reads with its own configuration key: the identity is made first, the install waits until its keys are registered, then clones the flake and installs from it. With `?rev=<commit>`, as `fleetmgr install prep` gives it, it installs exactly that commit, and stops if the repository does not have it. See [A private fleet](private-fleet.md) |
 
 What moves where when a host is installed from the stock ISO and enrolled. The
 numbers name the flows in the table below the diagram.
@@ -186,8 +186,8 @@ numbers name the flows in the table below the diagram.
 flowchart TB
     subgraph maintainer["Maintainer's machine"]
         you["Maintainer"]
-        prep(["fleet install prep"])
-        enroll(["fleet secrets host-enroll,<br/>user-password"])
+        prep(["fleetmgr install prep"])
+        enroll(["fleetmgr secrets host-enroll,<br/>user-password"])
     end
     subgraph forge["Forge"]
         secrets[("Secrets repository")]
@@ -224,10 +224,10 @@ flowchart TB
 | # | What flows | Where and how |
 |---|---|---|
 | 1 | The host's definition, in a signed commit | Pushed before the install |
-| 1a | The line that runs the install: the configuration commit and the fleet-manager commit the installer comes from, and `bootstrap`'s SHA-256 | `fleet install prep HOST` checks both commits' signatures; the line is pasted on the installer |
+| 1a | The line that runs the install: the configuration commit and the fleet-manager commit the installer comes from, and `bootstrap`'s SHA-256 | `fleetmgr install prep HOST` checks both commits' signatures; the line is pasted on the installer |
 | 2 | Its age key, secrets deploy key and configuration deploy key | Made on the host; the private halves never leave it |
 | 3 | The enrollment file: the age recipient and both deploy public keys | Shown as a QR code, or copied to a USB stick with `--enroll-out` |
-| 4 | The enrollment file | `fleet secrets host-enroll HOST --from FILE` |
+| 4 | The enrollment file | `fleetmgr secrets host-enroll HOST --from FILE` |
 | 5 | Signed commits on the host's own branch, `host/HOST`, one per command: its enrollment record, support's keys, and the host's and its accounts' files, encrypted to the host and the recovery key | `host-enroll`, `user-keys support`, then `user-password` for each account, then `git push origin host/HOST` |
 | 6 | Deploy public keys, registered read-only | The secrets deploy key on the secrets repository; the configuration deploy key on the configuration repository, for a private one only |
 | 7 | The host's configuration, at the pinned commit | Cloned with the configuration deploy key when private; a repository without that commit stops the install |

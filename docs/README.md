@@ -24,7 +24,7 @@ building and switching. Start there if you have not built a machine yet.
   image, and the defaults roles and machine types set. It then covers accounts
   and homes, and networking.
 - **Part III, Running a fleet**, covers signed commits and trust, secrets, a
-  private fleet of your own, and the `fleet` tool. It ends with the secrets
+  private fleet of your own, and the `fleetmgr` tool. It ends with the secrets
   runbooks, step by step.
 - **The appendices** hold the configuration reference, things to know, a
   glossary, further reading and an index.
@@ -33,7 +33,7 @@ Read Part I first. After that, read in order, or go straight to a chapter:
 each one says at its start what it covers and what it builds on. Every chapter
 begins with links to the chapters before and after it, the contents, and a
 list of its sections. Links into another chapter name it, as in
-"[Trust model](secrets.md#trust-model) in *Secrets*". Each `fleet` command
+"[Trust model](secrets.md#trust-model) in *Secrets*". Each `fleetmgr` command
 also has a page of its own in the [runbooks](../tools/fleetmgr/runbooks/README.md),
 written from the command itself.
 
@@ -143,13 +143,13 @@ written from the command itself.
   - [Bringing in a running NixOS machine](private-fleet.md#bringing-in-a-running-nixos-machine)
   - [Moving a host fleet-manager defines](private-fleet.md#moving-a-host-fleet-manager-defines)
   - [Moving a running host to it](private-fleet.md#moving-a-running-host-to-it)
-- [10. The fleet tool](fleet-tool.md)
-  - [Installing it](fleet-tool.md#installing-it)
-  - [Without prompts](fleet-tool.md#without-prompts)
-  - [A run that stops](fleet-tool.md#a-run-that-stops)
-  - [Runbooks](fleet-tool.md#runbooks)
-  - [On the installer](fleet-tool.md#on-the-installer)
-  - [fleet and fleet-secrets](fleet-tool.md#fleet-and-fleet-secrets)
+- [10. The fleetmgr tool](fleetmgr.md)
+  - [Installing it](fleetmgr.md#installing-it)
+  - [Without prompts](fleetmgr.md#without-prompts)
+  - [A run that stops](fleetmgr.md#a-run-that-stops)
+  - [Runbooks](fleetmgr.md#runbooks)
+  - [On the installer](fleetmgr.md#on-the-installer)
+  - [fleetmgr and fleet-secrets](fleetmgr.md#fleetmgr-and-fleet-secrets)
 - [11. Secrets runbooks](secrets-runbooks.md)
   - [Maintainer: one-time setup](secrets-runbooks.md#maintainer-one-time-setup)
   - [Onboarding a machine](secrets-runbooks.md#onboarding-a-machine)
@@ -191,7 +191,7 @@ written from the command itself.
   - [Signing commits and trusting them](further-reading.md#signing-commits-and-trusting-them)
   - [Secrets](further-reading.md#secrets)
   - [A private fleet](further-reading.md#a-private-fleet)
-  - [The fleet tool](further-reading.md#the-fleet-tool)
+  - [The fleetmgr tool](further-reading.md#the-fleetmgr-tool)
   - [Configuration reference](further-reading.md#configuration-reference)
   - [This book](further-reading.md#this-book)
 - [Appendix E. Index](index.md)

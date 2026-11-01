@@ -27,15 +27,15 @@ var InventoryPublish = &engine.Flow{
 	Long: "For an inventory whose lib.mkFleet sets hostBranches = true. Each host fetches only\n" +
 		"its branch, host/<name>, which holds flake.nix, flake.lock, fleet/, the host's\n" +
 		"folder, its users' folders and the paths listed as shared, and nothing of the\n" +
-		"other hosts. fleet checks that main's newest commit is signed by a key you trust\n" +
+		"other hosts. fleetmgr checks that main's newest commit is signed by a key you trust\n" +
 		"and pushed, cuts each branch from it without touching the checkout, evaluates it,\n" +
 		"and adds a signed commit to every branch whose files changed. Then it pushes them,\n" +
 		"once you approve. A branch whose newest commit no key you trust signed is not\n" +
 		"published on. With --sync, each host whose branch was pushed then syncs at once,\n" +
-		"and fleet checks that it runs the commit just pushed.",
-	Example: "  fleet inventory publish --flake ~/Projects/inventory\n" +
-		"  fleet inventory publish nas1 --flake ~/Projects/inventory\n" +
-		"  fleet inventory publish --flake ~/Projects/inventory --sync",
+		"and fleetmgr checks that it runs the commit just pushed.",
+	Example: "  fleetmgr inventory publish --flake ~/Projects/inventory\n" +
+		"  fleetmgr inventory publish nas1 --flake ~/Projects/inventory\n" +
+		"  fleetmgr inventory publish --flake ~/Projects/inventory --sync",
 	Args: []string{"host"},
 	Inputs: []engine.Input{
 		fleetmgr.FlakeInput,
@@ -178,7 +178,7 @@ func sliceTree(x *engine.Ctx, rev, host string, l layout, accounts []string) (st
 	if err != nil {
 		return "", err
 	}
-	dir, err := os.MkdirTemp("", "fleet-publish-*")
+	dir, err := os.MkdirTemp("", "fleetmgr-publish-*")
 	if err != nil {
 		return "", err
 	}
@@ -196,7 +196,7 @@ func sliceTree(x *engine.Ctx, rev, host string, l layout, accounts []string) (st
 	return tree, nil
 }
 
-// published is the push fleet makes: one commit per branch whose files
+// published is the push fleetmgr makes: one commit per branch whose files
 // changed.
 type published struct{ host, commit string }
 
@@ -341,7 +341,7 @@ func cutHostBranch(x *engine.Ctx, host, kind string, l layout, accounts []string
 // checkSlice evaluates the host from its branch's files alone, exported to a
 // scratch folder, so a file the host needs from outside its folder is caught.
 func checkSlice(x *engine.Ctx, host, kind, tree string) error {
-	dir, err := os.MkdirTemp("", "fleet-slice-*")
+	dir, err := os.MkdirTemp("", "fleetmgr-slice-*")
 	if err != nil {
 		return err
 	}
@@ -389,7 +389,7 @@ func pushHostBranches(x *engine.Ctx) error {
 	return nil
 }
 
-// publishHosts is fleet inventory publish for the given hosts, as Go code:
+// publishHosts is fleetmgr inventory publish for the given hosts, as Go code:
 // the same three steps, run one after the other, for a flow that publishes
 // as its last step. It reads the inventory checkout in flake.
 func publishHosts(x *engine.Ctx, hosts ...string) error {

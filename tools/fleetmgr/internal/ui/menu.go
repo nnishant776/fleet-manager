@@ -433,7 +433,7 @@ func (m *menuModel) render() string {
 	g := m.geometry()
 
 	var lines []string
-	head := " fleet " + m.ascii("·", "-") + " " + m.title
+	head := " fleetmgr " + m.ascii("·", "-") + " " + m.title
 	lines = append(lines, bold.Render(padRight(ansi.Truncate(head, m.width, ""), m.width)))
 
 	showList := g.wide || !m.guideFocus

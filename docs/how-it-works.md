@@ -1,6 +1,6 @@
 # 1. How it works
 
-<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->
+<!-- book:top — written by `fleetmgr docs` from SUMMARY.md and the headings; do not edit -->
 [← Preface](README.md) · [Contents](README.md) · [2. Installing a machine →](installing.md)
 <!-- /book:top -->
 
@@ -46,14 +46,14 @@ In this chapter:
 ```mermaid
 flowchart TB
     subgraph people["People"]
-        maint["Maintainer's machine<br/>fleet, signing key, recovery key,<br/>trusted keys and commits, the tools' clones"]
-        user["A user's machine<br/>fleet user, the user's own keys"]
+        maint["Maintainer's machine<br/>fleetmgr, signing key, recovery key,<br/>trusted keys and commits, the tools' clones"]
+        user["A user's machine<br/>fleetmgr user, the user's own keys"]
         owner["A personal machine's owner"]
     end
     subgraph forge["Forge"]
         fm[("fleet-manager<br/>public: modules, tools, this book")]
         ci["CI<br/>the tool's tests, releases,<br/>the weekly flake update"]
-        rel[("Releases<br/>static fleet binaries")]
+        rel[("Releases<br/>static fleetmgr binaries")]
         inv[("Inventory<br/>private: main, one branch per host")]
         sec[("Secrets<br/>private: host and user branches")]
     end
@@ -70,8 +70,8 @@ flowchart TB
     end
 
     maint -- "signed commits: edit, publish, pin" --> inv
-    maint -- "signed commits: fleet secrets" --> sec
-    user -- "signed commits: fleet user" --> sec
+    maint -- "signed commits: fleetmgr secrets" --> sec
+    user -- "signed commits: fleetmgr user" --> sec
     user -- "their enrollment file" --> maint
     inv -- "pins a commit of" --> fm
     fm -- "runs" --> ci
@@ -94,7 +94,7 @@ flowchart TB
 
 - **fleet-manager**, this repository, is the library: the `conf.*` vocabulary
   and the modules behind it, `lib.mkFleet`, the tools (`os-install`,
-  `system-switch`, `home-switch`, `fleet`, `fleet-secrets`), the tests and this
+  `system-switch`, `home-switch`, `fleetmgr`, `fleet-secrets`), the tests and this
   book. Its `hosts/` holds examples and test hosts.
 - **The configuration** is the flake the machines build: a folder per host and
   per user. It can be fleet-manager itself, or a private **inventory** that
@@ -110,18 +110,18 @@ flowchart TB
   branch also holds a plain enrollment record, and `main` holds the
   repository's commit check ([Secrets](secrets.md)).
 - **The maintainer's machine** holds the signing key and the recovery
-  identity, and runs `fleet`. `fleet` keeps the maintainer's own copy of each
+  identity, and runs `fleetmgr`. `fleetmgr` keeps the maintainer's own copy of each
   repository's keys, the commits trusted last on each branch, and clones of
   the repositories for the tools alone. It checks every commit it builds on
   against them ([The maintainer's machine](#the-maintainers-machine)).
 - **A user's machine**, for a user who keeps their own secrets, holds that
-  user's own age identity and signing key, and runs `fleet user`.
+  user's own age identity and signing key, and runs `fleetmgr user`.
 - **A host** has an identity of three keys: an age key that decrypts its
   secrets, and two read-only deploy keys, one for the secrets and one for a
   private configuration. It makes them itself, at install, at its first boot,
-  or when `fleet host enroll` brings it in. They leave it only through
+  or when `fleetmgr host enroll` brings it in. They leave it only through
   `fleet-identity --export`, for a planned reinstall.
-- **CI** on the forge tests the `fleet` tool, publishes its static binaries as
+- **CI** on the forge tests the `fleetmgr` tool, publishes its static binaries as
   releases, and proposes a weekly update of the flake's inputs.
 - **Upstream inputs and binary caches** are where the code a host runs comes
   from: the flake inputs fleet-manager pins, and the caches that save
@@ -160,7 +160,7 @@ flowchart TB
         inv[("Configuration<br/>the host's branch")]
         sec[("Secrets<br/>the host's and its users' branches")]
         up[("Upstream inputs<br/>and binary caches")]
-        maint["Maintainer's machine<br/>fleet"]
+        maint["Maintainer's machine<br/>fleetmgr"]
     end
     loki[("Log server")]
     subgraph host["A NixOS fleet host"]
@@ -248,13 +248,13 @@ flowchart TB
 
   | Command | Logs in as | On the host |
   |---|---|---|
-  | `fleet host check` | `support` | reads the running revision, the checkout, how and when the last sync ended, the timer, the secrets snapshot, `/run/secrets` and failed units; changes nothing |
-  | `fleet host sync` | `support` | starts the sync with `sudo -n systemctl start config-auto-update`, shows its log if it fails, then checks as `host check` does |
-  | `fleet inventory publish --sync` | `support` | the same, for each host whose branch changed |
-  | `fleet host secret --from-host` | `support` | reads a secret's current value with `sudo -n cat`; with `--sync`, starts the sync and checks the secret arrived |
-  | `fleet support-key rotate` | `support`, with the old key, then the new one | starts the sync with each key, and checks the old key is refused |
-  | `fleet host adopt` | `support` | reads the owner's marker, account, password hash (with sudo) and login keys |
-  | `fleet host enroll` | an administrator account, through a one-key agent | makes the host's identity, copies its enrollment file back, switches with `systemd-run nixos-rebuild switch`, replaces `/etc/nixos` and starts the first-boot clone |
+  | `fleetmgr host check` | `support` | reads the running revision, the checkout, how and when the last sync ended, the timer, the secrets snapshot, `/run/secrets` and failed units; changes nothing |
+  | `fleetmgr host sync` | `support` | starts the sync with `sudo -n systemctl start config-auto-update`, shows its log if it fails, then checks as `host check` does |
+  | `fleetmgr inventory publish --sync` | `support` | the same, for each host whose branch changed |
+  | `fleetmgr host secret --from-host` | `support` | reads a secret's current value with `sudo -n cat`; with `--sync`, starts the sync and checks the secret arrived |
+  | `fleetmgr support-key rotate` | `support`, with the old key, then the new one | starts the sync with each key, and checks the old key is refused |
+  | `fleetmgr host adopt` | `support` | reads the owner's marker, account, password hash (with sudo) and login keys |
+  | `fleetmgr host enroll` | an administrator account, through a one-key agent | makes the host's identity, copies its enrollment file back, switches with `systemd-run nixos-rebuild switch`, replaces `/etc/nixos` and starts the first-boot clone |
 
 - **`fleet-sync-now`** lets a privileged account at the machine start the sync
   at once, with no `sudo` and no password.
@@ -272,23 +272,23 @@ flowchart TB
 
 | Flow | Started by | What moves | Checked by | Explained in |
 |---|---|---|---|---|
-| A change reaches a host | the maintainer: push, then `fleet inventory publish` | the configuration, to each host's branch | the tools: main signed and trusted; the host: signature, no going back | [A change reaches a host](#a-change-reaches-a-host) |
-| The periodic sync | the host's timer; `fleet-sync-now`; several `fleet` commands | the configuration and the secrets, to the host | signature, no going back, the build, the activation | [What a NixOS host does at each sync](#what-a-nixos-host-does-at-each-sync) |
-| Secrets from the maintainer | `fleet secrets …`, `fleet host secret` | ciphertext, to a host's branch | the branch's tip signed and trusted; the commit check | [Secrets reach a host](#secrets-reach-a-host) |
-| Secrets from a user | `fleet user password`, `keys`, `secret` | ciphertext, to the user's branch | the user's own key; the host checks the recipients | [Users who keep their own secrets](#users-who-keep-their-own-secrets) |
-| A user joins, or leaves | `fleet user init`, `fleet secrets user-enroll`, `user-retire` | the user's enrollment file, to the maintainer; the user's files, to their branch | a channel the maintainer trusts | [Users who keep their own secrets](#users-who-keep-their-own-secrets) |
-| A new machine | `bootstrap`, or the line `fleet install prep` prints | the install line, the `fleet` binary, the configuration | the commits' signatures; bootstrap's SHA-256 | [A new machine](#a-new-machine) |
-| Enrollment at install | the installer, then `fleet secrets host-enroll` | the enrollment file, to the maintainer; deploy keys, to the forge | a channel the maintainer trusts | [A new machine](#a-new-machine) |
+| A change reaches a host | the maintainer: push, then `fleetmgr inventory publish` | the configuration, to each host's branch | the tools: main signed and trusted; the host: signature, no going back | [A change reaches a host](#a-change-reaches-a-host) |
+| The periodic sync | the host's timer; `fleet-sync-now`; several `fleetmgr` commands | the configuration and the secrets, to the host | signature, no going back, the build, the activation | [What a NixOS host does at each sync](#what-a-nixos-host-does-at-each-sync) |
+| Secrets from the maintainer | `fleetmgr secrets …`, `fleetmgr host secret` | ciphertext, to a host's branch | the branch's tip signed and trusted; the commit check | [Secrets reach a host](#secrets-reach-a-host) |
+| Secrets from a user | `fleetmgr user password`, `keys`, `secret` | ciphertext, to the user's branch | the user's own key; the host checks the recipients | [Users who keep their own secrets](#users-who-keep-their-own-secrets) |
+| A user joins, or leaves | `fleetmgr user init`, `fleetmgr secrets user-enroll`, `user-retire` | the user's enrollment file, to the maintainer; the user's files, to their branch | a channel the maintainer trusts | [Users who keep their own secrets](#users-who-keep-their-own-secrets) |
+| A new machine | `bootstrap`, or the line `fleetmgr install prep` prints | the install line, the `fleetmgr` binary, the configuration | the commits' signatures; bootstrap's SHA-256 | [A new machine](#a-new-machine) |
+| Enrollment at install | the installer, then `fleetmgr secrets host-enroll` | the enrollment file, to the maintainer; deploy keys, to the forge | a channel the maintainer trusts | [A new machine](#a-new-machine) |
 | The first boot | `fleet-bootstrap`, on the host | the secrets, then the configuration's checkout | as in the sync | [A new machine](#a-new-machine) |
-| A running machine comes in | `fleet host enroll` | the host's identity; a switch, over SSH | the commit, on the maintainer's machine | [Bringing in a running machine](#bringing-in-a-running-machine) |
-| A host moves into the inventory | `fleet inventory import` | the host's folder, from fleet-manager to the inventory | the source commit; the host evaluates | [Bringing in a running machine](#bringing-in-a-running-machine) |
+| A running machine comes in | `fleetmgr host enroll` | the host's identity; a switch, over SSH | the commit, on the maintainer's machine | [Bringing in a running machine](#bringing-in-a-running-machine) |
+| A host moves into the inventory | `fleetmgr inventory import` | the host's folder, from fleet-manager to the inventory | the source commit; the host evaluates | [Bringing in a running machine](#bringing-in-a-running-machine) |
 | A personal machine's owner | the owner, at the first boot | their account, on the machine only | none | [Personal machines and adoption](#personal-machines-and-adoption) |
-| Adoption | `fleet host adopt` | the owner's password hash and keys, to the secrets | as for secrets | [Personal machines and adoption](#personal-machines-and-adoption) |
-| The maintainer's trust | `fleet setup`, `trust signers`, `repo add`, `repo sync` | keys and trusted commits, into the maintainer's own state | the maintainer, who reviews each change | [The maintainer's machine](#the-maintainers-machine) |
-| Reaching a host | `fleet host check`, `host sync`, `host secret`, `support-key rotate` | commands over SSH, as `support` | the host's key, already known | [Reaching a host](#reaching-a-host) |
-| A newer fleet-manager | `fleet inventory pin` | the pin in the inventory's `flake.lock` | every commit since the last pin signed and trusted | [A newer fleet-manager, CI and releases](#a-newer-fleet-manager-ci-and-releases) |
+| Adoption | `fleetmgr host adopt` | the owner's password hash and keys, to the secrets | as for secrets | [Personal machines and adoption](#personal-machines-and-adoption) |
+| The maintainer's trust | `fleetmgr setup`, `trust signers`, `repo add`, `repo sync` | keys and trusted commits, into the maintainer's own state | the maintainer, who reviews each change | [The maintainer's machine](#the-maintainers-machine) |
+| Reaching a host | `fleetmgr host check`, `host sync`, `host secret`, `support-key rotate` | commands over SSH, as `support` | the host's key, already known | [Reaching a host](#reaching-a-host) |
+| A newer fleet-manager | `fleetmgr inventory pin` | the pin in the inventory's `flake.lock` | every commit since the last pin signed and trusted | [A newer fleet-manager, CI and releases](#a-newer-fleet-manager-ci-and-releases) |
 | The weekly flake update | CI, every Monday | a pull request that updates fleet-manager's `flake.lock` | `check-purity`; the commit is not signed | [A newer fleet-manager, CI and releases](#a-newer-fleet-manager-ci-and-releases) |
-| The tool's releases | CI, on a push to main that changes the tool | static `fleet` binaries | `SHA256SUMS` and attestations | [A newer fleet-manager, CI and releases](#a-newer-fleet-manager-ci-and-releases) |
+| The tool's releases | CI, on a push to main that changes the tool | static `fleetmgr` binaries | `SHA256SUMS` and attestations | [A newer fleet-manager, CI and releases](#a-newer-fleet-manager-ci-and-releases) |
 | The tests | `nix flake check`, by hand; CI for the tool only | nothing leaves the machine | the checks themselves | [A newer fleet-manager, CI and releases](#a-newer-fleet-manager-ci-and-releases) |
 | Homes | a system switch; `home-switch` for a self-managed home | a home generation | none; a notice when a home falls behind | [Homes](#homes) |
 | Logs and audit | journald, auditd and Grafana Alloy, on the host | the journal and audit records, to the log server | none in the module | [Logs and audit](#logs-and-audit) |
@@ -308,9 +308,9 @@ sequenceDiagram
     participant H as laptop1
     M->>I: a signed commit, merged locally and pushed
     I->>CI: check-purity: every host evaluates
-    M->>M: fleet inventory publish checks main
+    M->>M: fleetmgr inventory publish checks main
     M->>B: a signed commit with laptop1's files, pushed
-    Note over H: the timer, or fleet inventory publish --sync
+    Note over H: the timer, or fleetmgr inventory publish --sync
     H->>B: fetch with its configuration key
     H->>H: signature, no going back, build, activate
 ```
@@ -319,7 +319,7 @@ sequenceDiagram
    locally and pushes. GitHub's merge buttons would drop the signature.
 2. The inventory's own CI runs `nix run .#check-purity`, so every host still
    evaluates.
-3. `fleet inventory publish` checks that main's newest commit is signed by a
+3. `fleetmgr inventory publish` checks that main's newest commit is signed by a
    key the maintainer trusts, follows the commit trusted last and is pushed,
    and that its fleet-manager pin is a trusted one. For each host it cuts the
    host's files from that commit, checks that the host evaluates from them
@@ -337,8 +337,8 @@ A host with `conf.fleet.repo.url` runs the sync, `config-auto-update`, on a
 timer: daily at 04:00 by default, with up to 30 minutes of random delay
 (`conf.fleet.autoUpdate`), and at the next start for a machine that was off.
 `fleet-sync-now` at the machine starts it at once, and so do these commands on
-the maintainer's machine: `fleet host sync`, `fleet inventory publish --sync`,
-`fleet host enroll`, `fleet host secret --sync` and `fleet support-key rotate`.
+the maintainer's machine: `fleetmgr host sync`, `fleetmgr inventory publish --sync`,
+`fleetmgr host enroll`, `fleetmgr host secret --sync` and `fleetmgr support-key rotate`.
 Each run goes through these steps, and stops at the first that fails:
 
 1. **Secrets first**, on a host with secrets. It fetches the host's branch of
@@ -389,7 +389,7 @@ sequenceDiagram
     actor M as Maintainer
     participant S as Secrets: host/laptop1
     participant H as laptop1
-    M->>M: fleet secrets user-password alice laptop1
+    M->>M: fleetmgr secrets user-password alice laptop1
     Note over M: tip checked, recovery identity unlocked in memory,<br/>sops encrypts, the commit check refuses plaintext
     M->>S: a signed commit, pushed
     H->>S: the sync fetches it with the secrets deploy key
@@ -397,12 +397,12 @@ sequenceDiagram
     H->>H: activation: sops-nix writes /run/secrets
 ```
 
-1. A `fleet secrets` command, or `fleet host secret`, works in a temporary
+1. A `fleetmgr secrets` command, or `fleetmgr host secret`, works in a temporary
    worktree of the host's branch. It first checks that the branch's newest
    commit is signed by a key the maintainer trusts and follows the commit
    trusted last. It unlocks the recovery identity into memory only, encrypts
    with sops to the host and the recovery recipient, and commits, signed. The
-   copy of the repository's commit check that `fleet setup` installed refuses
+   copy of the repository's commit check that `fleetmgr setup` installed refuses
    anything under `hosts/` or `users/` that is not ciphertext. Some commands
    push for you; the others say how.
 2. The host's sync fetches the branch with its secrets deploy key, checks the
@@ -414,7 +414,7 @@ sequenceDiagram
    every activation; `authorized_keys` is read by sshd at each login;
    `sudo_keys` by sudo; `ssh_key` becomes the user's SSH and git signing key.
 
-A new host's branch is made by `fleet secrets host-enroll`, from the host's
+A new host's branch is made by `fleetmgr secrets host-enroll`, from the host's
 enrollment file. `host-rekey` moves a reinstalled host to its new identity,
 and `host-retire` deletes the branch. What goes where, who can decrypt what,
 and every command are in [Secrets](secrets.md) and
@@ -422,17 +422,17 @@ and every command are in [Secrets](secrets.md) and
 
 ## Users who keep their own secrets
 
-1. **The user makes their identity.** `fleet user init`, on the user's machine,
+1. **The user makes their identity.** `fleetmgr user init`, on the user's machine,
    makes an age identity (encrypted with a passphrase), an SSH signing key and
    an enrollment file of their public halves. The user gives the file to the
    maintainer through a channel the maintainer trusts.
-2. **The maintainer enrolls them.** `fleet secrets user-enroll` moves the user's
+2. **The maintainer enrolls them.** `fleetmgr secrets user-enroll` moves the user's
    files from the host branches to a branch of their own, `user/<name>`,
    encrypted to the user as well. It lists the user, with their age recipient
    and signing key, in each host's own file, which only the maintainer
    changes, and pushes the user's branch, then the host branches.
-3. **The user changes their files.** `fleet user password`, `fleet user keys`
-   and `fleet user secret` fetch the user's branch, check that its newest
+3. **The user changes their files.** `fleetmgr user password`, `fleetmgr user keys`
+   and `fleetmgr user secret` fetch the user's branch, check that its newest
    commit is signed by the user or by a key they trust, edit it with sops, and
    push a commit signed with the user's own key.
 4. **The host takes them.** For each user its file lists, the sync fetches the
@@ -441,7 +441,7 @@ and every command are in [Secrets](secrets.md) and
    to exactly the user, the host and the recovery recipient. A user whose
    branch fails a check keeps the file the host had, and is named in the
    notices.
-5. **The user leaves.** `fleet secrets user-retire` takes the user off every
+5. **The user leaves.** `fleetmgr secrets user-retire` takes the user off every
    host's list and deletes their branch.
 
 The maintainer's own commands still work for a listed user: they work on the
@@ -456,13 +456,13 @@ runs:
 
 | Running on | It does |
 |---|---|
-| the NixOS installer | gets `fleet` and runs `fleet install`, a guided `os-install` |
+| the NixOS installer | gets `fleetmgr` and runs `fleetmgr install`, a guided `os-install` |
 | macOS | installs Lix, then switches the Mac with nix-darwin |
 | an installed NixOS | runs `system-switch` for the host |
 | another Linux | installs Lix and stops |
 
 **The checked install line.** The plain `curl` line takes whatever `main` has
-at that moment. `fleet install prep`, on the maintainer's machine, checks that
+at that moment. `fleetmgr install prep`, on the maintainer's machine, checks that
 the configuration's commit and the fleet-manager commit the installer comes
 from are signed by keys the maintainer trusts, are pushed and follow the
 commits trusted last. It then prints a line that fetches `bootstrap` from that
@@ -471,14 +471,14 @@ maintainer's machine, and runs it with both commits pinned. The maintainer
 pastes the line over SSH, after comparing the installer's host key with the
 one on its screen. A private host can be installed only this way.
 
-**The `fleet` binary on the installer.** With the pinned line, `bootstrap`
-builds `fleet` from the pinned fleet-manager commit. Without it, `bootstrap`
+**The `fleetmgr` binary on the installer.** With the pinned line, `bootstrap`
+builds `fleetmgr` from the pinned fleet-manager commit. Without it, `bootstrap`
 downloads the latest release and checks it against that release's
 `SHA256SUMS`. That shows the download is whole, not who built it; the
 release's attestation is not checked. If neither works, it runs `os-install`
 by itself.
 
-**The install.** `fleet install` checks the machine, the network, the host and
+**The install.** `fleetmgr install` checks the machine, the network, the host and
 the disks, and runs `os-install`. `os-install` partitions with disko,
 installs, and makes the host's identity:
 
@@ -491,7 +491,7 @@ installs, and makes the host's identity:
 
 **Enrollment.** The install shows the host's enrollment file, its public keys,
 on screen and as a QR code, and can copy it to a USB stick. On the maintainer's
-machine, `fleet secrets host-enroll` makes the host's branch, support's keys
+machine, `fleetmgr secrets host-enroll` makes the host's branch, support's keys
 and each account's password are added, and the branch is pushed. The deploy
 keys are registered read-only on the forge. When the maintainer presses Enter,
 the installer fetches the host's secrets and checks that they decrypt, before
@@ -510,7 +510,7 @@ The whole install, with a diagram of what moves where, is in
 
 ## Bringing in a running machine
 
-**A running NixOS machine.** `fleet host enroll` brings in a machine that is
+**A running NixOS machine.** `fleetmgr host enroll` brings in a machine that is
 already running, without a reinstall. It is the one flow that drives a host
 from outside:
 
@@ -533,11 +533,11 @@ from outside:
 For a host that already runs a fleet configuration from another repository,
 it moves the host to the new one instead.
 
-**A host fleet-manager defines.** `fleet inventory import` copies a host's
+**A host fleet-manager defines.** `fleetmgr inventory import` copies a host's
 folder and its users' folders from a commit of fleet-manager into the
 inventory, adjusts the signers path and the address, checks that it evaluates
 there, commits, pushes and publishes its branch. It refuses a host without
-secrets. `fleet host enroll` then moves the running host over.
+secrets. `fleetmgr host enroll` then moves the running host over.
 
 Both are in [A private fleet](private-fleet.md).
 
@@ -551,7 +551,7 @@ and makes the account on the machine. The owner is an administrator by default
 reads its own `~/.ssh/authorized_keys`. Nothing of the owner goes to the
 inventory or the secrets.
 
-**Adoption.** Later, `fleet host adopt` logs in as `support` and reads who the
+**Adoption.** Later, `fleetmgr host adopt` logs in as `support` and reads who the
 owner is. It reads their password hash with sudo, never shows it and passes it
 on standard input only, and reads their `~/.ssh/authorized_keys`. It stores
 the hash and the keys in the secrets, pushes them, and prints the declaration
@@ -563,7 +563,7 @@ Both are in
 
 ## The maintainer's machine
 
-`fleet setup` prepares the maintainer's machine once:
+`fleetmgr setup` prepares the maintainer's machine once:
 
 1. It makes the recovery identity, encrypted with a passphrase, and caches its
    recipient.
@@ -597,10 +597,10 @@ secrets commands refuse to run while git checks signatures against a file
 inside a checkout, or runs the repository's own commit check rather than your
 copy.
 
-**Taking in what is new.** `fleet trust signers` takes a change of a
+**Taking in what is new.** `fleetmgr trust signers` takes a change of a
 repository's keys, but only through a commit signed by a key already in your
-copy, and shows the change first. `fleet repo add` makes a tool's clone and
-gives it a name. `fleet repo sync` lists the new commits on every branch,
+copy, and shows the change first. `fleetmgr repo add` makes a tool's clone and
+gives it a name. `fleetmgr repo sync` lists the new commits on every branch,
 with who signed each, and moves the trusted commits on once you agree. It
 refuses a branch that went back or was rewritten, unless you accept that by
 typing the branch's name.
@@ -618,26 +618,26 @@ repairs it ([What a NixOS host does at each sync](#what-a-nixos-host-does-at-eac
 **How the tools use SSH.** The tools log in as `support`, with no agent
 forwarded and no prompts. So they reach only a host whose key the
 maintainer's machine already knows: the first connection is made by hand,
-comparing the fingerprint. `fleet host enroll`, on a machine that does not run
+comparing the fingerprint. `fleetmgr host enroll`, on a machine that does not run
 a fleet configuration yet, logs in as an administrator account instead, as
 described above.
 
 **The commands.** What each command does on the host, and as whom, is in the
 table under [What manages it](#what-manages-it). Rotating support's key is the
-one with more steps: `fleet support-key rotate` makes a new key and adds it
+one with more steps: `fleetmgr support-key rotate` makes a new key and adds it
 next to the old one, syncs with the old key, tests the new one, removes the old
 one, syncs again, and checks that the old key is refused. The commands are in
-[The fleet tool](fleet-tool.md), with a page each in the [runbooks](../tools/fleetmgr/runbooks/README.md).
+[The fleetmgr tool](fleetmgr.md), with a page each in the [runbooks](../tools/fleetmgr/runbooks/README.md).
 
 ## A newer fleet-manager, CI and releases
 
-**Moving the inventory to a newer fleet-manager.** `fleet inventory pin`
+**Moving the inventory to a newer fleet-manager.** `fleetmgr inventory pin`
 brings fleet-manager's clone up to date and takes its newest main, or a commit
 you name. It lists the commits the pin moves over, and pins only if each is
 signed by a key you trust. It evaluates every host before and after, naming
 the hosts whose system changes, then commits `flake.lock`, signed, and pushes
 it. Hosts take the new fleet-manager when you publish.
-`fleet inventory publish`, `fleet install prep` and `fleet host enroll` check
+`fleetmgr inventory publish`, `fleetmgr install prep` and `fleetmgr host enroll` check
 the pin the same way. See
 [Moving to a newer fleet-manager](private-fleet.md#moving-to-a-newer-fleet-manager)
 in *A private fleet*.
@@ -655,9 +655,9 @@ locally and push.
 
 **CI for the tool.** A pull request or a push to `main` that changes
 `tools/fleetmgr` runs `gofmt`, `go vet`, the Go tests and
-`nix build .#checks.x86_64-linux.fleet`. A push to `main` then builds static
-`fleet` binaries for Linux and macOS, on x86_64 and aarch64. It publishes them
-as the latest release, `fleet-<commit>`, with `SHA256SUMS` and a signed
+`nix build .#checks.x86_64-linux.fleetmgr`. A push to `main` then builds static
+`fleetmgr` binaries for Linux and macOS, on x86_64 and aarch64. It publishes them
+as the latest release, `fleetmgr-<commit>`, with `SHA256SUMS` and a signed
 attestation of where each came from (`gh attestation verify`). The installer
 takes these binaries when it has no pinned commit; see
 [A new machine](#a-new-machine).
@@ -719,7 +719,7 @@ in fewer flows:
 - There is no sync, no support account and no secrets sync on a Mac. Its
   accounts come from MDM.
 - The Mac's sops wiring points at a secrets snapshot that nothing fills yet,
-  and `fleet inventory publish` cuts a host branch for a Mac that no Mac
+  and `fleetmgr inventory publish` cuts a host branch for a Mac that no Mac
   fetches.
 
 **A Raspberry Pi** starts from one image for every Pi 5:
@@ -730,7 +730,7 @@ in fewer flows:
    and the Wi-Fi file is then deleted from the card.
 3. The maintainer logs in over SSH and switches the Pi to its host
    configuration. A Pi of a private fleet is brought in with
-   `fleet host enroll`.
+   `fleetmgr host enroll`.
 
 See [Building a Raspberry Pi image](raspberry-pi.md) and
 [On a Mac](installing.md#on-a-mac) in *Installing a machine*.
@@ -749,7 +749,7 @@ host follows its configuration to another repository.
 `system-switch`, `nixos-rebuild` or `darwin-rebuild` run by hand, build
 whatever flake they are given without checking a signature. On a fleet host
 the next sync builds from its checked checkout again and switches back to it.
-`fleet host enroll` switches a host from outside, from a commit it checked on
+`fleetmgr host enroll` switches a host from outside, from a commit it checked on
 the maintainer's machine.
 
 **The sync refuses unsigned configuration, plain `http://` remotes, and a
@@ -785,7 +785,7 @@ without a record takes the first commit it fetches. The record holds when a
 host's configuration moves to another repository too. A new address for the
 same history passes as it is. A move to another history, as to
 [a private fleet](private-fleet.md), stops the sync until the record is
-removed on the host, right after the switch that moved it. `fleet host enroll`
+removed on the host, right after the switch that moved it. `fleetmgr host enroll`
 does that when it moves a host: the first-boot clone then records the commit
 the host was switched to. The record never starts over by itself: right after
 a move, anyone who can push to the new repository could serve an old commit
@@ -810,7 +810,7 @@ was last activated with.
 **A fetch that fails shows no notice.** It is retried at the next run. That is
 right for a network that is down, but a forge host key that does not match, or
 a deploy key that was removed, fails the same way, and only a person can fix
-them. `fleet host check` shows how the last sync ended, so run it when a host
+them. `fleetmgr host check` shows how the last sync ended, so run it when a host
 seems not to update.
 
 **A privileged account can sync a host at once.** `fleet-sync-now` starts the

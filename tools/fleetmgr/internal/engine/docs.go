@@ -32,33 +32,33 @@ func Runbooks(flows []*Flow) map[string]string {
 	pages := map[string]string{}
 	var index strings.Builder
 	index.WriteString(generated)
-	index.WriteString("# fleet runbooks\n\n")
+	index.WriteString("# fleetmgr runbooks\n\n")
 	index.WriteString("One page per command: what it is for, its flags, and its steps with the\n" +
-		"commands they run. `fleet` shows the same as it goes, and with `--dry-run` it\n" +
-		"shows every step and command for a real host and changes nothing. `fleet` with\n" +
+		"commands they run. `fleetmgr` shows the same as it goes, and with `--dry-run` it\n" +
+		"shows every step and command for a real host and changes nothing. `fleetmgr` with\n" +
 		"no arguments offers these as a menu.\n\n")
 	index.WriteString("| Command | What it does |\n|---|---|\n")
 	for _, f := range flows {
 		pages[RunbookFile(f)] = Runbook(f)
-		fmt.Fprintf(&index, "| [`fleet %s`](%s) | %s |\n", strings.Join(f.Path, " "), RunbookFile(f), cell(f.Short))
+		fmt.Fprintf(&index, "| [`fleetmgr %s`](%s) | %s |\n", strings.Join(f.Path, " "), RunbookFile(f), cell(f.Short))
 	}
 	pages["README.md"] = index.String()
 	return pages
 }
 
-const generated = "<!-- Written by `fleet docs` from tools/fleetmgr/flows; edit the flows, not this. -->\n\n"
+const generated = "<!-- Written by `fleetmgr docs` from tools/fleetmgr/flows; edit the flows, not this. -->\n\n"
 
 // Runbook renders one flow's page.
 func Runbook(f *Flow) string {
 	var b strings.Builder
 	b.WriteString(generated)
-	fmt.Fprintf(&b, "# fleet %s\n\n", strings.Join(f.Path, " "))
+	fmt.Fprintf(&b, "# fleetmgr %s\n\n", strings.Join(f.Path, " "))
 	fmt.Fprintf(&b, "%s.\n\n", prose(f.Short))
 	if f.Long != "" {
 		b.WriteString(prose(f.Long) + "\n\n")
 	}
 
-	usage := "fleet " + strings.Join(f.Path, " ")
+	usage := "fleetmgr " + strings.Join(f.Path, " ")
 	for _, a := range f.Args {
 		usage += " [" + strings.ToUpper(a) + "]"
 	}
@@ -129,7 +129,7 @@ func Runbook(f *Flow) string {
 		b.WriteString("\n")
 	}
 	if len(f.Needs) > 0 {
-		b.WriteString("It needs `" + strings.Join(f.Needs, "`, `") + "` on the PATH; `fleet doctor` says where to get them.\n")
+		b.WriteString("It needs `" + strings.Join(f.Needs, "`, `") + "` on the PATH; `fleetmgr doctor` says where to get them.\n")
 	}
 	return b.String()
 }
@@ -139,7 +139,7 @@ func Runbook(f *Flow) string {
 // with their reasons (not their commands: --dry-run shows those), the flags.
 // It is plain text, so no prose escaping.
 func guideOf(f *Flow) ui.Guide {
-	usage := "fleet " + strings.Join(f.Path, " ")
+	usage := "fleetmgr " + strings.Join(f.Path, " ")
 	for _, a := range f.Args {
 		usage += " [" + strings.ToUpper(a) + "]"
 	}

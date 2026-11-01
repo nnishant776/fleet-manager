@@ -28,7 +28,7 @@
   # fleet-manager itself.
   libraryApps ? false,
   # Each host fetches only its own branch, host/<name>, which
-  # `fleet inventory publish` makes from main with that host's files alone,
+  # `fleetmgr inventory publish` makes from main with that host's files alone,
   # so no host gets the others' definitions. Sets conf.fleet.repo.ref by
   # default; a host can still set its own.
   hostBranches ? false,
@@ -48,7 +48,7 @@ let
     extraModules = lib.optional hostBranches hostBranch;
   };
 
-  # A path of the flake as fleet inventory publish names it, relative to it.
+  # A path of the flake as fleetmgr inventory publish names it, relative to it.
   relative = p:
     let s = toString p; root = toString self + "/";
     in if lib.hasPrefix root s then lib.removePrefix root s
@@ -94,7 +94,7 @@ let
 in {
   inherit nixosConfigurations darwinConfigurations homeConfigurations apps;
 
-  # What fleet inventory publish needs to cut each host's branch.
+  # What fleetmgr inventory publish needs to cut each host's branch.
   fleetLayout = {
     inherit hostBranches shared;
     hosts = relative hosts;

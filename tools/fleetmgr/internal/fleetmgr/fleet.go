@@ -1,5 +1,5 @@
 // Package fleetmgr knows this fleet's conventions: where the configuration and
-// the secrets checkouts are, how hosts are listed, and how fleet reaches a
+// the secrets checkouts are, how hosts are listed, and how fleetmgr reaches a
 // host. Flows use it so that a rule like "go in as support and forward
 // nothing" is written once.
 package fleetmgr
@@ -31,11 +31,11 @@ const UpstreamRaw = "https://raw.githubusercontent.com/nnishant776/fleet-manager
 var FlakeInput = engine.Input{
 	Name:   "flake",
 	Prompt: "Configuration flake",
-	Help: "A checkout or a flake reference, or the name of a repository (fleet repo list), which means the tool's own clone of it; " +
+	Help: "A checkout or a flake reference, or the name of a repository (fleetmgr repo list), which means the tool's own clone of it; " +
 		"defaults to this directory's flake, then /etc/nixos",
 	Resolve: func(x *engine.Ctx, v string) (string, error) { return ResolveName(x, "flake", v) },
 	Default: func(*engine.Ctx) (string, error) {
-		if v := os.Getenv("FLEET_FLAKE"); v != "" {
+		if v := os.Getenv("FLEETMGR_FLAKE"); v != "" {
 			return v, nil
 		}
 		for _, dir := range []string{".", "/etc/nixos"} {
@@ -166,7 +166,7 @@ func OnAdmin(script string) *engine.Command {
 // for an hour at most, and keeps its socket as "agent". Your own agent, with
 // your other keys, is never forwarded. StopAgent stops it.
 func StartAgent(x *engine.Ctx) error {
-	dir, err := os.MkdirTemp("", "fleet-agent-")
+	dir, err := os.MkdirTemp("", "fleetmgr-agent-")
 	if err != nil {
 		return err
 	}

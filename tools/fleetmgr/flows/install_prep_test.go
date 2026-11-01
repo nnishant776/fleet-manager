@@ -243,7 +243,7 @@ func TestPrepStopsWithoutYourCopy(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	err, fake, out := runPrep(t, checkout, prepRepo("git@github.com:example-org/inventory.git", ""))
 	if err == nil || !strings.Contains(out, "you trust no keys for github.com/example-org/inventory yet") ||
-		!strings.Contains(out, "fleet trust signers --flake "+checkout) {
+		!strings.Contains(out, "fleetmgr trust signers --flake "+checkout) {
 		t.Fatalf("went ahead without your copy: %v\n%s", err, out)
 	}
 	if len(ranMatching(fake, "verify-commit")) > 0 {
@@ -299,11 +299,11 @@ func TestPrepInstallsAHostFromItsOwnBranch(t *testing.T) {
 
 func TestPrepRefusesABranchNotPublishedFromMain(t *testing.T) {
 	err, _, out := runPrep(t, prepCheckout(t, pinnedFM), withHostBranch(prepRepo("git@github.com:example-org/inventory.git", ""), "5555555555555555555555555555555555555555", true))
-	if err == nil || !strings.Contains(out, "host/nas was not published from "+pinnedINV+": run fleet inventory publish nas") {
+	if err == nil || !strings.Contains(out, "host/nas was not published from "+pinnedINV+": run fleetmgr inventory publish nas") {
 		t.Fatalf("installed a branch that differs from main: %v\n%s", err, out)
 	}
 	err, _, out = runPrep(t, prepCheckout(t, pinnedFM), withHostBranch(prepRepo("git@github.com:example-org/inventory.git", ""), branchTree, false))
-	if err == nil || !strings.Contains(out, "is it published? fleet inventory publish nas makes it") {
+	if err == nil || !strings.Contains(out, "is it published? fleetmgr inventory publish nas makes it") {
 		t.Fatalf("went ahead without the branch: %v\n%s", err, out)
 	}
 }

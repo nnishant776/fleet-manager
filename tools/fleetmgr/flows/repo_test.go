@@ -142,7 +142,7 @@ func TestRepoAddClonesTrustsAndNamesARepositoryWithItsOwnSigners(t *testing.T) {
 	if err := exec.Command("git", "-C", clone, "symbolic-ref", "-q", "HEAD").Run(); err == nil {
 		t.Error("the clone is on a branch")
 	}
-	if !strings.Contains(w.out.String(), "fleet inventory publish --flake inventory") {
+	if !strings.Contains(w.out.String(), "fleetmgr inventory publish --flake inventory") {
 		t.Errorf("no hint:\n%s", w.out)
 	}
 	// Again: nothing to do, and no complaint.
@@ -316,7 +316,7 @@ func TestRepoListShowsNamesRecordsAndRepositoriesWithoutAName(t *testing.T) {
 	}
 }
 
-// Without an address, fleet repo add takes the next of your repositories that
+// Without an address, fleetmgr repo add takes the next of your repositories that
 // is not added yet, and says which: fleet-manager, whose address it knows, then
 // the inventory, then the secrets repository, whose keys are the inventory's.
 func TestRepoAddWithoutAnAddressTakesTheNextRepositoryAndSaysWhich(t *testing.T) {
@@ -384,7 +384,7 @@ func TestRepoAddWithoutAnAddressTakesTheNextRepositoryAndSaysWhich(t *testing.T)
 }
 
 // The clone's commits are by the person adding it: the name and email git
-// uses where fleet runs, or the ones given; with neither, it asks, and without
+// uses where fleetmgr runs, or the ones given; with neither, it asks, and without
 // a terminal it says which flag to give, before anything is cloned.
 func TestRepoAddSetsWhoCommitsInTheClone(t *testing.T) {
 	w := newRepoWorld(t)
@@ -412,7 +412,7 @@ func TestRepoAddSetsWhoCommitsInTheClone(t *testing.T) {
 	if c, _ := fleetmgr.ClonePath(other); fileExists(c) {
 		t.Error("cloned before it knew who commits")
 	}
-	// Taken from where fleet runs.
+	// Taken from where fleetmgr runs.
 	w.git(".", "init", "-q")
 	w.git(".", "config", "user.name", "Here")
 	w.git(".", "config", "user.email", "here@example.org")
@@ -421,6 +421,6 @@ func TestRepoAddSetsWhoCommitsInTheClone(t *testing.T) {
 	}
 	c, _ := fleetmgr.ClonePath(other)
 	if got := gitOut(t, c, "config", "--local", "user.email"); got != "here@example.org" {
-		t.Errorf("user.email from where fleet runs = %q", got)
+		t.Errorf("user.email from where fleetmgr runs = %q", got)
 	}
 }

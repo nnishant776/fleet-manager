@@ -16,7 +16,7 @@
 #   same key in bob's does not;
 # - on `plain`, the owner has no sudo and only the allowlisted NetworkManager
 #   actions; on `owner` she has sudo with her password;
-# - adoption (what the inventory holds after `fleet host adopt`): on `owner`,
+# - adoption (what the inventory holds after `fleetmgr host adopt`): on `owner`,
 #   a switch to a configuration that declares her, with no uid, and turns
 #   personal mode off keeps her uid, her files, her password and her
 #   groups, makes accounts immutable, removes the setup service and the
@@ -58,7 +58,7 @@ let
       systemd.services.fleet-bootstrap.enable = false;
       systemd.timers.config-auto-update.enable = false;
     }
-    # What the inventory holds once `fleet host adopt` has run: the owner
+    # What the inventory holds once `fleetmgr host adopt` has run: the owner
     # declared with no uid, personal mode off. NixOS keeps the uid she has. The password comes
     # from a file the test writes, in place of the secrets this host has none
     # of. Only the administrator's host has it.
@@ -215,7 +215,7 @@ pkgs.testers.runNixOSTest {
         assert owner.succeed("id -u ann").strip() == uid, owner.succeed("getent passwd ann")
         hash_before = owner.succeed("getent shadow ann | cut -d: -f2").strip()
         assert hash_before.startswith("$"), hash_before
-        # What `fleet host adopt` stores in the secrets, and the host then
+        # What `fleetmgr host adopt` stores in the secrets, and the host then
         # takes from there; this host has none, so a file stands in.
         owner.succeed(
             "install -d -m 0700 /var/lib/adopt",

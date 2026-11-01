@@ -1,6 +1,6 @@
 package fleetmgr
 
-// Phase 2 of fleet trust, part C: the tools' own clones. The tools keep a
+// Phase 2 of fleetmgr trust, part C: the tools' own clones. The tools keep a
 // clone of each repository they work on, under
 // $XDG_DATA_HOME/fleet/repos/<id> (~/.local/share/fleet/repos/<id> when it is
 // unset or not absolute, on macOS too), where <id> is RepoID of its address.
@@ -170,7 +170,7 @@ func ResolveName(x *engine.Ctx, input, value string) (string, error) {
 	}
 	id, ok := names[value]
 	if !ok {
-		return "", fmt.Errorf("%q is neither a path nor the name of a repository: fleet repo list shows the names, fleet repo add makes one", value)
+		return "", fmt.Errorf("%q is neither a path nor the name of a repository: fleetmgr repo list shows the names, fleetmgr repo add makes one", value)
 	}
 	clone, err := ClonePathOfID(id)
 	if err != nil {
@@ -183,7 +183,7 @@ func ResolveName(x *engine.Ctx, input, value string) (string, error) {
 // SyncClone brings the tools' clone in dir up to date, and stops at the
 // first thing that is not right: it fetches, checks that origin's main is
 // signed by a key you trust (the clone's own gpg.ssh.allowedSignersFile,
-// which fleet repo add sets), checks that it follows the commit you trusted
+// which fleetmgr repo add sets), checks that it follows the commit you trusted
 // last with every commit between them signed by a key you trust, and detaches
 // the clone there. Local branches that origin also has are moved forward when
 // they only lag.

@@ -29,7 +29,7 @@ const (
 
 // The lines around what is written for the book.
 const (
-	topStart      = "<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->"
+	topStart      = "<!-- book:top — written by `fleetmgr docs` from SUMMARY.md and the headings; do not edit -->"
 	topEnd        = "<!-- /book:top -->"
 	sectionsStart = "<!-- book:sections -->"
 	sectionsEnd   = "<!-- /book:sections -->"
@@ -70,7 +70,7 @@ type Problem struct {
 
 func (p Problem) String() string { return fmt.Sprintf("%s:%d: %s", p.File, p.Line, p.What) }
 
-// Command is a fleet command, for the index: its name, such as fleet host
+// Command is a fleetmgr command, for the index: its name, such as fleetmgr host
 // check, and its runbook's path from the guide.
 type Command struct{ Name, Runbook string }
 

@@ -32,15 +32,15 @@ func TestDetectLookTellsTheConsoleApart(t *testing.T) {
 }
 
 func TestFleetThemeOverridesWhatTheTerminalSays(t *testing.T) {
-	if l := DetectLook(env(map[string]string{"FLEET_THEME": "Light"})); l.Dark(true) {
-		t.Error("FLEET_THEME=Light drew for a dark background")
+	if l := DetectLook(env(map[string]string{"FLEETMGR_THEME": "Light"})); l.Dark(true) {
+		t.Error("FLEETMGR_THEME=Light drew for a dark background")
 	}
-	if l := DetectLook(env(map[string]string{"FLEET_THEME": "dark"})); !l.Dark(false) {
-		t.Error("FLEET_THEME=dark drew for a light background")
+	if l := DetectLook(env(map[string]string{"FLEETMGR_THEME": "dark"})); !l.Dark(false) {
+		t.Error("FLEETMGR_THEME=dark drew for a light background")
 	}
-	l := DetectLook(env(map[string]string{"FLEET_THEME": "solarized"}))
+	l := DetectLook(env(map[string]string{"FLEETMGR_THEME": "solarized"}))
 	if l.Dark(false) || !l.Dark(true) {
-		t.Error("an unknown FLEET_THEME did not leave it to the terminal")
+		t.Error("an unknown FLEETMGR_THEME did not leave it to the terminal")
 	}
 }
 
@@ -70,7 +70,7 @@ func TestTheHighlightedRowHasABar(t *testing.T) {
 	}
 	u.look = Look{Theme: "light"}
 	if forced := u.theme(true).Focused.SelectedOption.Render("x"); !strings.Contains(forced, "48;5;252") {
-		t.Errorf("FLEET_THEME=light on a terminal that says dark: %q", forced)
+		t.Errorf("FLEETMGR_THEME=light on a terminal that says dark: %q", forced)
 	}
 }
 

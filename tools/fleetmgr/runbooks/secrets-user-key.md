@@ -1,25 +1,25 @@
-<!-- Written by `fleet docs` from tools/fleetmgr/flows; edit the flows, not this. -->
+<!-- Written by `fleetmgr docs` from tools/fleetmgr/flows; edit the flows, not this. -->
 
-# fleet secrets user-key
+# fleetmgr secrets user-key
 
 Generate the user's SSH key on that host.
 
 Generates an ed25519 key in a memory-only directory, stores both halves in
 users/\<user>/\<host>.yaml on the host's branch, host/\<host>, shreds the plaintext, commits, and shows
-the public key. For a user the host's file lists (fleet secrets user-enroll) it works on the user's branch,
+the public key. For a user the host's file lists (fleetmgr secrets user-enroll) it works on the user's branch,
 user/\<user>, instead. Push the branch after.
 
 ```
-fleet secrets user-key [USER] [HOST] [flags]
+fleetmgr secrets user-key [USER] [HOST] [flags]
 
-fleet secrets user-key alice laptop1
+fleetmgr secrets user-key alice laptop1
 ```
 
 ## Flags
 
 | Flag | |
 |---|---|
-| `--repo` | Your clone of the secrets repository, left on main, or the name of a repository (fleet repo list), which means the tool's own clone of it; defaults to FLEET_SECRETS_REPO, then this directory |
+| `--repo` | Your clone of the secrets repository, left on main, or the name of a repository (fleetmgr repo list), which means the tool's own clone of it; defaults to FLEETMGR_SECRETS_REPO, then this directory |
 | `--recovery` | Your passphrase-encrypted age identity (age -p). Empty: sops uses SOPS_AGE_KEY_FILE or SOPS_AGE_KEY |
 | `--user` | The user's name: lowercase letters, digits and '-' |
 | `--host` | The host's name: lowercase letters, digits and '-' |
@@ -32,7 +32,7 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 1. **Bring the tool's clone up to date.** You named a repository, so the command works in the tool's own clone of it. It is fetched, and main's newest commit is taken only if it is signed by a key you trust and follows the commit you trusted last; the clone then stands there.
 
-2. **Open the secrets repository.** The change builds on the host's branch and encrypts for the recipients that branch names, so git must check its signatures against keys a pushed commit cannot change. New files are encrypted to the host and to your recovery recipient, which fleet setup caches.
+2. **Open the secrets repository.** The change builds on the host's branch and encrypts for the recipients that branch names, so git must check its signatures against keys a pushed commit cannot change. New files are encrypted to the host and to your recovery recipient, which fleetmgr setup caches.
 
    ```
    $ cd REPO && git rev-parse --git-dir
@@ -72,4 +72,4 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
    > Public key of USER on HOST; register it on the forge:
    > PUBLIC_KEY
 
-It needs `git`, `yq`, `sops`, `age`, `ssh-keygen` on the PATH; `fleet doctor` says where to get them.
+It needs `git`, `yq`, `sops`, `age`, `ssh-keygen` on the PATH; `fleetmgr doctor` says where to get them.

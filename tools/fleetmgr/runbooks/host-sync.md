@@ -1,29 +1,29 @@
-<!-- Written by `fleet docs` from tools/fleetmgr/flows; edit the flows, not this. -->
+<!-- Written by `fleetmgr docs` from tools/fleetmgr/flows; edit the flows, not this. -->
 
-# fleet host sync
+# fleetmgr host sync
 
 Have a host fetch its configuration and secrets now, rather than at its next timer, and check what it then runs.
 
 Logs in to the host as support, with nothing forwarded, and starts its sync
 at once, instead of waiting for its timer: the host fetches its branch and its
 secrets, checks that they are signed by a key it trusts, and switches to what
-it gets. fleet waits for the sync to end, shows the host's log if it failed,
+it gets. fleetmgr waits for the sync to end, shows the host's log if it failed,
 and checks that the host now runs the newest commit of its branch. Then it
-reports the same as fleet host check: configuration, secrets and health.
+reports the same as fleetmgr host check: configuration, secrets and health.
 It stops at the first step that fails.
 
 ```
-fleet host sync [HOST] [flags]
+fleetmgr host sync [HOST] [flags]
 
-fleet host sync pi1
-fleet host sync pi-gw --address 192.168.0.9
+fleetmgr host sync pi1
+fleetmgr host sync pi-gw --address 192.168.0.9
 ```
 
 ## Flags
 
 | Flag | |
 |---|---|
-| `--flake` | A checkout or a flake reference, or the name of a repository (fleet repo list), which means the tool's own clone of it; defaults to this directory's flake, then /etc/nixos |
+| `--flake` | A checkout or a flake reference, or the name of a repository (fleetmgr repo list), which means the tool's own clone of it; defaults to this directory's flake, then /etc/nixos |
 | `--host` | A host of the configuration (hosts/\<name>) |
 | `--address` | A name or IP address for SSH; defaults to the host's name |
 | `--user` | The account to log in as; support by default, which has sudo without a password, so nothing needs forwarding |
@@ -74,4 +74,4 @@ A value that is neither given nor has a default is asked for on a terminal.
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'systemctl is-system-running || true; systemctl --failed --no-legend --plain | cut -d'\'' '\'' -f1'
    ```
 
-It needs `ssh`, `git`, `nix` on the PATH; `fleet doctor` says where to get them.
+It needs `ssh`, `git`, `nix` on the PATH; `fleetmgr doctor` says where to get them.

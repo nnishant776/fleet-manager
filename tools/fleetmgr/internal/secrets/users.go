@@ -41,7 +41,7 @@ func UserBranchRef(x *engine.Ctx, user string) string {
 // the commit you trusted last on that branch.
 func VerifyTip(x *engine.Ctx, ref string) error {
 	if _, err := repoCmd("git", "verify-commit", ref).Explain(func(engine.Result) string {
-		return "the newest commit of " + ref + " is not signed by a key in gpg.ssh.allowedSignersFile (fleet setup sets it):" +
+		return "the newest commit of " + ref + " is not signed by a key in gpg.ssh.allowedSignersFile (fleetmgr setup sets it):" +
 			" look at it with git log --show-signature -1 " + ref + " before going on"
 	}).RunQuiet(x); err != nil {
 		return err
@@ -267,7 +267,7 @@ func VerifyUserTip(x *engine.Ctx, ref, user, key string) error {
 	if p := allowedSigners(x); p != "" {
 		signers, _ = os.ReadFile(p)
 	}
-	return verifyAgainst(x, ref, user, key, signers, "the newest commit of "+ref+" is not signed by a key in gpg.ssh.allowedSignersFile (fleet setup sets it) or by "+user+
+	return verifyAgainst(x, ref, user, key, signers, "the newest commit of "+ref+" is not signed by a key in gpg.ssh.allowedSignersFile (fleetmgr setup sets it) or by "+user+
 		"'s own signing key: look at it with git log --show-signature -1 "+ref+" before going on")
 }
 
@@ -278,14 +278,14 @@ func VerifyUserTip(x *engine.Ctx, ref, user, key string) error {
 // a temporary file, never into the user's git configuration.
 func VerifyOwnTip(x *engine.Ctx, ref, user, key string, signers []byte) error {
 	return verifyAgainst(x, ref, user, key, signers, "the newest commit of "+ref+" is signed neither by your signing key nor by a key in your copy of the configuration repository's signers"+
-		" (fleet trust signers makes it; --signers names another file): look at it with git log --show-signature -1 "+ref+
+		" (fleetmgr trust signers makes it; --signers names another file): look at it with git log --show-signature -1 "+ref+
 		", and do not go on until you know who made it")
 }
 
 // verifyAgainst runs git verify-commit with a temporary allowed-signers file:
 // signers, then the user's key as a line of its own.
 func verifyAgainst(x *engine.Ctx, ref, user, key string, signers []byte, explain string) error {
-	tmp, err := os.CreateTemp("", "fleet-signers-*")
+	tmp, err := os.CreateTemp("", "fleetmgr-signers-*")
 	if err != nil {
 		return err
 	}

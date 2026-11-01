@@ -55,7 +55,7 @@ var allHostsInput = engine.Input{
 func ownFlakeInput() engine.Input {
 	in := fleetmgr.FlakeInput
 	in.Optional = true
-	in.Help = "A checkout of the configuration repository, whose origin names your copy of its signers (fleet trust signers); defaults to this directory's flake, then /etc/nixos. Not needed with --signers"
+	in.Help = "A checkout of the configuration repository, whose origin names your copy of its signers (fleetmgr trust signers); defaults to this directory's flake, then /etc/nixos. Not needed with --signers"
 	return in
 }
 
@@ -89,7 +89,7 @@ func userEditFlow(f engine.Flow, e userEdit) *engine.Flow {
 			Why:   "To build on the newest commit of your branch, which the maintainer or you may have added to since.",
 			Do: repoGit("fetch", "-q", "origin", "+refs/heads/user/{{.user}}:refs/remotes/origin/user/{{.user}}").ReadOnly().
 				Explain(func(engine.Result) string {
-					return "could not fetch user/{{.user}} from origin: is there such a branch? The maintainer makes it with fleet secrets user-enroll {{.user}} --from {{.user}}.enroll"
+					return "could not fetch user/{{.user}} from origin: is there such a branch? The maintainer makes it with fleetmgr secrets user-enroll {{.user}} --from {{.user}}.enroll"
 				}).OK("fetched"),
 		},
 		engine.Step{
@@ -105,7 +105,7 @@ func userEditFlow(f engine.Flow, e userEdit) *engine.Flow {
 		},
 		engine.Step{
 			Title: "Choose the hosts",
-			Why:   "The hosts named, each of which must have a file of yours on your branch (the maintainer's fleet secrets user-enroll makes them), or all of them with --all-hosts.",
+			Why:   "The hosts named, each of which must have a file of yours on your branch (the maintainer's fleetmgr secrets user-enroll makes them), or all of them with --all-hosts.",
 			Do:    engine.Func(chooseOwnHosts),
 		},
 		engine.Step{
@@ -158,7 +158,7 @@ func findOwnBranch(x *engine.Ctx) error {
 	haveLocal, haveRemote := has(local), has(remote)
 	switch {
 	case !haveLocal && !haveRemote:
-		return fmt.Errorf("there is no user/%s in %s, local or on origin: the maintainer makes it with fleet secrets user-enroll %s --from %s.enroll", user, x.Value("repo"), user, user)
+		return fmt.Errorf("there is no user/%s in %s, local or on origin: the maintainer makes it with fleetmgr secrets user-enroll %s --from %s.enroll", user, x.Value("repo"), user, user)
 	case haveLocal && haveRemote:
 		l, _ := engine.Silently(x, nil, "git", "-C", x.Value("repo"), "rev-parse", local)
 		r, _ := engine.Silently(x, nil, "git", "-C", x.Value("repo"), "rev-parse", remote)
@@ -197,7 +197,7 @@ func signingKeyOf(x *engine.Ctx) (string, error) {
 			return f[0] + " " + f[1], nil
 		}
 	}
-	return "", fmt.Errorf("no enrollment file %s and no %s.pub: run fleet user init first", x.Value("enroll"), x.Value("signing-key"))
+	return "", fmt.Errorf("no enrollment file %s and no %s.pub: run fleetmgr user init first", x.Value("enroll"), x.Value("signing-key"))
 }
 
 // trustedSignersData is the content of the allowed_signers file the branch's
@@ -240,7 +240,7 @@ func verifyOwnBranch(x *engine.Ctx) error {
 		return err
 	}
 	if from == "" {
-		x.UI.Note("You have no copy of the configuration repository's signers (fleet trust signers --flake <checkout>), and gave no --signers: only your own key counts.")
+		x.UI.Note("You have no copy of the configuration repository's signers (fleetmgr trust signers --flake <checkout>), and gave no --signers: only your own key counts.")
 	}
 	if err := secrets.VerifyOwnTip(x, x.Value("ref"), x.Value("user"), key, signers); err != nil {
 		return err
@@ -281,7 +281,7 @@ func chooseOwnHosts(x *engine.Ctx) error {
 	} else {
 		for _, h := range given {
 			if !hasPath(x, ref, userFilePath(user, h)) {
-				return fmt.Errorf("%s has no %s: the maintainer lists you on %s and makes it with fleet secrets user-enroll %s --from %s.enroll --host %s", ref, userFilePath(user, h), h, user, user, h)
+				return fmt.Errorf("%s has no %s: the maintainer lists you on %s and makes it with fleetmgr secrets user-enroll %s --from %s.enroll --host %s", ref, userFilePath(user, h), h, user, user, h)
 			}
 			if !slices.Contains(hosts, h) {
 				hosts = append(hosts, h)
@@ -347,7 +347,7 @@ var UserPassword = userEditFlow(engine.Flow{
 		"on your branch, user/<user>, of your clone of the secrets repository; commits, signed with your own signing key,\n" +
 		"and pushes the branch. Hosts apply the password at their next sync. The branch's newest commit must be signed\n" +
 		"by your key or by a key in your copy of the configuration repository's signers before the change builds on it.",
-	Example: "  fleet user password laptop1 nas\n  fleet user password --all-hosts\n  printf %s \"$pw\" | fleet user password laptop1 --password-stdin --yes",
+	Example: "  fleetmgr user password laptop1 nas\n  fleetmgr user password --all-hosts\n  printf %s \"$pw\" | fleetmgr user password laptop1 --password-stdin --yes",
 	Needs:   []string{"mkpasswd"},
 }, userEdit{
 	inputs: []engine.Input{{Name: "password", Prompt: "Password for {{.user}}", Help: "Hidden as you type", Secret: true, Twice: true}},
@@ -381,9 +381,9 @@ var UserKeys = userEditFlow(engine.Flow{
 		"yet or remove the ones given (keys are matched by type and key material, so options such as from= and the comment\n" +
 		"do not matter), and keep the other lines as they are. A removal that would leave no key is refused; a change that\n" +
 		"changes nothing makes no commit.",
-	Example: "  fleet user keys laptop1 --authorized-keys my.keys\n" +
-		"  fleet user keys --all-hosts --add-authorized-keys new.pub\n" +
-		"  fleet user keys laptop1 nas --remove-authorized-keys old.pub --add-sudo-keys sudo.pub",
+	Example: "  fleetmgr user keys laptop1 --authorized-keys my.keys\n" +
+		"  fleetmgr user keys --all-hosts --add-authorized-keys new.pub\n" +
+		"  fleetmgr user keys laptop1 nas --remove-authorized-keys old.pub --add-sudo-keys sudo.pub",
 }, userEdit{
 	inputs: keyInputs(),
 	pre: []engine.Step{{
@@ -441,7 +441,7 @@ var UserSecretSet = userEditFlow(engine.Flow{
 		"the branch. The value is typed hidden or read from standard input. A host whose configuration sets\n" +
 		"accounts.<user>.secrets.own decrypts your whole file for you alone, and fleet-user-secret <name> prints the value\n" +
 		"there. A value that is stored already makes no commit.",
-	Example: "  fleet user secret set token laptop1\n  printf %s \"$token\" | fleet user secret set token --all-hosts --value-stdin --yes",
+	Example: "  fleetmgr user secret set token laptop1\n  printf %s \"$token\" | fleetmgr user secret set token --all-hosts --value-stdin --yes",
 	Args:    []string{"name"},
 }, userEdit{
 	inputs: []engine.Input{secretNameInput, {Name: "value", Prompt: "Value of {{.name}}", Help: "Hidden as you type; trailing newlines are dropped", Secret: true}},
@@ -477,7 +477,7 @@ var UserSecretUnset = userEditFlow(engine.Flow{
 	Long: "Removes secrets.<name> from your file for each host, users/<user>/<host>.yaml, on your branch, user/<user>,\n" +
 		"of your clone of the secrets repository; commits, signed with your own signing key, and pushes the branch.\n" +
 		"A host that does not have it makes no commit.",
-	Example: "  fleet user secret unset token laptop1\n  fleet user secret unset token --all-hosts",
+	Example: "  fleetmgr user secret unset token laptop1\n  fleetmgr user secret unset token --all-hosts",
 	Args:    []string{"name"},
 }, userEdit{
 	inputs: []engine.Input{secretNameInput},

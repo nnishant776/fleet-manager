@@ -93,7 +93,7 @@ let
         own = lib.mkOption {
           type = lib.types.bool;
           default = false;
-          description = "Decrypt this account's whole file, users/<name>/<host>.yaml, to /run/secrets/users/<name>/all, readable by the account alone (mode 0400), so that the user can read what they keep in it: `fleet-user-secret <name>` prints `secrets.<name>` from it. Meant for a user who has a branch of their own in the secrets repository and stores secrets there with `fleet user secret set`. Ignored on a host without `conf.secrets.repo.url`.";
+          description = "Decrypt this account's whole file, users/<name>/<host>.yaml, to /run/secrets/users/<name>/all, readable by the account alone (mode 0400), so that the user can read what they keep in it: `fleet-user-secret <name>` prints `secrets.<name>` from it. Meant for a user who has a branch of their own in the secrets repository and stores secrets there with `fleetmgr user secret set`. Ignored on a host without `conf.secrets.repo.url`.";
         };
       };
       manageAccount = lib.mkOption {

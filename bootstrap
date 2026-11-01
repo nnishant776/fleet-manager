@@ -8,7 +8,7 @@
 #
 #   macOS               installs Lix if needed, then switches to HOST with the
 #                       nix-darwin this flake pins
-#   NixOS installer     runs fleet install: built from REV when given, else
+#   NixOS installer     runs fleetmgr install: built from REV when given, else
 #                       fetched from the latest release and checked against its
 #                       SHA256SUMS; os-install when it cannot be had (ARGS are
 #                       passed through to either)
@@ -17,7 +17,7 @@
 #
 # REV pins the fleet-manager commit everything here comes from, fetched with
 # git so the files are that commit's; FLAKE=…?rev=<commit> pins the
-# configuration. `fleet install prep <host>`, on the maintainer's machine,
+# configuration. `fleetmgr install prep <host>`, on the maintainer's machine,
 # checks both commits' signatures and prints the line to run, which fetches
 # this script by REV and checks its SHA-256 first.
 #
@@ -26,9 +26,9 @@
 # installed with fleet-manager's os-install, which reads it with the host's own key
 # (see README). Without the pins a private install is refused, unless
 # UNPINNED=1; a public one is warned about.
-# FLEET_RELEASES overrides where fleet is fetched from without REV.
+# FLEETMGR_RELEASES overrides where fleetmgr is fetched from without REV.
 # POSIX sh on purpose: macOS ships bash 3.2.
-# pinned-installs: 1 (fleet install prep looks for this line: a bootstrap without it
+# pinned-installs: 1 (fleetmgr install prep looks for this line: a bootstrap without it
 # ignores REV and would install what main has.)
 set -eu
 
@@ -45,7 +45,7 @@ fi
 flake="${FLAKE:-$library}"
 
 # Pinned: fleet-manager by REV, and the configuration by its own ?rev= or by
-# being fleet-manager at REV. This guards against forgetting `fleet install
+# being fleet-manager at REV. This guards against forgetting `fleetmgr install
 # prep`; the protection is its line, which fetches this script by REV.
 pinned=false
 if [ -n "$rev" ]; then
@@ -56,16 +56,16 @@ if ! $pinned; then
   case "$flake" in
     git+ssh://*)
       [ "${UNPINNED:-}" = 1 ] \
-        || die "a private host is installed only from commits checked on your machine: run 'fleet install prep <host>' there and paste the line it prints (UNPINNED=1 installs what main has now, unchecked)"
+        || die "a private host is installed only from commits checked on your machine: run 'fleetmgr install prep <host>' there and paste the line it prints (UNPINNED=1 installs what main has now, unchecked)"
       say "UNPINNED=1: installing what main has now, unchecked"
       unpinned=--unpinned
       ;;
     *)
-      say "not pinned: this installs what main has now, which nobody checked; 'fleet install prep <host>' on your machine prints a line that pins checked commits"
+      say "not pinned: this installs what main has now, which nobody checked; 'fleetmgr install prep <host>' on your machine prints a line that pins checked commits"
       ;;
   esac
 fi
-releases="${FLEET_RELEASES:-https://github.com/nnishant776/fleet-manager/releases/latest/download}"
+releases="${FLEETMGR_RELEASES:-https://github.com/nnishant776/fleet-manager/releases/latest/download}"
 nixFlags="--extra-experimental-features nix-command --extra-experimental-features flakes"
 
 # Piped from curl, stdin is the script, not the keyboard. Interactive steps
@@ -87,14 +87,14 @@ ensure_nix() {
   command -v nix >/dev/null 2>&1 || die "Lix installed but nix is not on PATH; open a new shell and re-run"
 }
 
-fetch_fleet() {  # fetch_fleet — fleet for this machine, checked; prints its path
+fetch_fleetmgr() {  # fetch_fleetmgr — fleetmgr for this machine, checked; prints its path
   # Pinned, it is built from that commit: a release is whatever CI last
   # published, from whatever main had.
   if [ -n "$rev" ]; then
-    say "building fleet from fleet-manager at $rev"
+    say "building fleetmgr from fleet-manager at $rev"
     # shellcheck disable=SC2086 # nixFlags is a list of words
-    out="$(nix $nixFlags build --no-link --print-out-paths "$library#fleet")" || return 1
-    printf '%s\n' "$out/bin/fleet"
+    out="$(nix $nixFlags build --no-link --print-out-paths "$library#fleetmgr")" || return 1
+    printf '%s\n' "$out/bin/fleetmgr"
     return
   fi
   case "$(uname -m)" in
@@ -102,7 +102,7 @@ fetch_fleet() {  # fetch_fleet — fleet for this machine, checked; prints its p
     aarch64) arch=arm64 ;;
     *) return 1 ;;
   esac
-  name="fleet-linux-$arch"
+  name="fleetmgr-linux-$arch"
   dir="$(mktemp -d)" || return 1
   say "fetching $name"
   curl -sSfL -o "$dir/$name" "$releases/$name" || return 1
@@ -146,7 +146,7 @@ case "$(uname -s)" in
     if [ -e /etc/NIXOS ]; then
       if grep -qs ' /iso ' /proc/mounts; then
         # The installer: the host is os-install's to choose, so a first
-        # argument is passed through as -H. fleet install guides through
+        # argument is passed through as -H. fleetmgr install guides through
         # os-install and takes the same flags; without it, os-install runs
         # by itself.
         [ -n "$host" ] && set -- -H "$host" "$@"
@@ -157,13 +157,13 @@ case "$(uname -s)" in
         case "$flake" in
           git+ssh://*) installer="$library"; set -- --flake "$flake" "$@" ;;
         esac
-        if fleet="$(fetch_fleet)"; then
-          # fleet install checks the pins too, and takes os-install from REV.
+        if fleetmgr="$(fetch_fleetmgr)"; then
+          # fleetmgr install checks the pins too, and takes os-install from REV.
           [ -n "$rev" ] && set -- --rev "$rev" "$@"
           [ -n "$unpinned" ] && set -- "$unpinned" "$@"
-          exec "$fleet" install --flake "$flake" "$@" <"$tty"
+          exec "$fleetmgr" install --flake "$flake" "$@" <"$tty"
         fi
-        say "could not fetch fleet; running os-install by itself"
+        say "could not fetch fleetmgr; running os-install by itself"
         # shellcheck disable=SC2086
         exec nix $nixFlags run "$installer#os-install" -- "$@" <"$tty"
       fi

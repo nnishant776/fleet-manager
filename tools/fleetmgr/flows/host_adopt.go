@@ -23,21 +23,21 @@ var HostAdopt = &engine.Flow{
 	Title: "Adopt a personal machine's owner into the fleet",
 	Short: "Store the password and keys of the owner a personal machine made at its first boot, and print the declaration to add",
 	Long: "A personal machine (conf.fleet.personal) lets its owner make their own account at the first boot, and\n" +
-		"keeps that account out of the configuration. This starts bringing it in. fleet logs in to the host as\n" +
+		"keeps that account out of the configuration. This starts bringing it in. fleetmgr logs in to the host as\n" +
 		"support and reads who the owner is (/var/lib/fleet/owner), their full name and home, their password hash\n" +
 		"(never shown, and passed on standard input only) and the login keys in their ~/.ssh/authorized_keys.\n" +
-		"It stores the hash and the keys in the secrets repository (fleet secrets user-password --hash-stdin and\n" +
-		"user-keys), after fleet secrets user-enroll when you give the owner's enrollment file with --from, which\n" +
-		"is for an owner who will change their own password and keys later (fleet user init makes the file).\n" +
+		"It stores the hash and the keys in the secrets repository (fleetmgr secrets user-password --hash-stdin and\n" +
+		"user-keys), after fleetmgr secrets user-enroll when you give the owner's enrollment file with --from, which\n" +
+		"is for an owner who will change their own password and keys later (fleetmgr user init makes the file).\n" +
 		"It changes nothing in the inventory. It prints the declaration for you to put into the host's own\n" +
 		"default.nix, and the commands that finish: publish with a sync, and check the host. The owner keeps\n" +
 		"their uid, files and password: NixOS keeps an existing account's ids when it becomes declared.",
-	Example: "  fleet host adopt laptop1 --flake inventory --repo secrets\n" +
-		"  fleet host adopt laptop1 --from ann.enroll --flake inventory --repo secrets",
+	Example: "  fleetmgr host adopt laptop1 --flake inventory --repo secrets\n" +
+		"  fleetmgr host adopt laptop1 --from ann.enroll --flake inventory --repo secrets",
 	Args: []string{"host"},
 	Inputs: append(append(fleetmgr.HostInputs(), secrets.RepoInput, secrets.RecoveryInput),
 		engine.Input{Name: "from", Prompt: "Owner's enrollment file", Optional: true,
-			Help: "The owner's enrollment file (fleet user init), when they will manage their own password and keys later; none: they ask you"}),
+			Help: "The owner's enrollment file (fleetmgr user init), when they will manage their own password and keys later; none: they ask you"}),
 	Needs: []string{"git", "nix", "tar", "ssh", "yq", "sops", "age", "ssh-keygen"},
 	Steps: []engine.Step{
 		{
@@ -56,8 +56,8 @@ var HostAdopt = &engine.Flow{
 		skipInDryRun(secrets.Unlock()),
 		{
 			Title: "Enroll the owner in the secrets repository",
-			Why: "With their enrollment file the owner gets a branch of their own, user/<owner>, and keeps their password and keys there with fleet user. " +
-				"This is fleet secrets user-enroll, run for the owner and this host.",
+			Why: "With their enrollment file the owner gets a branch of their own, user/<owner>, and keeps their password and keys there with fleetmgr user. " +
+				"This is fleetmgr secrets user-enroll, run for the owner and this host.",
 			When: func(x *engine.Ctx) (bool, string) {
 				if x.Value("from") == "" {
 					return false, "no enrollment file was given: the password and keys stay on the host's branch, and the owner asks you to change them"
@@ -68,12 +68,12 @@ var HostAdopt = &engine.Flow{
 		},
 		{
 			Title: "Store the owner's password hash",
-			Why:   "As it is on the host: the owner keeps the password they have. This is fleet secrets user-password --hash-stdin.",
+			Why:   "As it is on the host: the owner keeps the password they have. This is fleetmgr secrets user-password --hash-stdin.",
 			Do:    engine.Func(storeOwnerHash),
 		},
 		{
 			Title: "Store the owner's login keys",
-			Why:   "The keys of their ~/.ssh/authorized_keys, which the configuration will read from the secrets instead. This is fleet secrets user-keys --authorized-keys.",
+			Why:   "The keys of their ~/.ssh/authorized_keys, which the configuration will read from the secrets instead. This is fleetmgr secrets user-keys --authorized-keys.",
 			When: func(x *engine.Ctx) (bool, string) {
 				if x.Value("owner_keys") == "" {
 					return false, "the owner has no login keys"
@@ -263,7 +263,7 @@ func keptSecrets(x *engine.Ctx) {
 
 func enrollOwner(x *engine.Ctx) error {
 	if x.Options.DryRun {
-		x.UI.Skip("dry run: would run the steps of fleet secrets user-enroll " + x.Value("owner") + " --from " + x.Value("from") + " --host " + x.Value("host"))
+		x.UI.Skip("dry run: would run the steps of fleetmgr secrets user-enroll " + x.Value("owner") + " --from " + x.Value("from") + " --host " + x.Value("host"))
 		return nil
 	}
 	if err := runSecrets(x, SecretsUserEnroll, map[string]string{"from": x.Value("from")}); err != nil {
@@ -275,7 +275,7 @@ func enrollOwner(x *engine.Ctx) error {
 
 func storeOwnerHash(x *engine.Ctx) error {
 	if x.Options.DryRun {
-		x.UI.Skip("dry run: would run the steps of fleet secrets user-password " + x.Value("owner") + " " + x.Value("host") + " --hash-stdin")
+		x.UI.Skip("dry run: would run the steps of fleetmgr secrets user-password " + x.Value("owner") + " " + x.Value("host") + " --hash-stdin")
 		return nil
 	}
 	if err := runSecrets(x, SecretsUserPassword, map[string]string{"hash": x.Value("owner_hash")}); err != nil {
@@ -287,10 +287,10 @@ func storeOwnerHash(x *engine.Ctx) error {
 
 func storeOwnerKeys(x *engine.Ctx) error {
 	if x.Options.DryRun {
-		x.UI.Skip("dry run: would run the steps of fleet secrets user-keys " + x.Value("owner") + " " + x.Value("host") + " --authorized-keys <their keys>")
+		x.UI.Skip("dry run: would run the steps of fleetmgr secrets user-keys " + x.Value("owner") + " " + x.Value("host") + " --authorized-keys <their keys>")
 		return nil
 	}
-	dir, err := os.MkdirTemp("", "fleet-adopt-")
+	dir, err := os.MkdirTemp("", "fleetmgr-adopt-")
 	if err != nil {
 		return err
 	}
@@ -403,13 +403,13 @@ func showAdoptNext(x *engine.Ctx) error {
 	}
 	b.WriteString("\nand remove conf.fleet.personal.enable = true (or set it to false).\n" +
 		"Then commit, push, and publish with a sync:\n" +
-		"  fleet inventory publish " + host + " --flake " + flake + " --sync\n" +
-		"  fleet host check " + host + " --flake " + flake + "\n\n" +
+		"  fleetmgr inventory publish " + host + " --flake " + flake + " --sync\n" +
+		"  fleetmgr host check " + host + " --flake " + flake + "\n\n" +
 		owner + " keeps their uid, files and password. From then on ")
 	if enrolled {
-		b.WriteString("they change their password and keys with fleet user password / fleet user keys")
+		b.WriteString("they change their password and keys with fleetmgr user password / fleetmgr user keys")
 	} else {
-		b.WriteString("their password and keys change through you, fleet secrets user-password / user-keys")
+		b.WriteString("their password and keys change through you, fleetmgr secrets user-password / user-keys")
 	}
 	b.WriteString("; passwd on the machine no longer sticks, and ~/.ssh/authorized_keys no longer admits them.")
 	x.UI.Text(b.String())

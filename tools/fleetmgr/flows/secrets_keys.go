@@ -56,10 +56,10 @@ var SecretsUserKeys = &engine.Flow{
 		"remove the ones given (keys are matched by type and key material, so options such as from= and the\n" +
 		"comment do not matter), and keep the other lines as they are. A removal that would leave no key is\n" +
 		"refused; a change that changes nothing makes no commit.",
-	Example: "  fleet secrets user-keys alice laptop1 --authorized-keys alice.keys\n" +
-		"  fleet secrets user-keys admin laptop1 --authorized-keys admin.keys --sudo-keys admin-sudo.keys\n" +
-		"  fleet secrets user-keys support laptop1 --add-authorized-keys new.pub\n" +
-		"  fleet secrets user-keys support laptop1 --remove-authorized-keys old.pub",
+	Example: "  fleetmgr secrets user-keys alice laptop1 --authorized-keys alice.keys\n" +
+		"  fleetmgr secrets user-keys admin laptop1 --authorized-keys admin.keys --sudo-keys admin-sudo.keys\n" +
+		"  fleetmgr secrets user-keys support laptop1 --add-authorized-keys new.pub\n" +
+		"  fleetmgr secrets user-keys support laptop1 --remove-authorized-keys old.pub",
 	Args:   []string{"user", "host"},
 	Inputs: append([]engine.Input{secrets.RepoInput, secrets.RecoveryInput, secrets.UserName(), knownHost()}, keyInputs()...),
 	Needs:  []string{"git", "yq", "sops", "age", "ssh-keygen"},

@@ -88,8 +88,8 @@ func TestEnrollStopsForAKeyTheBranchLacksAndSaysWhatAddsIt(t *testing.T) {
 		"missing key authorized_keys in users/support/pi.yaml",
 		"missing key wifi/home in hosts/pi.yaml",
 		"lacks 2 of the secrets",
-		"fleet secrets user-keys support pi --authorized-keys <file of public keys>",
-		"fleet host secret pi wifi/home",
+		"fleetmgr secrets user-keys support pi --authorized-keys <file of public keys>",
+		"fleetmgr host secret pi wifi/home",
 	} {
 		if !strings.Contains(out+err.Error(), want) {
 			t.Errorf("lacks %q:\n%v\n%s", want, err, out)

@@ -21,14 +21,14 @@ var Install = &engine.Flow{
 	Path:  []string{"install"},
 	Title: "Install a host on this machine",
 	Short: "Install a host from the configuration onto this machine's disks, from the installer",
-	Long: "Run on a machine booted from the NixOS installer. fleet checks the network,\n" +
+	Long: "Run on a machine booted from the NixOS installer. fleetmgr checks the network,\n" +
 		"helps pick the host and the disks to erase, says what os-install will ask for,\n" +
 		"then runs os-install, which erases the disks, installs, and creates the host's\n" +
 		"identity when it fetches secrets. Afterwards it checks the new disk and lists\n" +
 		"what follows the first boot. The flags are os-install's.",
-	Example: "  fleet install\n" +
-		"  fleet install -H laptop1 -d /dev/nvme0n1\n" +
-		"  fleet install -H nas1 -d main=/dev/nvme0n1 -d data=/dev/sda --enroll-out /media/usb/nas1.enroll",
+	Example: "  fleetmgr install\n" +
+		"  fleetmgr install -H laptop1 -d /dev/nvme0n1\n" +
+		"  fleetmgr install -H nas1 -d main=/dev/nvme0n1 -d data=/dev/sda --enroll-out /media/usb/nas1.enroll",
 	Args: []string{"host"},
 	Inputs: []engine.Input{
 		fleetmgr.FlakeInput,
@@ -41,20 +41,20 @@ var Install = &engine.Flow{
 		{Name: "no-enroll", Prompt: "Skip waiting for the enrollment?", Help: "Do not wait for the host to be enrolled; it retries after boot", Bool: true},
 		{Name: "enroll-out", Prompt: "Also copy the enrollment file to", Help: "A path, for example on a mounted USB stick",
 			Optional: true},
-		{Name: "rev", Prompt: "fleet-manager commit to install with", Help: "A full commit hash from fleet install prep: os-install comes from it, not from main",
+		{Name: "rev", Prompt: "fleet-manager commit to install with", Help: "A full commit hash from fleetmgr install prep: os-install comes from it, not from main",
 			Pattern: `^[0-9a-f]{40}$`, Optional: true},
-		{Name: "unpinned", Prompt: "Install commits nobody checked?", Help: "Install a private host's newest commit with the newest os-install, as before fleet install prep; refused otherwise", Bool: true},
+		{Name: "unpinned", Prompt: "Install commits nobody checked?", Help: "Install a private host's newest commit with the newest os-install, as before fleetmgr install prep; refused otherwise", Bool: true},
 	},
 	Needs: []string{"nix"},
 	Steps: []engine.Step{
 		{
 			Title: "Check this is the NixOS installer",
-			Why:   "An install erases disks. Anywhere but a machine booted from the installer, a typo, or an older fleet that takes a subcommand for a host name, would start one on the machine you are on.",
+			Why:   "An install erases disks. Anywhere but a machine booted from the installer, a typo, or an older fleetmgr that takes a subcommand for a host name, would start one on the machine you are on.",
 			Do:    engine.Func(checkInstaller),
 		},
 		{
 			Title: "Check what is installed",
-			Why: "An install should run, and install, only commits whose signatures were checked on your machine: fleet install prep there checks them and prints the line that pins them. " +
+			Why: "An install should run, and install, only commits whose signatures were checked on your machine: fleetmgr install prep there checks them and prints the line that pins them. " +
 				"Otherwise it takes what main has now, which anyone who can push could have changed.",
 			Do: engine.Func(checkPinned),
 		},
@@ -125,7 +125,7 @@ func checkNetwork(x *engine.Ctx) error {
 			x.UI.Text(`    add_network, set_network 0 ssid "NAME", set_network 0 psk "PASSPHRASE", enable_network 0`)
 		}
 		if x.Options.Yes || x.Options.DryRun || !x.UI.Interactive() {
-			return errors.New("no network: connect, then run fleet install again")
+			return errors.New("no network: connect, then run fleetmgr install again")
 		}
 		if err := engine.WaitFor(x, "Connected? Try again"); err != nil {
 			return err
@@ -319,18 +319,18 @@ func runOSInstall(x *engine.Ctx) error {
 	}
 	if x.Value("state_path") != "" && x.Value("identity") == "" && x.Value("no-enroll") != "true" {
 		x.UI.Text("When it shows the enrollment file and its QR code, on the maintainer's machine:")
-		x.Say("  fleet secrets host-enroll {{.host}} --from <the file>")
+		x.Say("  fleetmgr secrets host-enroll {{.host}} --from <the file>")
 		x.UI.Text("  add the deploy key it prints to the secrets repository, read-only")
 		if private(x) {
 			x.UI.Text("  and the configuration key to the configuration repository, read-only")
 		}
-		x.Say("  fleet secrets user-password <account> {{.host}}, for each account")
+		x.Say("  fleetmgr secrets user-password <account> {{.host}}, for each account")
 		x.UI.Text("  push the secrets repository; then press Enter here")
 	}
 	// Partly written disks cannot be put back; the note says how to start over.
 	_, err := fleetmgr.Nix(args...).Interactive().OK("{{.host}} is installed").Before(func(x *engine.Ctx) error {
 		x.Kept("install", "the disks as os-install left them, perhaps partly written; to start over: "+
-			"sudo umount -R /mnt; sudo swapoff -a; then fleet install again")
+			"sudo umount -R /mnt; sudo swapoff -a; then fleetmgr install again")
 		return nil
 	}).After(func(x *engine.Ctx) error {
 		x.Kept("install", "")
@@ -367,9 +367,9 @@ func afterInstall(x *engine.Ctx) error {
 		x.UI.Text("To unlock with the TPM as well, run the systemd-cryptenroll line os-install printed.")
 	}
 	if x.Value("state_path") != "" {
-		x.Say("If it was not enrolled during the install, from the maintainer's machine: fleet host enroll {{.host}}")
+		x.Say("If it was not enrolled during the install, from the maintainer's machine: fleetmgr host enroll {{.host}}")
 	}
-	x.Say("Then, from the maintainer's machine: fleet host check {{.host}}")
+	x.Say("Then, from the maintainer's machine: fleetmgr host check {{.host}}")
 	return nil
 }
 
@@ -396,7 +396,7 @@ var pinnedFlake = regexp.MustCompile(`[?&]rev=[0-9a-f]{40}(&|$)|^github:[^/]+/[^
 
 // checkPinned refuses a private install of commits nobody checked, unless
 // --unpinned asks for it, and warns about a public one. It guards against
-// forgetting fleet install prep; the protection is the pinned line itself,
+// forgetting fleetmgr install prep; the protection is the pinned line itself,
 // since whoever can change main can also change this check.
 func checkPinned(x *engine.Ctx) error {
 	pinned := pinnedFlake.MatchString(x.Value("flake"))
@@ -409,10 +409,10 @@ func checkPinned(x *engine.Ctx) error {
 	case x.Value("unpinned") == "true":
 		x.UI.Note("Installing what main has now, unchecked, as --unpinned asks.")
 	case private(x):
-		return errors.New("a private host is installed only from commits checked on your machine: run fleet install prep " +
+		return errors.New("a private host is installed only from commits checked on your machine: run fleetmgr install prep " +
 			x.Value("host") + " there and paste the line it prints, or give --unpinned")
 	default:
-		x.UI.Note("Not pinned: this installs what main has now, which nobody checked. fleet install prep on your machine prints a line that pins checked commits.")
+		x.UI.Note("Not pinned: this installs what main has now, which nobody checked. fleetmgr install prep on your machine prints a line that pins checked commits.")
 	}
 	return nil
 }
@@ -445,7 +445,7 @@ func checkInstaller(x *engine.Ctx) error {
 		x.UI.Skip("dry run: this is not the installer, so a real run would stop here")
 	default:
 		return errors.New("this machine is not booted from the NixOS installer, and an install erases disks: " +
-			"run fleet install there; on your own machine, fleet install prep prints what to run")
+			"run fleetmgr install there; on your own machine, fleetmgr install prep prints what to run")
 	}
 	return nil
 }

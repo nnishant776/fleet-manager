@@ -163,7 +163,7 @@ func TestARolledBackTipIsRefused(t *testing.T) {
 	}
 	p, _ := TrustedPath(testOrigin, "main")
 	for _, want := range []string{"main at " + c1, "does not follow " + c2, "but comes before it", "old commit served again",
-		"(git pull)", "rm " + p, "or give the repository a name with fleet repo add and use fleet repo sync"} {
+		"(git pull)", "rm " + p, "or give the repository a name with fleetmgr repo add and use fleetmgr repo sync"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the refusal lacks %q:\n%v", want, err)
 		}
@@ -318,7 +318,7 @@ func TestTheRefusalOfARepositoryWithANameSaysToUseRepoSync(t *testing.T) {
 		t.Fatal("an older commit was accepted")
 	}
 	for _, want := range []string{"does not follow " + c2 + ", the commit you trusted last",
-		"review and accept it with fleet repo sync inventory --accept-rewrite main"} {
+		"review and accept it with fleetmgr repo sync inventory --accept-rewrite main"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the refusal lacks %q:\n%v", want, err)
 		}

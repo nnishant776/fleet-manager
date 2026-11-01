@@ -15,11 +15,11 @@ var indexBook = map[string]string{
 		"## Plurals\n\nHost branches count, but not host-branch, host_branch or a host branchy word. The nixos-install command and\n" +
 		"os-installer are something else, nor is [it](os-install.md) a link's target, and os-install in prose is not code.\n\n" +
 		"## Code\n\n```\nos-install --disk main=/dev/sda\nhost branch in code does not count\n```\n",
-	"tools.md": "# Tools\n\n## Installing\n\nRun `fleet install prep` first.\n\n" +
-		"## Both\n\n`fleet install` and then fleet install prep, which in prose is not a command.\n\n" +
-		"## Checking\n\n`fleet host check` looks at a host; a fleet of hosts is prose.\n\n" +
-		"## Help\n\n`fleet <command> --help` shows more.\n\n" +
-		"## Spans\n\nA code span may go on to the next line: `fleet\ninstall`.\n\n" +
+	"tools.md": "# Tools\n\n## Installing\n\nRun `fleetmgr install prep` first.\n\n" +
+		"## Both\n\n`fleetmgr install` and then fleetmgr install prep, which in prose is not a command.\n\n" +
+		"## Checking\n\n`fleetmgr host check` looks at a host; a fleet of hosts is prose.\n\n" +
+		"## Help\n\n`fleetmgr <command> --help` shows more.\n\n" +
+		"## Spans\n\nA code span may go on to the next line: `fleetmgr\ninstall`.\n\n" +
 		"## Fields\n\n`email` here is not an account's field.\n",
 	"accounts.md": "# Accounts\n\n## Mail\n\nSet `email`; conf.host.name in prose does not count.\n",
 	"configuration.md": "# Configuration reference\n\n" +
@@ -29,17 +29,17 @@ var indexBook = map[string]string{
 		"Each takes:\n\n| Field | Type |\n|---|---|\n| `email` | str |\n\n" +
 		"## `conf.hardware`\n\n| Field | Type |\n|---|---|\n| `size` | str |\n",
 	"glossary.md": "# Glossary\n\n## E\n\n- **`/etc/nixos`**: The checkout. See [Hosts](hosts.md).\n\n" +
-		"## F\n\n- **`fleet`**: The tool. See [Tools](tools.md).\n- **fleet host**: A host that syncs. See [Hosts](hosts.md#branches).\n" +
-		"- **`fleet install`**: Installs. See [Installing](tools.md#installing).\n\n" +
+		"## F\n\n- **`fleetmgr`**: The tool. See [Tools](tools.md).\n- **fleet host**: A host that syncs. See [Hosts](hosts.md#branches).\n" +
+		"- **`fleetmgr install`**: Installs. See [Installing](tools.md#installing).\n\n" +
 		"## H\n\n- **host branch**: The branch a host fetches. See\n  [Branches](hosts.md#branches).\n\n" +
 		"## O\n\n- **`os-install`**: The installer.\n\n" +
 		"## S\n\n- **`~/.ssh`**: Keys, [elsewhere](../README.md#keys).\n",
 }
 
 var indexCommands = []Command{
-	{Name: "fleet install", Runbook: "../tools/fleetmgr/runbooks/install.md"},
-	{Name: "fleet install prep", Runbook: "../tools/fleetmgr/runbooks/install-prep.md"},
-	{Name: "fleet host check", Runbook: "../tools/fleetmgr/runbooks/host-check.md"},
+	{Name: "fleetmgr install", Runbook: "../tools/fleetmgr/runbooks/install.md"},
+	{Name: "fleetmgr install prep", Runbook: "../tools/fleetmgr/runbooks/install-prep.md"},
+	{Name: "fleetmgr host check", Runbook: "../tools/fleetmgr/runbooks/host-check.md"},
 }
 
 func TestIndexTakesItsTermsFromTheGlossaryTheOptionsAndTheCommands(t *testing.T) {
@@ -61,11 +61,11 @@ func TestIndexTakesItsTermsFromTheGlossaryTheOptionsAndTheCommands(t *testing.T)
 			"## E\n",
 			"- `/etc/nixos`: **[1 › Hosts](hosts.md)**\n",
 			"## F\n",
-			"- `fleet`: **[2 › Tools](tools.md)**, [2 › Help](tools.md#help)",
 			"- fleet host: **[1 › Branches](hosts.md#branches)**, [1 › Hosts](hosts.md)",
-			"- `fleet host check`: **[runbook](../tools/fleetmgr/runbooks/host-check.md)**, [2 › Checking](tools.md#checking)",
-			"- `fleet install`: **[2 › Installing](tools.md#installing)**, [2 › Both](tools.md#both), [2 › Spans](tools.md#spans)",
-			"- `fleet install prep`: **[runbook](../tools/fleetmgr/runbooks/install-prep.md)**, [2 › Installing](tools.md#installing)\n",
+			"- `fleetmgr`: **[2 › Tools](tools.md)**, [2 › Help](tools.md#help)",
+			"- `fleetmgr host check`: **[runbook](../tools/fleetmgr/runbooks/host-check.md)**, [2 › Checking](tools.md#checking)",
+			"- `fleetmgr install`: **[2 › Installing](tools.md#installing)**, [2 › Both](tools.md#both), [2 › Spans](tools.md#spans)",
+			"- `fleetmgr install prep`: **[runbook](../tools/fleetmgr/runbooks/install-prep.md)**, [2 › Installing](tools.md#installing)\n",
 			"## H\n",
 			"- host branch: **[1 › Branches](hosts.md#branches)**, [1 › Hosts](hosts.md), [1 › Plurals](hosts.md#plurals)\n",
 			"## O\n",
@@ -112,12 +112,12 @@ func TestIndexWithoutAGlossaryHasTheOtherTerms(t *testing.T) {
 	b, err := Make(writeGuide(t, map[string]string{
 		"SUMMARY.md": "[Preface](README.md)\n- [One](one.md)\n[Glossary](glossary.md)\n[Index](index.md)\n",
 		"README.md":  "<!-- book:contents -->\n<!-- /book:contents -->\n",
-		"one.md":     "# One\n\nRun `fleet doctor` first.\n",
-	}), []Command{{Name: "fleet doctor", Runbook: "../tools/fleetmgr/runbooks/doctor.md"}})
+		"one.md":     "# One\n\nRun `fleetmgr doctor` first.\n",
+	}), []Command{{Name: "fleetmgr doctor", Runbook: "../tools/fleetmgr/runbooks/doctor.md"}})
 	if err != nil || len(b.Errors) > 0 {
 		t.Fatal(err, b.Errors)
 	}
-	if page := b.Pages["index.md"]; !strings.Contains(page, "## F\n\n- `fleet doctor`: **[runbook](../tools/fleetmgr/runbooks/doctor.md)**, [1 › One](one.md)\n") {
+	if page := b.Pages["index.md"]; !strings.Contains(page, "## F\n\n- `fleetmgr doctor`: **[runbook](../tools/fleetmgr/runbooks/doctor.md)**, [1 › One](one.md)\n") {
 		t.Errorf("index:\n%s", page)
 	}
 }

@@ -57,9 +57,9 @@ type Exec struct{}
 
 func (Exec) Run(ctx context.Context, s Spec) (Result, error) {
 	name := s.Name
-	// A flow runs another fleet command as "fleet", which is how it is shown
-	// and typed; this binary runs it, whether or not it is on the PATH.
-	if name == "fleet" {
+	// A flow runs another fleetmgr command as "fleetmgr", which is how it is
+	// shown and typed; this binary runs it, whether or not it is on the PATH.
+	if name == "fleetmgr" {
 		if self, err := os.Executable(); err == nil {
 			name = self
 		}

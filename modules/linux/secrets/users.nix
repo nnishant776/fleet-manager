@@ -43,7 +43,7 @@ let
         exit 1
       fi
       if ! value="$(NAME="$name" yq -e '.secrets[strenv(NAME)]' "$file" 2>/dev/null)"; then
-        echo "fleet-user-secret: there is no secret named $name in your file on this host (fleet user secret set $name)" >&2
+        echo "fleet-user-secret: there is no secret named $name in your file on this host (fleetmgr user secret set $name)" >&2
         exit 1
       fi
       printf '%s\n' "$value"

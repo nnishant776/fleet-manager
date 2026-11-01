@@ -1,4 +1,4 @@
-// fleet walks the maintainer through this fleet's procedures: installing and
+// fleetmgr walks the maintainer through this fleet's procedures: installing and
 // enrolling machines, secrets, users and keys, and checking hosts. Every step
 // says what it will do and why, shows the exact command, asks before changing
 // anything, and checks the result. Run it without arguments for a menu.
@@ -28,9 +28,9 @@ var version = "dev"
 
 func main() {
 	root := &cobra.Command{
-		Use:   "fleet",
+		Use:   "fleetmgr",
 		Short: "Guided procedures for this fleet: hosts, secrets, users and keys",
-		Long: "fleet walks you through this fleet's procedures one step at a time. Each step\n" +
+		Long: "fleetmgr walks you through this fleet's procedures one step at a time. Each step\n" +
 			"says what it will do and why, shows the exact command, asks before changing\n" +
 			"anything, and checks the result. Run it without arguments for a menu.\n\n" +
 			"Every question has a flag, so any command also runs without prompts; --yes\n" +
@@ -71,7 +71,7 @@ func interruptible() (context.Context, func()) {
 	return ctx, func() { signal.Stop(signals); cancel() }
 }
 
-// scheme keeps the help pages in fleet's palette: one accent, dim comments,
+// scheme keeps the help pages in fleetmgr's palette: one accent, dim comments,
 // and no background behind the usage block.
 func scheme(c lipgloss.LightDarkFunc) fang.ColorScheme {
 	base := c(lipgloss.Black, lipgloss.White)

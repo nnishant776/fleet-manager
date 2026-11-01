@@ -47,8 +47,8 @@ func TestInstallRunsOSInstallWithTheChoices(t *testing.T) {
 			t.Errorf("did not check %q", w)
 		}
 	}
-	for _, w := range []string{"encrypted: os-install asks for one passphrase", "fleet secrets host-enroll nas --from",
-		"✓ its identity is under /mnt/var/lib/fleet", "fleet host check nas"} {
+	for _, w := range []string{"encrypted: os-install asks for one passphrase", "fleetmgr secrets host-enroll nas --from",
+		"✓ its identity is under /mnt/var/lib/fleet", "fleetmgr host check nas"} {
 		if !strings.Contains(out.String(), w) {
 			t.Errorf("output lacks %q:\n%s", w, out)
 		}
@@ -98,12 +98,12 @@ const (
 	pinnedINV = "2222222222222222222222222222222222222222"
 )
 
-// A private host's install is refused unless fleet install prep pinned both
+// A private host's install is refused unless fleetmgr install prep pinned both
 // commits, or --unpinned asks for what main has now.
 func TestInstallRefusesAnUnpinnedPrivateHost(t *testing.T) {
 	x, fake, out := newFakeCtx(installer(t, true))
 	err := engine.RunWith(x, Install, map[string]string{"flake": "git+ssh://git@github.com/example-org/inventory", "host": "nas", "disk": "main=/dev/vda"})
-	if err == nil || !strings.Contains(out.String(), "run fleet install prep nas there") {
+	if err == nil || !strings.Contains(out.String(), "run fleetmgr install prep nas there") {
 		t.Fatalf("installed an unpinned private host: %v\n%s", err, out)
 	}
 	if strings.Contains(strings.Join(fake.Commands(), "\n"), "os-install") {
@@ -160,7 +160,7 @@ func TestInstallFromAPrivateConfiguration(t *testing.T) {
 	}
 }
 
-// Anywhere but the installer, fleet install stops before anything else, so
+// Anywhere but the installer, fleetmgr install stops before anything else, so
 // a mistyped command cannot start an install on your own machine.
 func TestInstallRunsOnlyOnTheInstaller(t *testing.T) {
 	onInstaller = func() bool { return false }

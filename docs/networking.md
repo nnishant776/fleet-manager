@@ -1,6 +1,6 @@
 # 6. Networking
 
-<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->
+<!-- book:top — written by `fleetmgr docs` from SUMMARY.md and the headings; do not edit -->
 [← 5. Accounts and homes](accounts.md) · [Contents](README.md) · [7. Signing commits and trusting them →](signing-and-trust.md)
 <!-- /book:top -->
 

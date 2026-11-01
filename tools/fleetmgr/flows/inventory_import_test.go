@@ -307,8 +307,8 @@ func TestInventoryImportMovesTheHost(t *testing.T) {
 		t.Errorf("the trusted host/mini is %q, want %s", r, impBranc)
 	}
 	next := flat(out)
-	for _, want := range []string{"fleet host enroll mini --flake " + e.inv + " --repo <your secrets checkout>",
-		"fleet host check mini --flake " + e.inv, "git rm -r hosts/mini users/alice", "hosts/other/default.nix"} {
+	for _, want := range []string{"fleetmgr host enroll mini --flake " + e.inv + " --repo <your secrets checkout>",
+		"fleetmgr host check mini --flake " + e.inv, "git rm -r hosts/mini users/alice", "hosts/other/default.nix"} {
 		if !strings.Contains(next, want) {
 			t.Errorf("the next steps lack %q:\n%s", want, out)
 		}
@@ -324,7 +324,7 @@ func TestInventoryImportNamesTheFlakeAsGiven(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
-	if !strings.Contains(flat(out), "fleet host check mini --flake inventory") {
+	if !strings.Contains(flat(out), "fleetmgr host check mini --flake inventory") {
 		t.Errorf("did not name the inventory:\n%s", out)
 	}
 }
@@ -384,7 +384,7 @@ func TestInventoryImportRefusesAHostWithoutSecrets(t *testing.T) {
 		e.secrets = secrets
 		err, fake, out := e.run(map[string]string{}, nil)
 		if err == nil || !strings.Contains(out, "mini has no secrets: conf.secrets.repo.url is not set") ||
-			!strings.Contains(out, "fleet host enroll mini") {
+			!strings.Contains(out, "fleetmgr host enroll mini") {
 			t.Fatalf("%s: went ahead, or without saying why: %v\n%s", secrets, err, out)
 		}
 		if fileExists(filepath.Join(e.inv, "config")) {

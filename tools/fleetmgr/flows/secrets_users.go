@@ -68,7 +68,7 @@ var SecretsUserEnroll = &engine.Flow{
 		"removed. Commits (user-enroll: <user>, and user-enroll: <user> on <host>) and pushes user/<user> first,\n" +
 		"then each host's branch. The same identity again changes nothing; another identity is refused. Hosts\n" +
 		"must run a sync that reads user branches before a user is enrolled, or they lose the user's files.",
-	Example: "  fleet secrets user-enroll alice --from alice.enroll\n  fleet secrets user-enroll alice --from alice.enroll --host laptop1 --host nas",
+	Example: "  fleetmgr secrets user-enroll alice --from alice.enroll\n  fleetmgr secrets user-enroll alice --from alice.enroll --host laptop1 --host nas",
 	Args:    []string{"user"},
 	Inputs: []engine.Input{secrets.RepoInput, secrets.RecoveryInput, secrets.UserName(), UserFromInput,
 		{Name: "host", Prompt: "Hosts to list the user on besides those holding their files", Optional: true, Many: true, Pattern: secrets.NamePattern,
@@ -466,7 +466,7 @@ var SecretsUserRetire = &engine.Flow{
 		"user-retire: <user> on <host>, pushed), deletes user/<user> in your clone after saying what it held,\n" +
 		"and shows what is still to do: deleting it on the forge. Take the user's accounts out of the\n" +
 		"inventory first.",
-	Example: "  fleet secrets user-retire alice",
+	Example: "  fleetmgr secrets user-retire alice",
 	Args:    []string{"user"},
 	Inputs:  []engine.Input{secrets.RepoInput, secrets.RecoveryInput, secrets.UserName()},
 	Needs:   []string{"git", "yq", "sops", "age"},

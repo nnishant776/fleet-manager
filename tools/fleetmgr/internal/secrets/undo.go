@@ -62,7 +62,7 @@ func RestoreOnStop(x *engine.Ctx, dir, rel string) error {
 		if err := os.WriteFile(p, b, st.Mode().Perm()); err != nil {
 			return err
 		}
-		x.UI.OK(r + " is as it was, from the copy fleet kept")
+		x.UI.OK(r + " is as it was, from the copy fleetmgr kept")
 		return nil
 	}))
 	return nil

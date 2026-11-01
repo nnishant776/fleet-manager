@@ -11,14 +11,14 @@ import (
 // Look is what the terminal can show, found once at the start. A desktop
 // terminal, or one reached over SSH, gets greys and Unicode. The Linux
 // console, which the NixOS installer runs on, has sixteen colours, eight of
-// them as backgrounds, and a small font: there fleet keeps to the basic
+// them as backgrounds, and a small font: there fleetmgr keeps to the basic
 // colours and to glyphs that font has. Output that is not a terminal, or
 // NO_COLOR, stays plain (lipgloss drops the colour by itself).
 type Look struct {
 	// Console is the Linux console (TERM=linux or vt*), or a locale that is
 	// not UTF-8.
 	Console bool
-	// Theme is "light" or "dark" when FLEET_THEME says so; otherwise the
+	// Theme is "light" or "dark" when FLEETMGR_THEME says so; otherwise the
 	// terminal is asked for its background.
 	Theme string
 }
@@ -44,14 +44,14 @@ func DetectLook(getenv func(string) string) Look {
 			break
 		}
 	}
-	switch t := strings.ToLower(getenv("FLEET_THEME")); t {
+	switch t := strings.ToLower(getenv("FLEETMGR_THEME")); t {
 	case "light", "dark":
 		l.Theme = t
 	}
 	return l
 }
 
-// Dark says whether to draw for a dark background: FLEET_THEME if it is set,
+// Dark says whether to draw for a dark background: FLEETMGR_THEME if it is set,
 // else what the terminal answered (dark when it did not answer, as the
 // console is).
 func (l Look) Dark(answered bool) bool {
@@ -112,7 +112,7 @@ func (l Look) Section(dark bool) lipgloss.Style {
 }
 
 // Glyphs are the characters the output draws with. The console's font has
-// √ × • · ─ │ ┌ ┐ └ ┘ but not ✓ ✗ … or rounded corners, so there fleet uses
+// √ × • · ─ │ ┌ ┐ └ ┘ but not ✓ ✗ … or rounded corners, so there fleetmgr uses
 // those it has.
 type Glyphs struct {
 	Ok, Fail, Skip, Note, Gutter, Ellipsis string

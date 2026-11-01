@@ -38,14 +38,14 @@ var RepoSync = &engine.Flow{
 		"shows what was dropped and what is new, and takes it once you type the branch's name\n" +
 		"at a terminal. For a user's branch it forgets the record instead, so that the next\n" +
 		"secrets command takes the branch afresh after checking the user's key.",
-	Example: "  fleet repo sync\n" +
-		"  fleet repo sync inventory secrets\n" +
-		"  fleet repo sync inventory --accept-rewrite host/nas",
+	Example: "  fleetmgr repo sync\n" +
+		"  fleetmgr repo sync inventory secrets\n" +
+		"  fleetmgr repo sync inventory --accept-rewrite host/nas",
 	Args: []string{"name"},
 	Rest: true,
 	Inputs: []engine.Input{
 		{Name: "name", Prompt: "Repositories", Optional: true, Many: true, Pattern: fleetmgr.NamePattern,
-			Help:    "The name of a repository to sync (see fleet repo list); may be given more than once. Every named repository by default",
+			Help:    "The name of a repository to sync (see fleetmgr repo list); may be given more than once. Every named repository by default",
 			Default: func(*engine.Ctx) (string, error) { return "", nil }},
 		{Name: "accept-rewrite", Prompt: "Branch whose rewrite to accept", Optional: true,
 			Help:    "A branch that no longer follows the commit you trusted, which you know was rewritten on purpose; needs exactly one repository name and a terminal",
@@ -109,7 +109,7 @@ func repoSync(x *engine.Ctx) error {
 			continue
 		}
 		if _, ok := names[n]; !ok {
-			return fmt.Errorf("%q is not the name of a repository: fleet repo list shows the names, fleet repo add makes one", n)
+			return fmt.Errorf("%q is not the name of a repository: fleetmgr repo list shows the names, fleetmgr repo add makes one", n)
 		}
 		seen[n] = true
 		asked = append(asked, n)
@@ -123,10 +123,10 @@ func repoSync(x *engine.Ctx) error {
 	}
 	rewrite := x.Value("accept-rewrite")
 	if rewrite != "" && named != 1 {
-		return errors.New("--accept-rewrite needs exactly one repository name: fleet repo sync NAME --accept-rewrite BRANCH")
+		return errors.New("--accept-rewrite needs exactly one repository name: fleetmgr repo sync NAME --accept-rewrite BRANCH")
 	}
 	if len(asked) == 0 {
-		x.UI.Note("No names yet: fleet repo add ADDRESS makes one.")
+		x.UI.Note("No names yet: fleetmgr repo add ADDRESS makes one.")
 		return nil
 	}
 	// A repository with keys of its own first: the others borrow some
@@ -257,7 +257,7 @@ func (p *syncRepo) review(x *engine.Ctx, rewrite string) {
 	}
 	p.clone = clone
 	if !fileExists(clone) {
-		p.fail(x, "its clone is not in "+clone+": run fleet repo add again with its address")
+		p.fail(x, "its clone is not in "+clone+": run fleetmgr repo add again with its address")
 		return
 	}
 	if p.address, err = fleetmgr.OriginOf(x, clone); err != nil {
@@ -341,7 +341,7 @@ func (p *syncRepo) signersFile(x *engine.Ctx, mainRec string) (string, func(), b
 	res, err := fleetmgr.GitIn(x, p.clone, "config", "--get", "gpg.ssh.allowedSignersFile")
 	file := strings.TrimSpace(res.Stdout)
 	if err != nil || file == "" {
-		p.fail(x, "the clone has no gpg.ssh.allowedSignersFile: run fleet repo add again")
+		p.fail(x, "the clone has no gpg.ssh.allowedSignersFile: run fleetmgr repo add again")
 		return "", nothing, false
 	}
 	if _, err := fleetmgr.GitIn(x, p.clone, "cat-file", "-e", "refs/remotes/origin/main:fleet/allowed_signers"); err != nil {
@@ -360,7 +360,7 @@ func (p *syncRepo) signersFile(x *engine.Ctx, mainRec string) (string, func(), b
 	}
 	copyPath, mine, err := fleetmgr.TrustedSigners(p.address)
 	if errors.Is(err, fleetmgr.ErrNoSignersCopy) {
-		p.fail(x, "you trust no keys for "+p.id+" yet: run fleet repo add again")
+		p.fail(x, "you trust no keys for "+p.id+" yet: run fleetmgr repo add again")
 		return "", nothing, false
 	}
 	if err != nil {
@@ -390,7 +390,7 @@ func (p *syncRepo) signersFile(x *engine.Ctx, mainRec string) (string, func(), b
 		return "", nothing, false
 	}
 	x.UI.OK("the change to its keys, in " + fleetmgr.Short(c) + ", is signed by a key you trust")
-	tmp, err := os.CreateTemp("", "fleet-signers-*")
+	tmp, err := os.CreateTemp("", "fleetmgr-signers-*")
 	if err != nil {
 		p.fail(x, err.Error())
 		return "", nothing, false
@@ -444,7 +444,7 @@ func (p *syncRepo) branch(x *engine.Ctx, b *syncBranch, file, rewrite string) {
 	default:
 		msg := b.name + " does not follow " + fleetmgr.Short(b.rec) + ", the commit you trusted"
 		if b.name != rewrite {
-			p.fail(x, msg+": if the history was rewritten on purpose, review it with fleet repo sync "+p.name+" --accept-rewrite "+b.name)
+			p.fail(x, msg+": if the history was rewritten on purpose, review it with fleetmgr repo sync "+p.name+" --accept-rewrite "+b.name)
 			return
 		}
 		x.UI.Note(msg + "; you asked to accept the rewrite")

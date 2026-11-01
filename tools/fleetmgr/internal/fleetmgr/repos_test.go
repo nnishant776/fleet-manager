@@ -110,13 +110,13 @@ func TestResolveName(t *testing.T) {
 		t.Errorf("values = %v", x.Values)
 	}
 	_, err = ResolveName(x, "flake", "nothing")
-	if err == nil || !strings.Contains(err.Error(), `"nothing" is neither a path nor the name of a repository: fleet repo list shows the names, fleet repo add makes one`) {
+	if err == nil || !strings.Contains(err.Error(), `"nothing" is neither a path nor the name of a repository: fleetmgr repo list shows the names, fleetmgr repo add makes one`) {
 		t.Errorf("unknown word: %v", err)
 	}
 }
 
 // forge is a bare origin that a work repository pushes signed commits to,
-// and the tools' clone of it, set up like fleet repo add does.
+// and the tools' clone of it, set up like fleetmgr repo add does.
 type forge struct {
 	t       *testing.T
 	root    string

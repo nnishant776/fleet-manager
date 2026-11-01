@@ -74,44 +74,44 @@
     # One set of packages per system any host uses, as for the apps.
     systems = builtins.attrNames apps;
 
-    # fleet, the guided tool (tools/fleetmgr): `fleet` brings the tools it runs,
-    # `fleet-static` is the bare static binary for machines without Nix.
+    # fleetmgr, the guided tool (tools/fleetmgr): `fleetmgr` brings the tools it runs,
+    # `fleetmgr-static` is the bare static binary for machines without Nix.
     packages = lib.genAttrs systems (system:
-      let fleet = nixpkgs.legacyPackages.${system}.callPackage ./tools/fleetmgr/package.nix { };
+      let fleetmgr = nixpkgs.legacyPackages.${system}.callPackage ./tools/fleetmgr/package.nix { };
       in {
-        inherit fleet;
-        fleet-static = fleet.static;
-        default = fleet;
-        # For fleet host enroll to make a host's identity before the host runs a
+        inherit fleetmgr;
+        fleetmgr-static = fleetmgr.static;
+        default = fleetmgr;
+        # For fleetmgr host enroll to make a host's identity before the host runs a
         # fleet configuration, from a commit checked on the maintainer's machine.
         fleet-secrets-sync = (import ./lib/secrets-sync.nix { pkgs = nixpkgs.legacyPackages.${system}; }).sync;
       });
 
     checks.x86_64-linux = {
-      # Builds fleet, which runs its unit tests.
-      fleet = self.packages.x86_64-linux.fleet;
-      # The runbooks and the book in docs/ are what fleet docs writes, and every link leads somewhere.
+      # Builds fleetmgr, which runs its unit tests.
+      fleetmgr = self.packages.x86_64-linux.fleetmgr;
+      # The runbooks and the book in docs/ are what fleetmgr docs writes, and every link leads somewhere.
       docs = nixpkgs.legacyPackages.x86_64-linux.runCommand "docs" {
-        nativeBuildInputs = [ self.packages.x86_64-linux.fleet ];
+        nativeBuildInputs = [ self.packages.x86_64-linux.fleetmgr ];
       } ''
         cp -r ${self} src
         chmod -R u+w src
         cd src
-        fleet docs --check --out tools/fleetmgr/runbooks --guide docs
+        fleetmgr docs --check --out tools/fleetmgr/runbooks --guide docs
         touch $out
       '';
       # The fleet-secrets port against the shell tool, command by command.
       fleet-secrets-parity = import ./tests/fleet/secrets-parity.nix {
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
-        fleet = self.packages.x86_64-linux.fleet;
+        fleetmgr = self.packages.x86_64-linux.fleetmgr;
       };
       inventory-import = import ./tests/fleet/import.nix {
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
-        fleet = self.packages.x86_64-linux.fleet;
+        fleetmgr = self.packages.x86_64-linux.fleetmgr;
       };
       inventory-publish = import ./tests/fleet/publish.nix {
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
-        fleet = self.packages.x86_64-linux.fleet;
+        fleetmgr = self.packages.x86_64-linux.fleetmgr;
       };
       secrets-sync = import ./tests/secrets/vm-test.nix {
         inherit inputs self;

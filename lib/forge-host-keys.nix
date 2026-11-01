@@ -11,7 +11,7 @@
 # key, until this file is updated.
 let
   # As a known_hosts file has them; also published as lib.forgeHostKeys.text,
-  # for fleet host enroll to write on a machine not on the fleet yet.
+  # for fleetmgr host enroll to write on a machine not on the fleet yet.
   text = ''
     github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
     github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=

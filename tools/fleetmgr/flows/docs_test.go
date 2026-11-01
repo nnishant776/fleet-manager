@@ -22,8 +22,8 @@ func TestRunbooksAreCurrent(t *testing.T) {
 func TestRunbookShowsFlagsStepsAndCommands(t *testing.T) {
 	page := engine.Runbook(SupportKeyRotate)
 	for _, want := range []string{
-		"# fleet support-key rotate\n",
-		"fleet support-key rotate [HOST] [flags]",
+		"# fleetmgr support-key rotate\n",
+		"fleetmgr support-key rotate [HOST] [flags]",
 		"| `--old-key` | Its private key file |",
 		"5. **Sync HOST with the old key.**",
 		"   $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 -o IdentitiesOnly=yes -o IdentityAgent=none -i OLD-KEY support@ADDRESS 'sudo -n systemctl start config-auto-update'",
@@ -53,7 +53,7 @@ func TestMenuListsEveryFlowOnce(t *testing.T) {
 			want = 0
 		}
 		if seen[f] != want {
-			t.Errorf("fleet %s is on the menu %d times, want %d", strings.Join(f.Path, " "), seen[f], want)
+			t.Errorf("fleetmgr %s is on the menu %d times, want %d", strings.Join(f.Path, " "), seen[f], want)
 		}
 	}
 }
@@ -65,7 +65,7 @@ func docsCheckout(t *testing.T) (top string, flags map[string]string) {
 		"README.md":          "[The guide](docs/README.md)\n",
 		"docs/SUMMARY.md":    "[Preface](README.md)\n- [One](one.md)\n[Index](index.md)\n",
 		"docs/README.md":     "# Guide\n\n<!-- book:contents -->\n<!-- /book:contents -->\n",
-		"docs/one.md":        "# One\n\nRun `fleet docs` after a change.\n",
+		"docs/one.md":        "# One\n\nRun `fleetmgr docs` after a change.\n",
 		RunbookDir + "/x.md": "a page of a command that is gone\n",
 	} {
 		path := filepath.Join(top, name)
@@ -97,11 +97,11 @@ func TestDocsCheckFailsUntilThePagesAreWritten(t *testing.T) {
 		t.Fatalf("the check passed:\n%s", out)
 	}
 	for _, want := range []string{
-		"✗ tools/fleetmgr/runbooks/docs.md:1: missing; fleet docs writes it",
-		"✗ tools/fleetmgr/runbooks/x.md:1: no command writes it; fleet docs removes it",
-		"✗ docs/README.md:4: out of date; fleet docs rewrites it",
-		"✗ docs/one.md:1: out of date; fleet docs rewrites it",
-		"✗ docs/index.md:1: missing; fleet docs writes it",
+		"✗ tools/fleetmgr/runbooks/docs.md:1: missing; fleetmgr docs writes it",
+		"✗ tools/fleetmgr/runbooks/x.md:1: no command writes it; fleetmgr docs removes it",
+		"✗ docs/README.md:4: out of date; fleetmgr docs rewrites it",
+		"✗ docs/one.md:1: out of date; fleetmgr docs rewrites it",
+		"✗ docs/index.md:1: missing; fleetmgr docs writes it",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("no %q in:\n%s", want, out)
@@ -133,7 +133,7 @@ func TestDocsCheckFailsUntilThePagesAreWritten(t *testing.T) {
 		t.Fatalf("with plans in the book's folder, the check: %v\n%s", err, out)
 	}
 	index, _ := os.ReadFile(filepath.Join(top, GuideDir, "index.md"))
-	if !strings.Contains(string(index), "- `fleet docs`: **[runbook](../tools/fleetmgr/runbooks/docs.md)**, [1 › One](one.md)\n") {
+	if !strings.Contains(string(index), "- `fleetmgr docs`: **[runbook](../tools/fleetmgr/runbooks/docs.md)**, [1 › One](one.md)\n") {
 		t.Errorf("index:\n%s", index)
 	}
 

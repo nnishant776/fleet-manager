@@ -1,6 +1,6 @@
-<!-- Written by `fleet docs` from tools/fleetmgr/flows; edit the flows, not this. -->
+<!-- Written by `fleetmgr docs` from tools/fleetmgr/flows; edit the flows, not this. -->
 
-# fleet repo sync
+# fleetmgr repo sync
 
 Fetch the tools' clones, show the new commits and who signed them, and accept them.
 
@@ -26,18 +26,18 @@ at a terminal. For a user's branch it forgets the record instead, so that the ne
 secrets command takes the branch afresh after checking the user's key.
 
 ```
-fleet repo sync [NAME]... [flags]
+fleetmgr repo sync [NAME]... [flags]
 
-fleet repo sync
-fleet repo sync inventory secrets
-fleet repo sync inventory --accept-rewrite host/nas
+fleetmgr repo sync
+fleetmgr repo sync inventory secrets
+fleetmgr repo sync inventory --accept-rewrite host/nas
 ```
 
 ## Flags
 
 | Flag | |
 |---|---|
-| `--name` | The name of a repository to sync (see fleet repo list); may be given more than once. Every named repository by default; may be given more than once |
+| `--name` | The name of a repository to sync (see fleetmgr repo list); may be given more than once. Every named repository by default; may be given more than once |
 | `--accept-rewrite` | A branch that no longer follows the commit you trusted, which you know was rewritten on purpose; needs exactly one repository name and a terminal |
 
 Every command also takes `--dry-run` (show every step and command; look, but
@@ -48,4 +48,4 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 1. **Fetch each repository and review what is new.** Each clone is fetched and compared with the commits you trust. A repository with a refusal gets nothing written; for the others you are asked before the commits you trust, your copy of its keys if they changed, and the clone move on.
 
-It needs `git` on the PATH; `fleet doctor` says where to get them.
+It needs `git` on the PATH; `fleetmgr doctor` says where to get them.

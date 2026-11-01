@@ -19,7 +19,7 @@ import (
 // their commits, and the enrollment file that gives the maintainer the public
 // halves. user init makes them; the other user commands use them.
 
-// loginName is the name of the person running fleet, which is the default
+// loginName is the name of the person running fleetmgr, which is the default
 // user of the user commands.
 func loginName() string {
 	if u, err := user.Current(); err == nil {
@@ -45,7 +45,7 @@ var identityInput = engine.Input{
 	Help:     "Your passphrase-encrypted age identity (age -p); ~/.fleet/user.age by default. Empty: sops uses SOPS_AGE_KEY_FILE or SOPS_AGE_KEY",
 	Optional: true,
 	Default: func(*engine.Ctx) (string, error) {
-		if v := os.Getenv("FLEET_USER_IDENTITY"); v != "" {
+		if v := os.Getenv("FLEETMGR_USER_IDENTITY"); v != "" {
 			return v, nil
 		}
 		home, err := os.UserHomeDir()
@@ -90,10 +90,10 @@ var UserInit = &engine.Flow{
 	Long: "Once per user: a passphrase-encrypted age identity, ~/.fleet/user.age, which decrypts your files in the\n" +
 		"secrets repository; an SSH key, ~/.ssh/fleet_user_signing_key, that signs your commits to your branch,\n" +
 		"user/<user>; and ~/.fleet/<user>.enroll, which holds the public halves of both (the age recipient and\n" +
-		"the signing key) and nothing secret. Give the enrollment file to the maintainer, who runs fleet secrets\n" +
+		"the signing key) and nothing secret. Give the enrollment file to the maintainer, who runs fleetmgr secrets\n" +
 		"user-enroll. The identity is written straight into a passphrase-encrypted file and never touches the disk in\n" +
 		"clear; keep a copy offline. Each step that is done already is skipped, so it is safe to run again.",
-	Example: "  fleet user init\n  fleet user init --user alice",
+	Example: "  fleetmgr user init\n  fleetmgr user init --user alice",
 	Inputs:  []engine.Input{ownUserName(), initIdentityInput(), signingKeyInput, enrollInput},
 	Needs:   []string{"age", "age-keygen", "ssh-keygen"},
 	Steps: []engine.Step{
@@ -138,8 +138,8 @@ var UserInit = &engine.Flow{
 			Title: "Give the enrollment file to the maintainer",
 			Why:   "It holds public keys only, so any channel will do. The maintainer lists you on your hosts and moves your files to your branch.",
 			Do: engine.Show("Give the maintainer {{.enroll}}. They run:\n" +
-				"  fleet secrets user-enroll {{.user}} --from {{.user}}.enroll\n\n" +
-				"Then your own commands work on your branch: fleet user password, fleet user keys, fleet user secret set."),
+				"  fleetmgr secrets user-enroll {{.user}} --from {{.user}}.enroll\n\n" +
+				"Then your own commands work on your branch: fleetmgr user password, fleetmgr user keys, fleetmgr user secret set."),
 		},
 	},
 }
@@ -194,7 +194,7 @@ func initIdentityInput() engine.Input {
 	in.Optional = false
 	in.Help = "Where your passphrase-encrypted age identity (age -p) is, or goes; ~/.fleet/user.age by default"
 	in.Default = func(*engine.Ctx) (string, error) {
-		if v := os.Getenv("FLEET_USER_IDENTITY"); v != "" {
+		if v := os.Getenv("FLEETMGR_USER_IDENTITY"); v != "" {
 			return v, nil
 		}
 		home, err := os.UserHomeDir()

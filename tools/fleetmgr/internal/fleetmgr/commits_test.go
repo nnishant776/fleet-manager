@@ -88,7 +88,7 @@ func TestSyncCloneRefusesAnUnsignedCommitUnderASignedTip(t *testing.T) {
 	if err == nil {
 		t.Fatalf("went ahead\n%s", f.out)
 	}
-	for _, want := range []string{"1 of the commits on main since " + short(one), short(bad) + " ✗ unsigned sneaked in", "Review them with fleet repo sync "} {
+	for _, want := range []string{"1 of the commits on main since " + short(one), short(bad) + " ✗ unsigned sneaked in", "Review them with fleetmgr repo sync "} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the error lacks %q: %v", want, err)
 		}

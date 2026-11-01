@@ -138,17 +138,17 @@ func addCommand(host, path, key string) string {
 		user := parts[1]
 		switch key {
 		case "authorized_keys":
-			return "fleet secrets user-keys " + user + " " + host + " --authorized-keys <file of public keys>"
+			return "fleetmgr secrets user-keys " + user + " " + host + " --authorized-keys <file of public keys>"
 		case "sudo_keys":
-			return "fleet secrets user-keys " + user + " " + host + " --sudo-keys <file of public keys>"
+			return "fleetmgr secrets user-keys " + user + " " + host + " --sudo-keys <file of public keys>"
 		case "password":
-			return "fleet secrets user-password " + user + " " + host
+			return "fleetmgr secrets user-password " + user + " " + host
 		case "ssh_key", "ssh_key_pub":
-			return "fleet secrets user-key " + user + " " + host + " (after user-password, which creates the file)"
+			return "fleetmgr secrets user-key " + user + " " + host + " (after user-password, which creates the file)"
 		}
 		return "add " + key + " to users/" + user + "/" + host + ".yaml on host/" + host
 	case len(parts) == 2 && parts[0] == "hosts" && parts[1] == host && key != "":
-		return "fleet host secret " + host + " " + key
+		return "fleetmgr host secret " + host + " " + key
 	}
 	return "add " + key + " to " + path + " on host/" + host
 }

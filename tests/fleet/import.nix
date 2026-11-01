@@ -1,4 +1,4 @@
-# Runs `fleet inventory import` on a scratch fleet-manager and a scratch
+# Runs `fleetmgr inventory import` on a scratch fleet-manager and a scratch
 # inventory with real git and signing. A stub `nix` answers what the command
 # asks of the flakes: the layout, the accounts and addresses, and what the
 # imported host evaluates to, which it reads from the files the import copied.
@@ -12,7 +12,7 @@
 # - the host cannot be imported twice, and a host that reads a file outside
 #   its folder is refused with nothing written.
 # Run it with `nix build .#checks.x86_64-linux.inventory-import`.
-{ pkgs, fleet }:
+{ pkgs, fleetmgr }:
 pkgs.runCommand "inventory-import" {
   nativeBuildInputs = with pkgs; [ git openssh gnutar coreutils diffutils gnugrep gnused ];
 } ''
@@ -96,10 +96,10 @@ pkgs.runCommand "inventory-import" {
     git push -q origin main
   )
   for c in fm inv; do
-    ${fleet}/bin/fleet trust signers --flake $c --yes > trust.out 2>&1 || { cat trust.out; exit 1; }
+    ${fleetmgr}/bin/fleetmgr trust signers --flake $c --yes > trust.out 2>&1 || { cat trust.out; exit 1; }
   done
 
-  imp() { ${fleet}/bin/fleet inventory import "$@" --from fm --flake inv --yes; }
+  imp() { ${fleetmgr}/bin/fleetmgr inventory import "$@" --from fm --flake inv --yes; }
   files() { git -C origin.git ls-tree -r --name-only "$1"; }
 
   imp mini > out 2>&1 || { cat out; exit 1; }
@@ -118,7 +118,7 @@ pkgs.runCommand "inventory-import" {
     || { echo "host/mini is not signed by the trusted key"; exit 1; }
   [ -z "$(git -C origin.git ls-tree -r --name-only main | grep alpha | grep -v config/hosts/alpha || true)" ]
   if git -C origin.git rev-parse -q --verify host/alpha >/dev/null; then echo "published a branch for another host"; exit 1; fi
-  for want in "fleet host enroll mini" "fleet host check mini" "git rm -r hosts/mini" "hosts/other/default.nix"; do
+  for want in "fleetmgr host enroll mini" "fleetmgr host check mini" "git rm -r hosts/mini" "hosts/other/default.nix"; do
     grep -qF "$want" out || { echo "the output lacks: $want"; cat out; exit 1; }
   done
   [ -z "$(git -C inv status --porcelain)" ] || { echo "the inventory checkout is not clean"; exit 1; }

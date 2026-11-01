@@ -39,13 +39,13 @@ var InventoryImport = &engine.Flow{
 		"reads something outside the host's folder stops the move, naming it, since the inventory\n" +
 		"would not have it.\n" +
 		"\n" +
-		"fleet shows each change, then checks the host in the inventory: it fetches the inventory's\n" +
+		"fleetmgr shows each change, then checks the host in the inventory: it fetches the inventory's\n" +
 		"address, has its branch, its signers file is the inventory's, and every host still\n" +
 		"evaluates. If any of that fails, the copy is taken out again. Then it commits, signed,\n" +
 		"pushes to main once you approve, and publishes the host's branch. The machine itself\n" +
 		"still runs from fleet-manager: the last step lists the commands that finish the move.",
-	Example: "  fleet inventory import nas1 --flake inventory\n" +
-		"  fleet inventory import nas1 --from ~/Projects/fleet-manager --flake inventory --address git@example.com:org/inventory.git",
+	Example: "  fleetmgr inventory import nas1 --flake inventory\n" +
+		"  fleetmgr inventory import nas1 --from ~/Projects/fleet-manager --flake inventory --address git@example.com:org/inventory.git",
 	Args: []string{"host"},
 	Inputs: []engine.Input{
 		fleetmgr.FlakeInput,
@@ -184,7 +184,7 @@ func fleetManagerClone(x *engine.Ctx) (name, clone string, err error) {
 		return "", "", err
 	}
 	if name = fleetmgr.NameOf(id); name == "" {
-		return "", "", errors.New("fleet repo add first: run it with no address and it adds fleet-manager")
+		return "", "", errors.New("fleetmgr repo add first: run it with no address and it adds fleet-manager")
 	}
 	if clone, err = fleetmgr.ClonePathOfID(id); err != nil {
 		return "", "", err
@@ -207,7 +207,7 @@ func readImportSource(x *engine.Ctx) error {
 			dir = from
 		}
 		if !fileExists(dir) {
-			return fmt.Errorf("the clone of %s is not in %s: run fleet repo add again", name, dir)
+			return fmt.Errorf("the clone of %s is not in %s: run fleetmgr repo add again", name, dir)
 		}
 		x.UI.OK(name + " is the tool's clone in " + dir)
 		if err := fleetmgr.SyncClone(x, dir); err != nil {
@@ -271,7 +271,7 @@ func readImportSource(x *engine.Ctx) error {
 		return fmt.Errorf("fleet-manager has no hosts/%s at %s; hosts/ there holds: %s", host, fleetmgr.Short(commit), strings.Join(names, ", "))
 	}
 
-	tmp, err := os.MkdirTemp("", "fleet-import-*")
+	tmp, err := os.MkdirTemp("", "fleetmgr-import-*")
 	if err != nil {
 		return err
 	}
@@ -372,7 +372,7 @@ func requireSecrets(x *engine.Ctx, dir, commit, host string) error {
 	return fmt.Errorf("%s has no secrets: conf.secrets.repo.url is not set at %s. In the inventory a host fetches its "+
 		"configuration over SSH with its own configuration key, which comes with the identity its secrets give it, and takes its "+
 		"login keys from them; copying its files cannot give it either. In fleet-manager first: %s, turn on "+
-		"conf.fleet.support.keysFromSecrets, move its login keys into the secrets, and enroll it (fleet host enroll %s). Then run this again",
+		"conf.fleet.support.keysFromSecrets, move its login keys into the secrets, and enroll it (fleetmgr host enroll %s). Then run this again",
 		host, fleetmgr.Short(commit), set, host)
 }
 
@@ -833,9 +833,9 @@ func showImportNext(x *engine.Ctx) error {
 	}
 	x.UI.Text(host + "'s definition is in the inventory and its branch is published, but the machine still runs it from fleet-manager. To finish:\n" +
 		"  1. Move the running machine: it registers the host's key on the inventory, checks its secrets, switches it, and makes /etc/nixos a checkout of host/" + host + ":\n" +
-		"       fleet host enroll " + host + " --flake " + flake + " --repo " + secrets + "\n" +
+		"       fleetmgr host enroll " + host + " --flake " + flake + " --repo " + secrets + "\n" +
 		"  2. Check it runs from the inventory:\n" +
-		"       fleet host check " + host + " --flake " + flake + "\n" +
+		"       fleetmgr host check " + host + " --flake " + flake + "\n" +
 		"  3. Then remove it from fleet-manager, in a checkout of it:\n" +
 		"       git rm -r " + rm + "\n" +
 		"       git commit -m \"chore(hosts): " + host + " moves to a private fleet\"\n" +

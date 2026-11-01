@@ -58,12 +58,12 @@ func TestUserInitMakesTheIdentityTheKeyAndTheEnrollmentFile(t *testing.T) {
 	if string(doc) != want {
 		t.Errorf("the enrollment file is\n%s\nwant\n%s", doc, want)
 	}
-	if !strings.Contains(out, "fleet secrets user-enroll dave --from dave.enroll") {
+	if !strings.Contains(out, "fleetmgr secrets user-enroll dave --from dave.enroll") {
 		t.Errorf("it does not say what to give the maintainer:\n%s", out)
 	}
-	// The identity is never written in clear by fleet itself.
+	// The identity is never written in clear by fleetmgr itself.
 	if fileExists(filepath.Join(home, ".fleet", "user.age")) {
-		t.Error("fleet wrote the identity file itself; age should")
+		t.Error("fleetmgr wrote the identity file itself; age should")
 	}
 }
 

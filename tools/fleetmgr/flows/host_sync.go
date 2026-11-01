@@ -19,11 +19,11 @@ var HostSync = &engine.Flow{
 	Long: "Logs in to the host as support, with nothing forwarded, and starts its sync\n" +
 		"at once, instead of waiting for its timer: the host fetches its branch and its\n" +
 		"secrets, checks that they are signed by a key it trusts, and switches to what\n" +
-		"it gets. fleet waits for the sync to end, shows the host's log if it failed,\n" +
+		"it gets. fleetmgr waits for the sync to end, shows the host's log if it failed,\n" +
 		"and checks that the host now runs the newest commit of its branch. Then it\n" +
-		"reports the same as fleet host check: configuration, secrets and health.\n" +
+		"reports the same as fleetmgr host check: configuration, secrets and health.\n" +
 		"It stops at the first step that fails.",
-	Example: "  fleet host sync pi1\n  fleet host sync pi-gw --address 192.168.0.9",
+	Example: "  fleetmgr host sync pi1\n  fleetmgr host sync pi-gw --address 192.168.0.9",
 	Args:    []string{"host"},
 	Inputs:  fleetmgr.HostInputs(),
 	Needs:   []string{"ssh", "git", "nix"},
@@ -172,6 +172,6 @@ func checkRunning(x *engine.Ctx, before, expected, what string) error {
 		verb = "still runs"
 	}
 	showSyncLog(x)
-	return fmt.Errorf("%s %s %s, not %s (%s): the log above says why, and fleet host check shows a problem the host recorded",
+	return fmt.Errorf("%s %s %s, not %s (%s): the log above says why, and fleetmgr host check shows a problem the host recorded",
 		host, verb, short(now), short(expected), what)
 }

@@ -1,6 +1,6 @@
 package fleetmgr
 
-// Phase 2 of fleet trust: the trusted commit of each branch of each
+// Phase 2 of fleetmgr trust: the trusted commit of each branch of each
 // repository, kept beside the copy of its signers. A signed commit is not
 // enough: an old one, served again, is signed too, and a tool that builds on
 // it (publish cuts every host's branch from main as a new commit that you
@@ -217,7 +217,7 @@ func checkTrusted(x *engine.Ctx, dir, address, branch, ref string, line bool) er
 		save = func() error { return nil }
 		if rec == "" {
 			x.UI.Note("You have no trusted commit for " + what + " yet, so only its signature vouches for " + tip + ". " +
-				"fleet repo sync, or a command that checks the branch itself, records one.")
+				"fleetmgr repo sync, or a command that checks the branch itself, records one.")
 			return nil
 		}
 	}
@@ -250,16 +250,16 @@ func checkTrusted(x *engine.Ctx, dir, address, branch, ref string, line bool) er
 	why := fmt.Sprintf("%s at %s does not follow %s, the commit you trusted last: it could be an old commit served again. ", branch, tip, rec)
 	if behind {
 		// Most often a checkout of yours that is not up to date, since the
-		// record moved on elsewhere (fleet repo sync, or another checkout).
+		// record moved on elsewhere (fleetmgr repo sync, or another checkout).
 		why = fmt.Sprintf("%s at %s does not follow %s, the commit you trusted last, but comes before it: "+
 			"a checkout that is not up to date, or an old commit served again. If %s is your checkout, bring it up to date "+
 			"(git pull) and run this again. ", branch, tip, rec, dir)
 	}
 	if name := NameOf(id); name != "" {
-		return fmt.Errorf("%sIf the history was rewritten on purpose and you know why, review and accept it with fleet repo sync %s --accept-rewrite %s", why, name, branch)
+		return fmt.Errorf("%sIf the history was rewritten on purpose and you know why, review and accept it with fleetmgr repo sync %s --accept-rewrite %s", why, name, branch)
 	}
 	return fmt.Errorf("%sIf the history was rewritten on purpose and you know why, trust it afresh: rm %s, then run this again; "+
-		"or give the repository a name with fleet repo add and use fleet repo sync", why, p)
+		"or give the repository a name with fleetmgr repo add and use fleetmgr repo sync", why, p)
 }
 
 // AdvanceTrusted moves the record of a branch to what the checkout's local

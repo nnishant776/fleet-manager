@@ -1,5 +1,5 @@
 # Runs the shell fleet-secrets (lib/apps/fleet-secrets.nix) and its Go port
-# (`fleet secrets …`) through the same commands, on two copies of one scratch
+# (`fleetmgr secrets …`) through the same commands, on two copies of one scratch
 # repository, and checks after every command that they left it the same:
 # - the same branches (one host/<name> per host, and user/<name> for users the
 #   hosts list) and none left over, the same
@@ -13,7 +13,7 @@
 # who can still decrypt what. A last part enrolls users (the port only) and
 # runs the commands for a listed user, whose files are on user/<name>.
 # Run it with `nix build .#checks.x86_64-linux.fleet-secrets-parity`.
-{ pkgs, fleet }:
+{ pkgs, fleetmgr }:
 let
   shellTool = import ../../lib/apps/fleet-secrets.nix { inherit pkgs; };
 in
@@ -51,7 +51,7 @@ pkgs.runCommand "fleet-secrets-parity" {
   enrollment beta beta
   enrollment alpha2 alpha
   export SOPS_AGE_KEY_FILE=$PWD/maint.key
-  # What fleet setup leaves: the maintainer's recovery recipient, cached.
+  # What fleetmgr setup leaves: the maintainer's recovery recipient, cached.
   export XDG_STATE_HOME=$PWD/state
   mkdir -p state/fleet
   age-keygen -y maint.key > state/fleet/recovery.pub
@@ -76,7 +76,7 @@ pkgs.runCommand "fleet-secrets-parity" {
   done
 
   sh_tool() { (cd sh && ${shellTool}/bin/fleet-secrets "$@"); }
-  go_tool() { ${fleet}/bin/fleet secrets "$@" --repo go --yes; }
+  go_tool() { ${fleetmgr}/bin/fleetmgr secrets "$@" --repo go --yes; }
 
   # Unpacks a branch of a repository into out/REPO, to read its files.
   unpack() {  # unpack REPO BRANCH
@@ -256,7 +256,7 @@ pkgs.runCommand "fleet-secrets-parity" {
   refused "ran the repository's own hook" "core.hooksPath is .githooks"
   for repo in sh go; do git -C $repo config --unset core.hooksPath; done
   # Nor while git checks signatures against a file inside a checkout, as
-  # fleet setup used to set it: a pushed commit could add the key it is
+  # fleetmgr setup used to set it: a pushed commit could add the key it is
   # signed with. An untracked copy of the keys stands for one.
   for repo in sh go; do
     cp allowed_signers $repo/allowed_signers.here
@@ -267,8 +267,8 @@ pkgs.runCommand "fleet-secrets-parity" {
     git -C $repo config --unset gpg.ssh.allowedSignersFile
     rm $repo/allowed_signers.here
   done
-  # Nor without the recovery recipient fleet setup caches.
-  XDG_STATE_HOME=$PWD/no-state refused "ran without the recovery recipient" "run fleet setup"
+  # Nor without the recovery recipient fleetmgr setup caches.
+  XDG_STATE_HOME=$PWD/no-state refused "ran without the recovery recipient" "run fleetmgr setup"
 
   # Both refuse the same mistakes, and enrolling a host again with the
   # identity it holds changes nothing.
@@ -307,7 +307,7 @@ pkgs.runCommand "fleet-secrets-parity" {
   done
   compare "user-password alice alpha, on a branch only origin had"
 
-  # A listed user. fleet secrets user-enroll (the port only) lists alice on
+  # A listed user. fleetmgr secrets user-enroll (the port only) lists alice on
   # alpha and moves her file to user/alice; from then on both tools work on that
   # branch for her, and must leave it the same. A second user, dave, has no
   # file yet and gets an empty one. user-enroll and user-retire push, to the
@@ -319,7 +319,7 @@ pkgs.runCommand "fleet-secrets-parity" {
       "$(echo $u | tr -d 2)" "$(age-keygen -y $u.key)" "$(cut -d' ' -f1,2 $u.sign.pub)" $u > $u.uenroll
   done
   enroll_both() {  # enroll_both ARGS...: user-enroll in both copies
-    for repo in sh go; do ${fleet}/bin/fleet secrets user-enroll "$@" --repo $repo --yes; done
+    for repo in sh go; do ${fleetmgr}/bin/fleetmgr secrets user-enroll "$@" --repo $repo --yes; done
   }
   # Her file as it is on the host's branch now.
   for repo in sh go; do
@@ -463,7 +463,7 @@ pkgs.runCommand "fleet-secrets-parity" {
   done
 
   # user-retire takes dave off the host and deletes his local branch.
-  for repo in sh go; do ${fleet}/bin/fleet secrets user-retire dave --repo $repo --yes | tee $repo.out; done
+  for repo in sh go; do ${fleetmgr}/bin/fleetmgr secrets user-retire dave --repo $repo --yes | tee $repo.out; done
   grep -q "push origin --delete user/dave" go.out
   compare "user-retire dave"
   for repo in sh go; do
@@ -476,7 +476,7 @@ pkgs.runCommand "fleet-secrets-parity" {
     [ "$(git -C $repo rev-parse host/alpha)" = "$(git -C origin-$repo.git rev-parse host/alpha)" ] || { echo "$repo: the retire commit was not pushed"; exit 1; }
   done
 
-  # fleet secrets user-keys (the port only) writes alice's login and sudo keys
+  # fleetmgr secrets user-keys (the port only) writes alice's login and sudo keys
   # on her branch too.
   ssh-keygen -q -t ed25519 -N "" -f alice.login
   cp alice.login.pub alice.keys

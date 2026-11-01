@@ -40,7 +40,7 @@ func TestPlainUIPrintsNoDecoration(t *testing.T) {
 	u.OK("fine")
 	u.StepEnd("ok")
 	u.Summary("done", nil)
-	want := "fleet · Check\n\n  host pi · user me\n\n[1/2] One\n      why\n      $ ls\n        a\n        b\n      ✓ fine\n"
+	want := "fleetmgr · Check\n\n  host pi · user me\n\n[1/2] One\n      why\n      $ ls\n        a\n        b\n      ✓ fine\n"
 	if got := out.String(); got != want {
 		t.Fatalf("got %q\nwant %q", got, want)
 	}
@@ -51,7 +51,7 @@ func TestFancyHeaderBar(t *testing.T) {
 	u := NewFancy(&out, Look{}, 40, nil)
 	u.Header("Check", "dry run")
 	lines := plainLines(out.String())
-	if lines[0] != " fleet · Check"+strings.Repeat(" ", 40-ansi.StringWidth(" fleet · Check")-len("dry run "))+"dry run " {
+	if lines[0] != " fleetmgr · Check"+strings.Repeat(" ", 40-ansi.StringWidth(" fleetmgr · Check")-len("dry run "))+"dry run " {
 		t.Fatalf("bar %q", lines[0])
 	}
 	if ansi.StringWidth(lines[0]) != 40 {

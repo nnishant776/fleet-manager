@@ -19,7 +19,7 @@
 - [Signing commits and trusting them](signing-and-trust.md)
 - [Secrets](secrets.md)
 - [A private fleet](private-fleet.md)
-- [The fleet tool](fleet-tool.md)
+- [The fleetmgr tool](fleetmgr.md)
 - [Secrets runbooks](secrets-runbooks.md)
 
 # Appendices

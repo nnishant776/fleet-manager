@@ -1,6 +1,6 @@
-<!-- Written by `fleet docs` from tools/fleetmgr/flows; edit the flows, not this. -->
+<!-- Written by `fleetmgr docs` from tools/fleetmgr/flows; edit the flows, not this. -->
 
-# fleet secrets user-keys
+# fleetmgr secrets user-keys
 
 Set the SSH keys that may log in as the user, or unlock their sudo, on that host.
 
@@ -16,19 +16,19 @@ comment do not matter), and keep the other lines as they are. A removal that wou
 refused; a change that changes nothing makes no commit.
 
 ```
-fleet secrets user-keys [USER] [HOST] [flags]
+fleetmgr secrets user-keys [USER] [HOST] [flags]
 
-fleet secrets user-keys alice laptop1 --authorized-keys alice.keys
-fleet secrets user-keys admin laptop1 --authorized-keys admin.keys --sudo-keys admin-sudo.keys
-fleet secrets user-keys support laptop1 --add-authorized-keys new.pub
-fleet secrets user-keys support laptop1 --remove-authorized-keys old.pub
+fleetmgr secrets user-keys alice laptop1 --authorized-keys alice.keys
+fleetmgr secrets user-keys admin laptop1 --authorized-keys admin.keys --sudo-keys admin-sudo.keys
+fleetmgr secrets user-keys support laptop1 --add-authorized-keys new.pub
+fleetmgr secrets user-keys support laptop1 --remove-authorized-keys old.pub
 ```
 
 ## Flags
 
 | Flag | |
 |---|---|
-| `--repo` | Your clone of the secrets repository, left on main, or the name of a repository (fleet repo list), which means the tool's own clone of it; defaults to FLEET_SECRETS_REPO, then this directory |
+| `--repo` | Your clone of the secrets repository, left on main, or the name of a repository (fleetmgr repo list), which means the tool's own clone of it; defaults to FLEETMGR_SECRETS_REPO, then this directory |
 | `--recovery` | Your passphrase-encrypted age identity (age -p). Empty: sops uses SOPS_AGE_KEY_FILE or SOPS_AGE_KEY |
 | `--user` | The user's name: lowercase letters, digits and '-' |
 | `--host` | The host's name: lowercase letters, digits and '-' |
@@ -49,7 +49,7 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 2. **Check the keys.** A line that is not a public key would be stored as it is and lock out whoever relies on it; each non-empty line must be one for ssh-keygen.
 
-3. **Open the secrets repository.** The change builds on the host's branch and encrypts for the recipients that branch names, so git must check its signatures against keys a pushed commit cannot change. New files are encrypted to the host and to your recovery recipient, which fleet setup caches.
+3. **Open the secrets repository.** The change builds on the host's branch and encrypts for the recipients that branch names, so git must check its signatures against keys a pushed commit cannot change. New files are encrypted to the host and to your recovery recipient, which fleetmgr setup caches.
 
    ```
    $ cd REPO && git rev-parse --git-dir
@@ -102,4 +102,4 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
    $ cd REPO && git push origin BRANCH
    ```
 
-It needs `git`, `yq`, `sops`, `age`, `ssh-keygen` on the PATH; `fleet doctor` says where to get them.
+It needs `git`, `yq`, `sops`, `age`, `ssh-keygen` on the PATH; `fleetmgr doctor` says where to get them.

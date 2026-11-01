@@ -9,7 +9,7 @@
 // A command for a host works in a temporary worktree of its branch, so the
 // clone's own checkout stays on main. There is no registry of recipients: a
 // file's recipients are in its own sops metadata, and the maintainer's
-// recovery recipient is the one fleet setup caches.
+// recovery recipient is the one fleetmgr setup caches.
 package secrets
 
 import (
@@ -35,11 +35,11 @@ const NamePattern = `^[a-z0-9][a-z0-9-]*$`
 var RepoInput = engine.Input{
 	Name:   "repo",
 	Prompt: "Secrets repository checkout",
-	Help: "Your clone of the secrets repository, left on main, or the name of a repository (fleet repo list), which means the tool's own clone of it; " +
-		"defaults to FLEET_SECRETS_REPO, then this directory",
+	Help: "Your clone of the secrets repository, left on main, or the name of a repository (fleetmgr repo list), which means the tool's own clone of it; " +
+		"defaults to FLEETMGR_SECRETS_REPO, then this directory",
 	Resolve: func(x *engine.Ctx, v string) (string, error) { return fleetmgr.ResolveName(x, "repo", v) },
 	Default: func(*engine.Ctx) (string, error) {
-		if v := os.Getenv("FLEET_SECRETS_REPO"); v != "" {
+		if v := os.Getenv("FLEETMGR_SECRETS_REPO"); v != "" {
 			return v, nil
 		}
 		return ".", nil
@@ -53,7 +53,7 @@ var RecoveryInput = engine.Input{
 	Help:     "Your passphrase-encrypted age identity (age -p). Empty: sops uses SOPS_AGE_KEY_FILE or SOPS_AGE_KEY",
 	Optional: true,
 	Default: func(*engine.Ctx) (string, error) {
-		if v := os.Getenv("FLEET_RECOVERY"); v != "" {
+		if v := os.Getenv("FLEETMGR_RECOVERY"); v != "" {
 			return v, nil
 		}
 		home, err := os.UserHomeDir()
@@ -100,7 +100,7 @@ func cmd(name string, args ...string) *engine.Command {
 	return engine.Cmd(name, args...).In("{{.work}}")
 }
 
-// RecoveryCache is the file fleet setup keeps the maintainer's recovery
+// RecoveryCache is the file fleetmgr setup keeps the maintainer's recovery
 // recipient in: $XDG_STATE_HOME/fleet/recovery.pub.
 func RecoveryCache() (string, error) {
 	dir, err := fleetmgr.StateDir()
@@ -120,12 +120,12 @@ func ReadRecoveryRecipient() (string, error) {
 	}
 	b, err := os.ReadFile(p)
 	if err != nil {
-		return "", fmt.Errorf("no recovery recipient in %s: run fleet setup", p)
+		return "", fmt.Errorf("no recovery recipient in %s: run fleetmgr setup", p)
 	}
 	line, _, _ := strings.Cut(string(b), "\n")
 	line = strings.TrimSpace(line)
 	if !agePattern.MatchString(line) {
-		return "", fmt.Errorf("%s does not hold an age recipient: run fleet setup", p)
+		return "", fmt.Errorf("%s does not hold an age recipient: run fleetmgr setup", p)
 	}
 	return line, nil
 }
@@ -138,7 +138,7 @@ func ReadRecoveryRecipient() (string, error) {
 func Open(recovery bool) engine.Step {
 	why := "The change builds on the host's branch and encrypts for the recipients that branch names, so git must check its signatures against keys a pushed commit cannot change."
 	if recovery {
-		why += " New files are encrypted to the host and to your recovery recipient, which fleet setup caches."
+		why += " New files are encrypted to the host and to your recovery recipient, which fleetmgr setup caches."
 	}
 	return engine.Step{
 		Title: "Open the secrets repository",
@@ -156,7 +156,7 @@ func Open(recovery bool) engine.Step {
 					Expect: func(out string) (string, error) {
 						if f, ok := strings.CutPrefix(strings.TrimSpace(out), "inside "); ok {
 							return "", fmt.Errorf("git checks signatures against %s, which is inside a checkout, so a pushed commit could add "+
-								"the key that signs it: run fleet setup, which points it at your own copy of the keys", f)
+								"the key that signs it: run fleetmgr setup, which points it at your own copy of the keys", f)
 						}
 						return "", nil
 					},
@@ -167,7 +167,7 @@ func Open(recovery bool) engine.Step {
 					Expect: func(out string) (string, error) {
 						if strings.TrimSpace(out) == ".githooks" {
 							return "", errors.New("git runs the repository's own hook (core.hooksPath is .githooks):" +
-								" run fleet setup, which installs a copy you have read in its place")
+								" run fleetmgr setup, which installs a copy you have read in its place")
 						}
 						return "", nil
 					},
@@ -545,7 +545,7 @@ func CreateEmpty(title, rel, recipientValue string) engine.Step {
 // CreateEmptyFile creates the empty file rel in the worktree (the value work),
 // encrypted to the recipients (comma-separated) and to the recovery recipient.
 func CreateEmptyFile(x *engine.Ctx, rel, recipients string) error {
-	tmp, err := os.CreateTemp("", "fleet-empty-*.yaml")
+	tmp, err := os.CreateTemp("", "fleetmgr-empty-*.yaml")
 	if err != nil {
 		return err
 	}
@@ -641,8 +641,8 @@ func Set(file, key, value, note string) *engine.Command {
 
 // signersOutsideCheckout prints "inside FILE" when git's
 // gpg.ssh.allowedSignersFile lies inside a git checkout, where a pushed commit
-// could add the key that signs it; fleet setup points it at your own copy
-// (fleet trust signers). The shell fleet-secrets runs the same check.
+// could add the key that signs it; fleetmgr setup points it at your own copy
+// (fleetmgr trust signers). The shell fleet-secrets runs the same check.
 const signersOutsideCheckout = `f="$(git config --get gpg.ssh.allowedSignersFile)" || exit 0
 case "$f" in \~/*) f="$HOME/${f#\~/}" ;; esac
 case "$f" in /*) ;; *) f="$(git rev-parse --show-toplevel)/$f" ;; esac

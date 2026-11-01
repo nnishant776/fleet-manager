@@ -9,10 +9,10 @@ import (
 	"unicode/utf8"
 )
 
-// The index lists every glossary term, conf.* option and fleet command with
+// The index lists every glossary term, conf.* option and fleetmgr command with
 // the sections that mention it, the one that defines it first.
 
-const indexIntro = "Every glossary term, `conf.*` option, `fleet` command and host tool, with the sections that mention it. The section that defines it comes first, in bold."
+const indexIntro = "Every glossary term, `conf.*` option, `fleetmgr` command and host tool, with the sections that mention it. The section that defines it comes first, in bold."
 
 // maxPlaces is the most places an entry lists, its definition among them.
 const maxPlaces = 12
@@ -112,7 +112,7 @@ func newIndexer(chapters []*Chapter, pages map[string]*page, cmds []Command) *in
 		ix.add(&term{show: "`" + c.Name + "`", find: c.Name, kind: commandTerm, def: place{label: "runbook", link: c.Runbook}})
 		ix.commands = append(ix.commands, c.Name)
 	}
-	// Longer commands first, so that fleet host is not found in fleet host
+	// Longer commands first, so that fleetmgr host is not found in fleetmgr host
 	// enroll.
 	slices.SortStableFunc(ix.commands, func(a, b string) int {
 		if d := len(strings.Fields(b)) - len(strings.Fields(a)); d != 0 {

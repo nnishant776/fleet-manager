@@ -14,13 +14,13 @@ import (
 )
 
 // detectFancy says whether out gets the decorated output: it is a terminal
-// and neither NO_COLOR nor FLEET_PLAIN is set (or they are empty).
+// and neither NO_COLOR nor FLEETMGR_PLAIN is set (or they are empty).
 func detectFancy(out io.Writer, getenv func(string) string) bool {
 	f, ok := out.(*os.File)
 	if !ok || !term.IsTerminal(f.Fd()) {
 		return false
 	}
-	return getenv("NO_COLOR") == "" && getenv("FLEET_PLAIN") == ""
+	return getenv("NO_COLOR") == "" && getenv("FLEETMGR_PLAIN") == ""
 }
 
 // NewFancy returns a UI that draws the decorated output into out at the given

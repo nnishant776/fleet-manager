@@ -37,7 +37,7 @@ func fleetManagerHistory(x *engine.Ctx) (dir, signers string, cleanup func(), er
 	}
 	if _, serr := os.Stat(signers); serr != nil {
 		if !x.Options.DryRun {
-			return "", "", nil, errors.New("you trust no keys for fleet-manager yet: run fleet repo add (with no address it adds fleet-manager)")
+			return "", "", nil, errors.New("you trust no keys for fleet-manager yet: run fleetmgr repo add (with no address it adds fleet-manager)")
 		}
 		x.UI.Skip("dry run: you trust no keys for fleet-manager yet")
 	}
@@ -194,13 +194,13 @@ func pinRangeStart(x *engine.Ctx, dir, pin, base string) (from, nothingNew strin
 		return "", "", err
 	}
 	if rec == "" {
-		return "", "", errors.New("you have no trusted commit for fleet-manager's main yet: run fleet repo sync fleet-manager, or fleet repo add, first")
+		return "", "", errors.New("you have no trusted commit for fleet-manager's main yet: run fleetmgr repo sync fleet-manager, or fleetmgr repo add, first")
 	}
 	if rec == pin {
 		return "", "it is the commit you trusted on fleet-manager's main: its commits were checked as the record moved to it", nil
 	}
 	apart := fmt.Errorf("the commit you trusted on fleet-manager's main, %s, and %s have gone apart, or %s is not in its history as fetched: "+
-		"neither can be checked against the other. Review it with fleet repo sync fleet-manager", short(rec), short(pin), short(rec))
+		"neither can be checked against the other. Review it with fleetmgr repo sync fleet-manager", short(rec), short(pin), short(rec))
 	if _, err := fleetmgr.CommitOf(x, dir, rec); err != nil {
 		return "", "", apart
 	}
@@ -228,7 +228,7 @@ func fleetManagerInLock(lock string) (rev string, found bool, err error) {
 	if strings.TrimSpace(lock) == "" {
 		return "", false, nil
 	}
-	dir, err := os.MkdirTemp("", "fleet-lock-*")
+	dir, err := os.MkdirTemp("", "fleetmgr-lock-*")
 	if err != nil {
 		return "", false, err
 	}

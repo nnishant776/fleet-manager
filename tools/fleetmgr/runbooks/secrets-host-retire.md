@@ -1,6 +1,6 @@
-<!-- Written by `fleet docs` from tools/fleetmgr/flows; edit the flows, not this. -->
+<!-- Written by `fleetmgr docs` from tools/fleetmgr/flows; edit the flows, not this. -->
 
-# fleet secrets host-retire
+# fleetmgr secrets host-retire
 
 Remove a host and its files.
 
@@ -8,16 +8,16 @@ Deletes the host's branch, host/\<host>, in your clone after showing what it hel
 is still to do: deleting it on the forge, and the host's deploy key. Makes no commit.
 
 ```
-fleet secrets host-retire [HOST] [flags]
+fleetmgr secrets host-retire [HOST] [flags]
 
-fleet secrets host-retire laptop1
+fleetmgr secrets host-retire laptop1
 ```
 
 ## Flags
 
 | Flag | |
 |---|---|
-| `--repo` | Your clone of the secrets repository, left on main, or the name of a repository (fleet repo list), which means the tool's own clone of it; defaults to FLEET_SECRETS_REPO, then this directory |
+| `--repo` | Your clone of the secrets repository, left on main, or the name of a repository (fleetmgr repo list), which means the tool's own clone of it; defaults to FLEETMGR_SECRETS_REPO, then this directory |
 | `--host` | The host's name: lowercase letters, digits and '-' |
 
 Every command also takes `--dry-run` (show every step and command; look, but
@@ -65,4 +65,4 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
    > its users' passwords and SSH keys on HOST (revoke their public keys
    > on the forge now) and whatever was in hosts/HOST.yaml.
 
-It needs `git` on the PATH; `fleet doctor` says where to get them.
+It needs `git` on the PATH; `fleetmgr doctor` says where to get them.

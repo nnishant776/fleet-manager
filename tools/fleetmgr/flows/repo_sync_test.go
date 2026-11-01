@@ -49,7 +49,7 @@ func (w *repoWorld) push(key, work, branch, subject string) string {
 	return tip
 }
 
-// sync runs fleet repo sync; typed is what a person at a terminal types.
+// sync runs fleetmgr repo sync; typed is what a person at a terminal types.
 func (w *repoWorld) sync(opts engine.Options, typed, names, rewrite string) error {
 	x := w.ctx(opts)
 	if typed != "" {
@@ -444,7 +444,7 @@ func TestRepoSyncRefusesAnUnknownNameAndAMissingClone(t *testing.T) {
 	if err == nil {
 		t.Fatalf("accepted:\n%s", w.out)
 	}
-	wantOut(t, w, "run fleet repo add again")
+	wantOut(t, w, "run fleetmgr repo add again")
 }
 
 // A signed tip over an unsigned commit: the tip's signature does not vouch for

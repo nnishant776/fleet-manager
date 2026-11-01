@@ -1,6 +1,6 @@
 # Appendix B. Things to know
 
-<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->
+<!-- book:top — written by `fleetmgr docs` from SUMMARY.md and the headings; do not edit -->
 [← Appendix A. Configuration reference](configuration.md) · [Contents](README.md) · [Appendix C. Glossary →](glossary.md)
 <!-- /book:top -->
 

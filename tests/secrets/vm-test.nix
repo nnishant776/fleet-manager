@@ -1,8 +1,8 @@
 # End-to-end test of the host side of the secrets design: a `forge` node
-# serves signed bare repositories over sshd and a `fleet` node, built from the
+# serves signed bare repositories over sshd and a `fleetmgr` node, built from the
 # scratch-secrets host, has to bootstrap, snapshot, activate and hold up
 # against a tampered repository and an older commit served again, take
-# secrets the maintainer adds with `fleet host secret` (the forge also plays
+# secrets the maintainer adds with `fleetmgr host secret` (the forge also plays
 # the maintainer), and fetch its configuration from a private repository with
 # its own configuration key (an SSH conf.fleet.repo.url), refusing what is not
 # signed, and activate the running system again when only the secrets changed.
@@ -14,10 +14,10 @@
 # his file from it when his key signed the tip, a signer it does not know, the
 # wrong recipients, a rollback and a malformed password each keep the previous
 # file and are named in user-problems, and a sync with nothing new makes no
-# new snapshot. Erin is enrolled with fleet secrets user-enroll and retired
+# new snapshot. Erin is enrolled with fleetmgr secrets user-enroll and retired
 # with user-retire, and the host's sync reads what those commands leave: her
 # file from her branch, signed by her own key.
-# Dave changes his own password, login key and secrets with fleet user, from a
+# Dave changes his own password, login key and secrets with fleetmgr user, from a
 # directory and home of his own with his identity and signing key, signed by
 # him, and the host hands him his secret with fleet-user-secret, to him alone.
 # No network and no hosting service are involved. Run it with
@@ -121,7 +121,7 @@ let
         -c commit.gpgsign=true -c user.name=maintainer -c user.email=maintainer@test "$@"
     }
 
-    # What fleet setup caches for the maintainer's tools.
+    # What fleetmgr setup caches for the maintainer's tools.
     echo "$recovery" > "$out/recovery.pub"
 
     # The secrets repository: main holds a README; the scratch host's branch,
@@ -291,7 +291,7 @@ let
     git push -q origin HEAD:refs/heads/user/dave
   '';
 
-  # Dave with fleet, as the user: from a directory and a home of his own, with
+  # Dave with fleetmgr, as the user: from a directory and a home of his own, with
   # his age identity (sops reads it from SOPS_AGE_KEY_FILE; the maintainer's
   # recovery key is not in reach), his signing key and his enrollment file, in
   # a clone of the secrets repository of his own.
@@ -301,7 +301,7 @@ let
     export SOPS_AGE_KEY_FILE=/home/git/dave/dave.key
     export GIT_AUTHOR_NAME=dave GIT_AUTHOR_EMAIL=dave@test GIT_COMMITTER_NAME=dave GIT_COMMITTER_EMAIL=dave@test
     cd /home/git/dave
-    exec fleet user "$@" --repo /home/git/dave/secrets --user dave --identity "" \
+    exec fleetmgr user "$@" --repo /home/git/dave/secrets --user dave --identity "" \
       --signing-key /home/git/dave/dave_sig --enroll /home/git/dave/dave.enroll \
       --signers ${fixtures}/allowed_signers --flake "" --yes
   '';
@@ -347,9 +347,9 @@ pkgs.testers.runNixOSTest {
       openssh.authorizedKeys.keys = [ (builtins.readFile "${fixtures}/config_ed25519.pub") ];
     };
 
-    # sshd runs git-upload-pack through the user's login PATH; fleet is the
+    # sshd runs git-upload-pack through the user's login PATH; fleetmgr is the
     # maintainer's tool.
-    environment.systemPackages = [ pkgs.git pkgs.sops pkgs.age pkgs.mkpasswd self.packages.${pkgs.stdenv.hostPlatform.system}.fleet ];
+    environment.systemPackages = [ pkgs.git pkgs.sops pkgs.age pkgs.mkpasswd self.packages.${pkgs.stdenv.hostPlatform.system}.fleetmgr ];
 
     systemd.services.forge-repos = {
       description = "Put the fixture repositories where the git user serves them";
@@ -379,7 +379,7 @@ pkgs.testers.runNixOSTest {
       mode = "0600";
     };
 
-    # The forge also plays the maintainer's machine, running fleet with the
+    # The forge also plays the maintainer's machine, running fleetmgr with the
     # maintainer's recovery and signing keys.
     environment.etc."test-keys/recovery.key" = {
       source = "${fixtures}/recovery.key";
@@ -451,7 +451,7 @@ pkgs.testers.runNixOSTest {
     # Root has no ssh configuration for the forge: the secrets fetch uses the
     # host's deploy key and the configuration fetch its configuration key
     # (its repo.url is an SSH address), each as the tools set it, or not at all.
-    # sops, to read back what fleet host secret stored, with the host's own key;
+    # sops, to read back what fleetmgr host secret stored, with the host's own key;
     # fleet-clone-flake, the clone os-install makes of a private flake.
     environment.systemPackages = [ pkgs.sops pkgs.openssh (import ../../lib/clone-flake.nix { inherit pkgs; }) ];
 
@@ -598,9 +598,9 @@ pkgs.testers.runNixOSTest {
         forge.succeed("su git -c 'git -C /var/lib/forge/secrets.git update-ref refs/heads/host/${hostName} refs/heads/host/${hostName}~1'")
 
     # The forge as the maintainer's machine: a signing clone of the secrets
-    # repository, which stays on main while fleet works on the host's branch in
+    # repository, which stays on main while fleetmgr works on the host's branch in
     # a worktree of its own, the recovery key for sops and its recipient as
-    # fleet setup caches it, and the support key for the host, whose key it
+    # fleetmgr setup caches it, and the support key for the host, whose key it
     # knows.
     forge.succeed(
         "install -d -o git -m 700 /home/git/.ssh",
@@ -608,7 +608,7 @@ pkgs.testers.runNixOSTest {
         "install -o git -m 600 /etc/test-keys/support_ed25519 /home/git/.ssh/id_ed25519",
         "install -d -o git -m 700 /home/git/keys",
         "install -o git -m 600 ${fixtures}/dave_sig ${fixtures}/evil_sig ${fixtures}/erin_sig ${fixtures}/erin.key /home/git/keys/",
-        # Dave's own directory and home for fleet user (daveFleet): his identity,
+        # Dave's own directory and home for fleetmgr user (daveFleet): his identity,
         # signing key and enrollment file, and nothing of the maintainer's.
         "install -d -o git -m 700 /home/git/dave /home/git/dave-home",
         "install -o git -m 600 ${fixtures}/dave_sig ${fixtures}/dave_sig.pub ${fixtures}/dave.key ${fixtures}/dave.enroll ${fixtures}/dave_signers ${fixtures}/dave_login.pub /home/git/dave/",
@@ -625,11 +625,11 @@ pkgs.testers.runNixOSTest {
     )
 
     def maintainer(args, stdin=""):
-        # fleet, non-interactive, in the maintainer's clone; sops decrypts with
+        # fleetmgr, non-interactive, in the maintainer's clone; sops decrypts with
         # the recovery key from SOPS_AGE_KEY_FILE.
         return forge.succeed(
             f"cd /home/git/w && printf %s '{stdin}' | su git -c"
-            f" 'SOPS_AGE_KEY_FILE=/home/git/recovery.key fleet host secret {args} --recovery \"\" --yes' 2>&1"
+            f" 'SOPS_AGE_KEY_FILE=/home/git/recovery.key fleetmgr host secret {args} --recovery \"\" --yes' 2>&1"
         )
 
     def host_value(name):
@@ -641,22 +641,22 @@ pkgs.testers.runNixOSTest {
             f" '{path}' /var/lib/fleet/secrets/hosts/${hostName}.yaml"
         )
 
-    with subtest("8: fleet host secret encrypts a value for the host, which fetches it"):
+    with subtest("8: fleetmgr host secret encrypts a value for the host, which fetches it"):
         out = maintainer("${hostName} test_secret --value-stdin", stdin="s3cret value")
-        assert "s3cret" not in out, f"fleet showed the value:\n{out}"
+        assert "s3cret" not in out, f"fleetmgr showed the value:\n{out}"
         assert "✓ committed: ${hostName}: test_secret" in out, out
         got = host_value("test_secret")
         assert got == "s3cret value", f"the host decrypted '{got}'"
 
-    with subtest("9: fleet host secret reads a value off the host, never showing it"):
+    with subtest("9: fleetmgr host secret reads a value off the host, never showing it"):
         fleet.succeed("printf 'kept-on-the-host\\n' > /root/hotspot-pass && chmod 600 /root/hotspot-pass")
         out = maintainer("${hostName} from_host --from-host /root/hotspot-pass --address fleet")
-        assert "kept-on-the-host" not in out, f"fleet showed the value:\n{out}"
+        assert "kept-on-the-host" not in out, f"fleetmgr showed the value:\n{out}"
         assert "ForwardAgent=no" in out and "support@fleet" in out, out
         got = host_value("from_host")
         assert got == "kept-on-the-host", f"the host decrypted '{got}' (the trailing newline should be dropped)"
 
-    with subtest("10: fleet host secret groups secrets under a name with a /"):
+    with subtest("10: fleetmgr host secret groups secrets under a name with a /"):
         out = maintainer("${hostName} group/first --value-stdin", stdin="first value")
         assert "✓ committed: ${hostName}: group/first" in out, out
         maintainer("${hostName} group/second --value-stdin", stdin="second value")
@@ -665,19 +665,19 @@ pkgs.testers.runNixOSTest {
         # One value would replace both, so the name of the group is refused.
         status, out = forge.execute(
             "cd /home/git/w && printf x | su git -c"
-            " 'SOPS_AGE_KEY_FILE=/home/git/recovery.key fleet host secret ${hostName} group --value-stdin --recovery \"\" --yes' 2>&1"
+            " 'SOPS_AGE_KEY_FILE=/home/git/recovery.key fleetmgr host secret ${hostName} group --value-stdin --recovery \"\" --yes' 2>&1"
         )
         assert status != 0 and "group holds secrets of its own (first, second)" in out, out
         assert host_value("group/first") == "first value"
 
     def user_keys(args):
-        # fleet secrets user-keys, in the same clone and with the same keys.
+        # fleetmgr secrets user-keys, in the same clone and with the same keys.
         return forge.execute(
             "cd /home/git/w && su git -c 'SOPS_AGE_KEY_FILE=/home/git/recovery.key"
-            f" fleet secrets user-keys {args} --recovery \"\" --yes' 2>&1"
+            f" fleetmgr secrets user-keys {args} --recovery \"\" --yes' 2>&1"
         )
 
-    with subtest("10b: fleet secrets user-keys stores checked keys on the host's branch and pushes"):
+    with subtest("10b: fleetmgr secrets user-keys stores checked keys on the host's branch and pushes"):
         forge.succeed(
             "su git -c 'ssh-keygen -q -t ed25519 -N \"\" -C alice-second@test -f /home/git/alice_second'",
             "su git -c 'cat /home/git/alice_second.pub ${fixtures}/alice_login.pub > /home/git/alice.keys'",
@@ -782,7 +782,7 @@ pkgs.testers.runNixOSTest {
         )
         status, out = forge.execute(
             "cd /home/git/w && printf x | su git -c"
-            " 'SOPS_AGE_KEY_FILE=/home/git/recovery.key fleet host secret ${hostName} rewound --value-stdin --recovery \"\" --yes' 2>&1"
+            " 'SOPS_AGE_KEY_FILE=/home/git/recovery.key fleetmgr host secret ${hostName} rewound --value-stdin --recovery \"\" --yes' 2>&1"
         )
         assert status != 0 and f"host/${hostName} at {older} does not follow {saved}, the commit you trusted last" in out, f"{status}: {out}"
         assert f"rm {record}" in out, out
@@ -1262,12 +1262,12 @@ pkgs.testers.runNixOSTest {
         assert f"user dave {tip}\n" in manifest(), manifest()
         assert dave_password() == password_hash("five"), dave_password()
 
-    with subtest("31: a user enrolled and retired with fleet secrets is read by the host's sync as the tools leave her"):
+    with subtest("31: a user enrolled and retired with fleetmgr secrets is read by the host's sync as the tools leave her"):
         def fleet_cmd(args, stdin=""):
-            # fleet secrets ..., in the maintainer's clone, with the recovery key.
+            # fleetmgr secrets ..., in the maintainer's clone, with the recovery key.
             return forge.succeed(
                 f"cd /home/git/w && printf %s '{stdin}' | su git -c"
-                f" 'SOPS_AGE_KEY_FILE=/home/git/recovery.key fleet secrets {args} --recovery \"\" --yes' 2>&1"
+                f" 'SOPS_AGE_KEY_FILE=/home/git/recovery.key fleetmgr secrets {args} --recovery \"\" --yes' 2>&1"
             )
 
         def erin_file(key):
@@ -1315,7 +1315,7 @@ pkgs.testers.runNixOSTest {
         assert "user erin" not in manifest(), manifest()
         fleet.fail("test -e /var/lib/fleet/secrets/users/erin")
 
-    # Dave as the user, with fleet user, from his own directory and home: his
+    # Dave as the user, with fleetmgr user, from his own directory and home: his
     # identity and signing key, in a clone of his own (daveFleet).
     forge.succeed("su git -c 'git clone -q file:///var/lib/forge/secrets.git /home/git/dave/secrets'")
 
@@ -1332,7 +1332,7 @@ pkgs.testers.runNixOSTest {
     def dave_tip():
         return as_git("git -C /var/lib/forge/secrets.git rev-parse user/dave").strip()
 
-    with subtest("32: dave changes his password, keys and secrets with fleet user, signed by his own key"):
+    with subtest("32: dave changes his password, keys and secrets with fleetmgr user, signed by his own key"):
         before = dave_tip()
         out = dave_fleet("password ${hostName} --password-stdin", stdin="dave-secret")
         assert "dave-secret" not in out and "committed: user-password: dave on ${hostName}" in out, out
@@ -1402,7 +1402,7 @@ pkgs.testers.runNixOSTest {
         status, out = fleet.execute("runuser -u alice -- fleet-user-secret token 2>&1")
         assert status == 1 and "tok-123" not in out and "is not there" in out, (status, out)
         fleet.fail("runuser -u alice -- cat /run/secrets/users/dave/all")
-        # The key he added with fleet user keys logs in as him, and only as him.
+        # The key he added with fleetmgr user keys logs in as him, and only as him.
         out = forge.succeed(ssh_login.format(key="dave_login", user="dave", command="/run/current-system/sw/bin/fleet-user-secret token")).strip()
         assert out == "tok-123", out
         status, _ = forge.execute(ssh_login.format(key="dave_login", user="alice", command="true"))

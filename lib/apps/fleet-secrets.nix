@@ -7,7 +7,7 @@
 # worktree, so the commit holds that command's change and nothing else. There
 # is no registry and no .sops.yaml: a file's recipients are in its own sops
 # metadata, and the maintainer's recovery recipient is read from the cache
-# that fleet setup fills.
+# that fleetmgr setup fills.
 { pkgs }:
 pkgs.writeShellApplication {
   name = "fleet-secrets";
@@ -27,10 +27,10 @@ pkgs.writeShellApplication {
     there; push the branch afterwards (git push origin host/HOST). A new file
     is encrypted to the host (the recipient in hosts/HOST.yaml) and to your
     recovery recipient, read from
-    ''${XDG_STATE_HOME:-$HOME/.local/state}/fleet/recovery.pub, which fleet
+    ''${XDG_STATE_HOME:-$HOME/.local/state}/fleet/recovery.pub, which fleetmgr
     setup writes.
 
-    For a user that hosts/HOST.yaml lists (fleet secrets user-enroll),
+    For a user that hosts/HOST.yaml lists (fleetmgr secrets user-enroll),
     user-password and user-key work on the user's branch, user/USER, instead,
     and a new file is encrypted to the user too.
 
@@ -88,16 +88,16 @@ pkgs.writeShellApplication {
       esac
     }
 
-    # The maintainer's recovery recipient, which fleet setup caches.
+    # The maintainer's recovery recipient, which fleetmgr setup caches.
     recovery_pub=""
     load_recovery_pub() {
       local f="''${XDG_STATE_HOME:-$HOME/.local/state}/fleet/recovery.pub"
-      [ -f "$f" ] || die "no recovery recipient in $f: run fleet setup"
+      [ -f "$f" ] || die "no recovery recipient in $f: run fleetmgr setup"
       read -r recovery_pub < "$f" || true
       case "$recovery_pub" in
-        age1*[!0-9a-z]*|age1|"") die "$f does not hold an age recipient: run fleet setup" ;;
+        age1*[!0-9a-z]*|age1|"") die "$f does not hold an age recipient: run fleetmgr setup" ;;
         age1*) ;;
-        *) die "$f does not hold an age recipient: run fleet setup" ;;
+        *) die "$f does not hold an age recipient: run fleetmgr setup" ;;
       esac
     }
 
@@ -139,7 +139,7 @@ pkgs.writeShellApplication {
     # names, so the tip must be one a trusted key signed, not whatever was
     # pushed last; and the keys it is checked against must be your own copy,
     # outside every checkout, or a pushed commit could add the key that signs
-    # it (fleet trust signers). Nor may git run the repository's own hook,
+    # it (fleetmgr trust signers). Nor may git run the repository's own hook,
     # which anyone who can push could change.
     require_trusted() {
       local signers
@@ -147,10 +147,10 @@ pkgs.writeShellApplication {
       case "$signers" in \~/*) signers="$HOME/''${signers#\~/}" ;; esac
       case "$signers" in ""|/*) ;; *) signers="$(git rev-parse --show-toplevel)/$signers" ;; esac
       if [ -n "$signers" ] && git -C "$(dirname "$signers")" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        die "git checks signatures against $signers, which is inside a checkout, so a pushed commit could add the key that signs it: run fleet setup, which points it at your own copy of the keys"
+        die "git checks signatures against $signers, which is inside a checkout, so a pushed commit could add the key that signs it: run fleetmgr setup, which points it at your own copy of the keys"
       fi
       [ "$(git config --local --default "" --get core.hooksPath)" != .githooks ] \
-        || die "git runs the repository's own hook (core.hooksPath is .githooks): run fleet setup, which installs a copy you have read in its place"
+        || die "git runs the repository's own hook (core.hooksPath is .githooks): run fleetmgr setup, which installs a copy you have read in its place"
     }
 
     # A repository's address as a relative path, host/owner/repo, the same
@@ -189,7 +189,7 @@ pkgs.writeShellApplication {
     # Where the commit you trusted last on a branch is recorded, beside your
     # copy of the repository's keys, outside every checkout: one line, a full
     # commit hash, in a file named after the branch (host/laptop1 is a nested
-    # path). The Go fleet tool keeps the same files.
+    # path). The Go fleetmgr tool keeps the same files.
     trusted_file() {  # trusted_file BRANCH
       local origin id
       origin="$(git remote get-url origin 2>/dev/null)" \
@@ -246,7 +246,7 @@ pkgs.writeShellApplication {
 
     require_signed() {  # require_signed REF
       git verify-commit "$1" >/dev/null 2>&1 \
-        || die "the newest commit of $1 is not signed by a key in gpg.ssh.allowedSignersFile (fleet setup sets it): look at it with git log --show-signature -1 $1 before going on"
+        || die "the newest commit of $1 is not signed by a key in gpg.ssh.allowedSignersFile (fleetmgr setup sets it): look at it with git log --show-signature -1 $1 before going on"
       require_followed "$1"
     }
 
@@ -295,11 +295,11 @@ pkgs.writeShellApplication {
       git -c gpg.ssh.allowedSignersFile="$tmp" verify-commit "$1" >/dev/null 2>&1 || rc=$?
       rm -f "$tmp"
       [ "$rc" -eq 0 ] \
-        || die "the newest commit of $1 is not signed by a key in gpg.ssh.allowedSignersFile (fleet setup sets it) or by $2's own signing key: look at it with git log --show-signature -1 $1 before going on"
+        || die "the newest commit of $1 is not signed by a key in gpg.ssh.allowedSignersFile (fleetmgr setup sets it) or by $2's own signing key: look at it with git log --show-signature -1 $1 before going on"
       require_followed "$1"
     }
 
-    # A user that hosts/HOST.yaml lists (fleet secrets user-enroll) keeps their
+    # A user that hosts/HOST.yaml lists (fleetmgr secrets user-enroll) keeps their
     # files on a branch of their own, user/USER: ref and branch become that
     # branch's, and a new file is also encrypted to the user's recipient. Any
     # other user's files are on the host's branch. Run it with ref set to the

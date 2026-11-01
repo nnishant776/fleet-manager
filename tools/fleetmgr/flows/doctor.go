@@ -8,7 +8,7 @@ import (
 	"github.com/nnishant776/fleet-manager/tools/fleetmgr/internal/engine"
 )
 
-// Tool is a program fleet runs, and where to get it.
+// Tool is a program fleetmgr runs, and where to get it.
 type Tool struct {
 	Name     string
 	Package  string // in nixpkgs
@@ -16,8 +16,8 @@ type Tool struct {
 	For      string
 }
 
-// Tools are every program a flow may run. The Nix package `fleet` puts all of
-// them but nix on PATH; the bare `fleet-static` relies on the machine's own.
+// Tools are every program a flow may run. The Nix package `fleetmgr` puts all of
+// them but nix on PATH; the bare `fleetmgr-static` relies on the machine's own.
 var Tools = []Tool{
 	{Name: "git", Package: "git", For: "both repositories"},
 	{Name: "ssh", Package: "openssh", For: "reaching hosts"},
@@ -30,21 +30,21 @@ var Tools = []Tool{
 	{Name: "yq", Package: "yq-go", For: "enrollment files and the recipients in sops files"},
 	{Name: "mkpasswd", Package: "mkpasswd", For: "password hashes"},
 	{Name: "nix", Package: "nix", For: "reading the configuration"},
-	{Name: "gh", Package: "gh", Optional: true, For: "adding deploy keys; without it fleet shows the web steps"},
+	{Name: "gh", Package: "gh", Optional: true, For: "adding deploy keys; without it fleetmgr shows the web steps"},
 }
 
 // Doctor reports which of the tools are on PATH.
 var Doctor = &engine.Flow{
 	Path:  []string{"doctor"},
-	Title: "Check this machine has the tools fleet uses",
-	Short: "Check this machine has the tools fleet uses",
-	Long: "Lists every program fleet runs and whether it is on PATH, with the nixpkgs\n" +
-		"package that provides each missing one. Installed through Nix, fleet brings\n" +
+	Title: "Check this machine has the tools fleetmgr uses",
+	Short: "Check this machine has the tools fleetmgr uses",
+	Long: "Lists every program fleetmgr runs and whether it is on PATH, with the nixpkgs\n" +
+		"package that provides each missing one. Installed through Nix, fleetmgr brings\n" +
 		"all of them but nix itself; the bare static binary relies on the machine's own.",
 	Steps: []engine.Step{
 		{
 			Title: "Tools on PATH",
-			Why:   "fleet shows and runs the same commands you could type, so it needs these programs.",
+			Why:   "fleetmgr shows and runs the same commands you could type, so it needs these programs.",
 			Do: engine.Func(func(x *engine.Ctx) error {
 				missing := 0
 				for _, t := range Tools {

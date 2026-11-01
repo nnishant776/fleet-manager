@@ -11,7 +11,7 @@ import (
 	"github.com/nnishant776/fleet-manager/tools/fleetmgr/internal/fleetmgr"
 )
 
-// What fleet inventory import changes in the files it copies, as pure
+// What fleetmgr inventory import changes in the files it copies, as pure
 // functions over the text of a .nix file. The scanner reads just enough Nix to
 // tell a relative path literal (./x, ../x) and a string literal ("…") from the
 // same characters in a comment or another string.

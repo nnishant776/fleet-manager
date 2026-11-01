@@ -26,13 +26,13 @@ var HostEnroll = &engine.Flow{
 	Title: "Enroll a running host in the secrets setup",
 	Short: "Enroll a running host: identity, enrollment, deploy key, first sync",
 	Long: "For a host that already runs, and whose configuration in this repository sets\n" +
-		"conf.secrets.repo.url. fleet logs in as its admin account through an agent that\n" +
+		"conf.secrets.repo.url. fleetmgr logs in as its admin account through an agent that\n" +
 		"holds one key only, switches the host to that configuration if it does not run\n" +
 		"it yet or runs another repository's, creates its identity, copies its enrollment file here and checks it,\n" +
 		"enrolls it in the secrets repository and pushes, registers its deploy key\n" +
 		"read-only, then syncs the host and checks it. Steps that are done already are\n" +
 		"skipped, so it can be run again after a failure.",
-	Example: "  fleet host enroll pi1 --key ~/.ssh/admin_key --repo ~/Projects/secrets",
+	Example: "  fleetmgr host enroll pi1 --key ~/.ssh/admin_key --repo ~/Projects/secrets",
 	Args:    []string{"host"},
 	Inputs: []engine.Input{
 		fleetmgr.FlakeInput,
@@ -45,7 +45,7 @@ var HostEnroll = &engine.Flow{
 		{Name: "user", Prompt: "Support account", Help: "The account for the steps after the switch; support by default, which needs nothing forwarded",
 			Default: func(*engine.Ctx) (string, error) { return "support", nil }},
 		{Name: "key", Prompt: "Key that logs in to that account and unlocks its sudo",
-			Help: "A private key file; the only key the agent fleet starts holds and forwards",
+			Help: "A private key file; the only key the agent fleetmgr starts holds and forwards",
 			Default: func(*engine.Ctx) (string, error) {
 				home, _ := os.UserHomeDir()
 				if p := filepath.Join(home, ".ssh", "id_ed25519"); fileExists(p) {
@@ -62,7 +62,7 @@ var HostEnroll = &engine.Flow{
 			Help:     "Run with the public key on stdin, instead of gh or the web page; mostly for tests",
 			Optional: true, Default: func(*engine.Ctx) (string, error) { return "", nil }},
 		{Name: "sync", Prompt: "Sync the host at the end and check it?",
-			Help: "Sync the host at the end and run fleet host check (default true)", Bool: true,
+			Help: "Sync the host at the end and run fleetmgr host check (default true)", Bool: true,
 			Default: func(*engine.Ctx) (string, error) { return "true", nil }},
 	},
 	Needs:   []string{"ssh", "ssh-agent", "ssh-add", "git", "yq", "sops", "age"},
@@ -81,14 +81,14 @@ var HostEnroll = &engine.Flow{
 		{
 			Title: "Choose the commit to switch {{.host}} to",
 			Why: "It does not run a configuration with secrets from this repository yet. Unless --switch-to names one, it gets a commit a key you trust has signed, as its own sync will take no other: " +
-				"for a private configuration the one fleet install prep would install, otherwise the newest commit of main.",
+				"for a private configuration the one fleetmgr install prep would install, otherwise the newest commit of main.",
 			When: needsSwitch,
 			Do:   engine.Func(chooseSwitch),
 		},
 		{
 			Title: "Create {{.host}}'s identity",
 			Why: "Its age key decrypts its secrets, its deploy key fetches them, and its configuration key fetches a private configuration. All are made on the host and never leave it; init makes only what is missing. " +
-				"A host without fleet's tools yet runs init from the fleet-manager commit checked above, before its switch, which for a private configuration needs the key.",
+				"A host without fleetmgr's tools yet runs init from the fleet-manager commit checked above, before its switch, which for a private configuration needs the key.",
 			When: func(x *engine.Ctx) (bool, string) {
 				if x.Value("has_identity") == "true" && x.Value("has_config_key") == "true" {
 					return false, "it has one"
@@ -104,7 +104,7 @@ var HostEnroll = &engine.Flow{
 		},
 		{
 			Title: "Enroll {{.host}} in the secrets repository",
-			Why:   "fleet secrets host-enroll creates its branch, host/{{.host}}, with its empty file encrypted to it and to your recovery recipient, each step shown.",
+			Why:   "fleetmgr secrets host-enroll creates its branch, host/{{.host}}, with its empty file encrypted to it and to your recovery recipient, each step shown.",
 			When:  enrolledWithThisIdentity,
 			Do:    engine.Func(runHostEnroll),
 		},
@@ -181,9 +181,9 @@ var HostEnroll = &engine.Flow{
 		},
 		{
 			Title: "Check {{.host}}",
-			Why:   "fleet host check, as support with nothing forwarded: this also shows support works.",
+			Why:   "fleetmgr host check, as support with nothing forwarded: this also shows support works.",
 			When:  wantSync,
-			Do: engine.Cmd("fleet", "host", "check", "{{.host}}", "--address", "{{.address}}", "--flake", "{{.flake}}").
+			Do: engine.Cmd("fleetmgr", "host", "check", "{{.host}}", "--address", "{{.address}}", "--flake", "{{.flake}}").
 				ReadOnly().Interactive(),
 		},
 	},
@@ -267,7 +267,7 @@ func chooseSwitch(x *engine.Ctx) error {
 	switch {
 	case ref != "":
 	case sshURL(x.Value("config_url")):
-		// A private configuration: the commit fleet install prep would
+		// A private configuration: the commit fleetmgr install prep would
 		// install, on the branch the host tracks, and the fleet-manager commit
 		// its flake.lock pins, both checked against your copies of the keys.
 		// prep's checks read the checkout's own origin; the host's is kept.
@@ -350,7 +350,7 @@ func writePinnedKeys(x *engine.Ctx) error {
 }
 
 // createIdentity runs fleet-secrets-sync init: the host's own, or, on a host
-// without fleet's tools yet, the one of the fleet-manager commit checked for
+// without fleetmgr's tools yet, the one of the fleet-manager commit checked for
 // the switch, with nix run.
 func createIdentity(x *engine.Ctx) error {
 	cmd := "sudo -n fleet-secrets-sync init --state /var/lib/fleet --host {{.host}}"
@@ -528,7 +528,7 @@ func switchHost(x *engine.Ctx) error {
 
 // signedUpstreamMain takes the newest commit of fleet-manager's main, fetched with
 // its whole history, and returns it once it and every commit since the one you
-// trusted last are signed by a key in your copy of fleet-manager's keys (fleet
+// trusted last are signed by a key in your copy of fleet-manager's keys (fleetmgr
 // trust signers): a host's own sync takes no other, so neither does its first
 // switch. The record then moves to it.
 func signedUpstreamMain(x *engine.Ctx) (string, error) {
@@ -633,14 +633,14 @@ func enrolledWithThisIdentity(x *engine.Ctx) (bool, string) {
 
 func runHostEnroll(x *engine.Ctx) error {
 	if other := x.Value("enrolled_with"); other != "" {
-		return fmt.Errorf("%s is enrolled with another identity (%s…); if it was reinstalled, run fleet secrets host-rekey %s --from %s",
+		return fmt.Errorf("%s is enrolled with another identity (%s…); if it was reinstalled, run fleetmgr secrets host-rekey %s --from %s",
 			x.Value("host"), other[:12], x.Value("host"), x.Value("from"))
 	}
 	args := []string{"secrets", "host-enroll", "{{.host}}", "--from", "{{.from}}", "--repo", "{{.repo}}", "--recovery", "{{.recovery}}"}
 	if x.Options.Yes {
 		args = append(args, "--yes")
 	}
-	_, err := engine.Cmd("fleet", args...).ReadOnly().Interactive().OK("enrolled").Run(x)
+	_, err := engine.Cmd("fleetmgr", args...).ReadOnly().Interactive().OK("enrolled").Run(x)
 	return err
 }
 

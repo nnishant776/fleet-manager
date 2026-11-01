@@ -1,6 +1,6 @@
 # Appendix A. Configuration reference
 
-<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->
+<!-- book:top — written by `fleetmgr docs` from SUMMARY.md and the headings; do not edit -->
 [← 11. Secrets runbooks](secrets-runbooks.md) · [Contents](README.md) · [Appendix B. Things to know →](things-to-know.md)
 <!-- /book:top -->
 
@@ -63,7 +63,7 @@ Each entry in `conf.users.accounts` takes these fields:
 | `secrets.sshKey` | bool | `false` | Deploy a per-host SSH key from the same file to `/run/secrets/users/<name>/ssh_key`. Can be turned on any time after the account exists. Ignored on a host without `conf.secrets.repo.url`. NixOS only. Also deploys `ssh_key.pub` (mode 0400, as all of a user's secrets), and the key becomes the user's default SSH identity and git signing key |
 | `secrets.authorizedKeys` | bool | `false` | Accept the SSH public keys in `users/<name>/<host>.yaml` (`authorized_keys`, one per line) for this account's login, instead of `sshKeys`, which a host with secrets may not use. sshd reads them from `/run/secrets/users/<name>/authorized_keys` at each login, so changing them needs no rebuild. Ignored on a host without `conf.secrets.repo.url`. NixOS only. See [Secrets](secrets.md) |
 | `secrets.sudoKeys` | bool | `false` | Accept the SSH public keys in the same file (`sudo_keys`, one per line) to unlock sudo for this privileged account, besides `sudoSshKeys`. On an unprivileged account it is an error. Ignored on a host without `conf.secrets.repo.url`. NixOS only. See [Sudo with an SSH key](accounts.md#sudo-with-an-ssh-key) in *Accounts and homes* |
-| `secrets.own` | bool | `false` | Decrypt the account's whole file, `users/<name>/<host>.yaml`, to `/run/secrets/users/<name>/all`, readable by the account alone (mode 0400), and install `fleet-user-secret`, which prints one of the secrets the user keeps in it (`secrets.<name>`, stored with `fleet user secret set`). For a user with a branch of their own. Ignored on a host without `conf.secrets.repo.url`. NixOS only. See [Secrets](secrets.md) |
+| `secrets.own` | bool | `false` | Decrypt the account's whole file, `users/<name>/<host>.yaml`, to `/run/secrets/users/<name>/all`, readable by the account alone (mode 0400), and install `fleet-user-secret`, which prints one of the secrets the user keeps in it (`secrets.<name>`, stored with `fleetmgr user secret set`). For a user with a branch of their own. Ignored on a host without `conf.secrets.repo.url`. NixOS only. See [Secrets](secrets.md) |
 | `selfManagedHome` | bool | `false` | This user manages their own home instead of the system doing it |
 | `manageAccount` | nullOr bool | `null` | Whether the account itself is created here. `null` means true on Linux and false on macOS. `false` is an error on Linux. On macOS, `true` puts the account on nix-darwin's delete list, so removing it from `accounts` deletes the macOS account at the next switch |
 | `uid` | nullOr int | `null` | Numeric user id. Required on macOS when `manageAccount` is true |
@@ -83,7 +83,7 @@ How sudo with an SSH key works, and how a home is assembled, is in [Accounts and
 | `hardware.disk.device` | nullOr str | `null` | Primary disk: boot partitions and the first physical volume. Required when enabled. `os-install -d main=DEV` overrides it |
 | `hardware.disk.encrypt` | bool | `true` | Wrap every physical volume in a LUKS2 container (`allowDiscards`). The only encryption switch; `false` for VMs. A generated unencrypted layout on a laptop gives a warning |
 | `hardware.disk.espSize` | str | `"1G"` | Size of the EFI system partition |
-| `hardware.disk.volumes.<name>` | attrsOf volume | `fleet`, `swap`, `root` | Logical volumes in the volume group `main`. Keys merge, so a host adds volumes without restating defaults, and drops one with `enable = false`. See below |
+| `hardware.disk.volumes.<name>` | attrsOf volume | `fleetmgr`, `swap`, `root` | Logical volumes in the volume group `main`. Keys merge, so a host adds volumes without restating defaults, and drops one with `enable = false`. See below |
 | `hardware.disk.extraDevices.<name>` | attrsOf str | `{}` | Further whole disks that join the volume group, keyed by a short name (`data = "/dev/sdb"`). `os-install -d <name>=DEV` overrides each |
 | `hardware.boot.mode` | enum: `bios`/`uefi` | `"uefi"` | Firmware interface |
 | `hardware.boot.loader` | nullOr enum: `systemd-boot`/`grub`/`uboot` | `"systemd-boot"` | Bootloader; GRUB when `mode` is `bios`. `uboot` writes `/boot/extlinux/extlinux.conf` for the U-Boot already on the board, which this flake does not install. `null` turns no loader on, for a board module that brings its own, such as the Raspberry Pi's |
@@ -109,7 +109,7 @@ Each entry in `conf.hardware.disk.volumes` takes these fields:
 | `neededForBoot` | bool | `false` | Mount the volume in the initrd |
 | `priority` | int | `1000` | Creation order in the volume group, lower first. A `100%FREE` volume left at the default is created last |
 
-The module declares `fleet` (`64M`, `/var/lib/fleet`, `neededForBoot`; it must
+The module declares `fleetmgr` (`64M`, `/var/lib/fleet`, `neededForBoot`; it must
 stay enabled), `swap` (`16G`) and `root` (`100%FREE`, `/`), each value as a
 default.
 
@@ -250,10 +250,10 @@ default `""`); no module reads them yet.
 | `fleet.repo.ref` | str | `"main"` | Branch or tag to track |
 | `fleet.localPath` | str | `"/etc/nixos"` | Where the configuration checkout lives. It belongs to the fleet: the first-boot clone replaces what is there without a checkout, and every sync leaves it detached at the verified commit. On NixOS every account's git trusts it (`safe.directory`) |
 | `fleet.signing.allowedSignersFile` | nullOr path | `null` | SSH allowed-signers file. The newest commit of every fetch must be signed by a key in it, for the configuration and for the secrets repository. Required when `repo.url` is set |
-| `fleet.support.enable` | nullOr bool | `null` | Create an account for the maintainer to reach the host with. `null` means on when `conf.secrets.repo.url` is set. NixOS only; macOS hosts get no support account yet. Sets `sharing.ssh.enable`. Every sync checks the account, its keys, its sudo rule and sshd, and repairs them if they were broken; `fleet host check` reports a sync that has stopped running |
+| `fleet.support.enable` | nullOr bool | `null` | Create an account for the maintainer to reach the host with. `null` means on when `conf.secrets.repo.url` is set. NixOS only; macOS hosts get no support account yet. Sets `sharing.ssh.enable`. Every sync checks the account, its keys, its sudo rule and sshd, and repairs them if they were broken; `fleetmgr host check` reports a sync that has stopped running |
 | `fleet.support.user` | str | `"support"` | Name of the support account |
 | `fleet.support.sshKeys` | listOf str | `[]` | The maintainer's public keys, ideally hardware-backed `sk-ssh-ed25519`. For a host without `conf.secrets.repo.url`; on a host with secrets it must be empty and the keys go in the support account's file (`keysFromSecrets`). Required when the account is enabled on a host without secrets. The account is privileged with a sudo rule without a password, since its password is locked and the key is the factor |
-| `fleet.support.keysFromSecrets` | bool | `false` | Accept the keys in the support account's file on the host's branch (`users/support/<host>.yaml`, `authorized_keys`), so they change without a rebuild. Required on a host with secrets, where `sshKeys` has to be empty; requires `conf.secrets.repo.url`. Set them with `fleet secrets user-keys support <host> --authorized-keys FILE`, or let `fleet support-key rotate` do it |
+| `fleet.support.keysFromSecrets` | bool | `false` | Accept the keys in the support account's file on the host's branch (`users/support/<host>.yaml`, `authorized_keys`), so they change without a rebuild. Required on a host with secrets, where `sshKeys` has to be empty; requires `conf.secrets.repo.url`. Set them with `fleetmgr secrets user-keys support <host> --authorized-keys FILE`, or let `fleetmgr support-key rotate` do it |
 | `fleet.support.consolePassword` | bool | `false` | Also take a password hash for the account from `hosts/<host>.yaml` (`support_password`), for console login without a network |
 | `fleet.autoUpdate.enable` | nullOr bool | `null` | Periodic sync and rebuild. `null` means on when `repo.url` is set |
 | `fleet.autoUpdate.dates` | str | `"04:00"` | systemd `OnCalendar` expression |
@@ -275,7 +275,7 @@ Personal machines are explained under [Personal machines](accounts.md#personal-m
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `secrets.repo.url` | nullOr str | `null` | The private secrets repository, as an SSH URL (`git@github.com:example-org/secrets.git`). Requires `fleet.repo.url` and `fleet.signing.allowedSignersFile`. `null` opts the host out entirely: no secrets sync, no host identity, sops off, `accounts.<name>.secrets.*` ignored, no support account |
-| `secrets.repo.ref` | str | `"host/<host name>"` | Branch of the secrets repository to track. Each host has a branch of its own, `host/<name>`, holding its files and no other host's; `fleet secrets host-enroll` creates it |
+| `secrets.repo.ref` | str | `"host/<host name>"` | Branch of the secrets repository to track. Each host has a branch of its own, `host/<name>`, holding its files and no other host's; `fleetmgr secrets host-enroll` creates it |
 | `secrets.statePath` | str | `"/var/lib/fleet"` | Where the host's identity, enrollment file and secrets snapshot live. Expected to be its own volume |
 
 Setting `repo.url` requires `conf.fleet.signing.allowedSignersFile`, which every

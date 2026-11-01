@@ -327,7 +327,7 @@ func TestUserEditFallsBackToTheSigningKeyWhenThereIsNoEnrollmentFile(t *testing.
 		t.Errorf("git checked against\n%s", r.signersSeen)
 	}
 	err, _, out = runOwn(t, UserPassword, r, map[string]string{"host": "nas", "password": "x", "enroll": filepath.Join(dir, "none"), "signing-key": filepath.Join(dir, "absent")})
-	if err == nil || !strings.Contains(err.Error()+out, "run fleet user init first") {
+	if err == nil || !strings.Contains(err.Error()+out, "run fleetmgr user init first") {
 		t.Errorf("got %v\n%s", err, out)
 	}
 }

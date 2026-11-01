@@ -458,7 +458,7 @@ func checkTools(lookPath func(string) (string, error), tools []string) error {
 		}
 	}
 	if len(missing) > 0 {
-		return fmt.Errorf("not on PATH: %s (fleet doctor shows how to get them)", strings.Join(missing, ", "))
+		return fmt.Errorf("not on PATH: %s (fleetmgr doctor shows how to get them)", strings.Join(missing, ", "))
 	}
 	return nil
 }

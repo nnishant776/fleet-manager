@@ -1,6 +1,6 @@
 # 5. Accounts and homes
 
-<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->
+<!-- book:top — written by `fleetmgr docs` from SUMMARY.md and the headings; do not edit -->
 [← 4. Roles and machine types](roles.md) · [Contents](README.md) · [6. Networking →](networking.md)
 <!-- /book:top -->
 
@@ -53,7 +53,7 @@ How it behaves:
 - Hardware security keys (`sk-ssh-ed25519`) do not work for sudo. The PAM module that checks the key only knows RSA, ECDSA and Ed25519 keys.
 - Without one of these keys, or without the agent, sudo asks for the password as before. `sudo -n`, as scripts use it, works with the key too.
 - Only sudo changes. Console login and `su` still need the password, and root login stays off.
-- On a host with secrets the keys come from the secrets repository, not the configuration (`sudoSshKeys` is an error there): set `secrets.sudoKeys = true` and put the keys, one per line, in `sudo_keys` in the account's file for the host (`fleet secrets user-keys admin host --sudo-keys FILE`). sudo reads them at each use from `/run/secrets/users/<user>/sudo_keys`, which is root's, mode 0400, so a change needs no rebuild and the account itself cannot add a key. It works the same way as `sudoSshKeys` otherwise, and is an error on an unprivileged account.
+- On a host with secrets the keys come from the secrets repository, not the configuration (`sudoSshKeys` is an error there): set `secrets.sudoKeys = true` and put the keys, one per line, in `sudo_keys` in the account's file for the host (`fleetmgr secrets user-keys admin host --sudo-keys FILE`). sudo reads them at each use from `/run/secrets/users/<user>/sudo_keys`, which is root's, mode 0400, so a change needs no rebuild and the account itself cannot add a key. It works the same way as `sudoSshKeys` otherwise, and is an error on an unprivileged account.
 - Other users on the machine cannot use your agent. Root can, and so can any program running as you. While you are connected, they can use it to run sudo, or to log in to other machines with your key. Forward your agent only to machines you trust.
 
 To limit that, add the key to your agent with a confirmation, a time limit, or both:
@@ -105,21 +105,21 @@ their keys from the secrets repository; the owner's account also reads
 maintainer adopts it.
 
 Adoption brings the owner into the fleet, in two parts. Run
-`fleet host adopt laptop1 --flake inventory --repo secrets`. It logs in to the
+`fleetmgr host adopt laptop1 --flake inventory --repo secrets`. It logs in to the
 host as support and reads who the owner is, their full name and home, their
 password hash (never shown, and passed on standard input only) and the keys in
 their `~/.ssh/authorized_keys`, and stores the hash and the keys in the
 secrets. It changes nothing in the inventory. It prints the declaration to add
 to the host's own `default.nix` (the account, with its password and keys taken
 from the secrets), tells you to remove `conf.fleet.personal.enable = true`, and
-shows the commands that finish: `fleet inventory publish laptop1 --sync` and
-`fleet host check laptop1`. The owner keeps their uid, their files and their
+shows the commands that finish: `fleetmgr inventory publish laptop1 --sync` and
+`fleetmgr host check laptop1`. The owner keeps their uid, their files and their
 password: NixOS keeps an existing account's ids when the account becomes
 declared. From then on the host is an ordinary managed fleet host: accounts are
 exactly what the configuration declares, so `passwd` and `~/.ssh/authorized_keys`
 no longer stick. An owner who gave their enrollment file (`--from ann.enroll`,
-made by `fleet user init`) changes the password and keys themselves with
-`fleet user`; otherwise they ask the maintainer.
+made by `fleetmgr user init`) changes the password and keys themselves with
+`fleetmgr user`; otherwise they ask the maintainer.
 
 ## Things to know
 

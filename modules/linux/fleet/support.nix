@@ -31,7 +31,7 @@ in
         message =
           "conf.fleet.support.sshKeys is set on a host with secrets; support's keys go in"
           + " its file in the secrets repository (users/${cfg.user}/<host>.yaml), with"
-          + " keysFromSecrets, set with `fleet secrets user-keys ${cfg.user} <host>`.";
+          + " keysFromSecrets, set with `fleetmgr secrets user-keys ${cfg.user} <host>`.";
       }
       {
         assertion = config.conf.secrets.repo.url == null || cfg.keysFromSecrets;

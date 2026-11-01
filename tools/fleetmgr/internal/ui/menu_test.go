@@ -11,7 +11,7 @@ import (
 )
 
 func testRows() []MenuRow {
-	long := Guide{Usage: "fleet host check [HOST]", About: []string{"Logs in to the host."}}
+	long := Guide{Usage: "fleetmgr host check [HOST]", About: []string{"Logs in to the host."}}
 	for i := 1; i <= 12; i++ {
 		long.Steps = append(long.Steps, GuideItem{
 			Name: fmt.Sprintf("Step number %d", i),
@@ -21,9 +21,9 @@ func testRows() []MenuRow {
 	return []MenuRow{
 		{Section: "Hosts", Label: "Check a host", Path: "host check", Guide: long},
 		{Label: "Add or change a host secret that has a long title", Path: "host secret set",
-			Guide: Guide{Usage: "fleet host secret set", Flags: []GuideItem{{Name: "--secret-stdin", Text: "read it"}}}},
-		{Section: "This machine", Label: "Show the status", Path: "status", Guide: Guide{Usage: "fleet status"}},
-		{Label: "Rotate a secret", Path: "secret rotate", Guide: Guide{Usage: "fleet secret rotate"}},
+			Guide: Guide{Usage: "fleetmgr host secret set", Flags: []GuideItem{{Name: "--secret-stdin", Text: "read it"}}}},
+		{Section: "This machine", Label: "Show the status", Path: "status", Guide: Guide{Usage: "fleetmgr status"}},
+		{Label: "Rotate a secret", Path: "secret rotate", Guide: Guide{Usage: "fleetmgr secret rotate"}},
 	}
 }
 
@@ -104,11 +104,11 @@ func TestMenuTwoPanels(t *testing.T) {
 				t.Errorf("%v: line of width %d: %q", size, w, l)
 			}
 		}
-		has(t, lines, " fleet · What do you want to do?")
+		has(t, lines, " fleetmgr · What do you want to do?")
 		has(t, lines, "╭ Commands")
 		has(t, lines, "╭ Check a host")
 		has(t, lines, "› Check a host")
-		has(t, lines, "fleet host check [HOST]")
+		has(t, lines, "fleetmgr host check [HOST]")
 		has(t, lines, "Steps")
 		want := "↑↓ move · enter run · / filter · d hide docs · < > width · ? keys · q quit"
 		if size[0] >= 100 {
@@ -135,10 +135,10 @@ func TestMenuNarrowShowsOnePanel(t *testing.T) {
 		}
 	}
 	has(t, lines, "╭ Commands")
-	lacks(t, lines, "fleet host check [HOST]")
+	lacks(t, lines, "fleetmgr host check [HOST]")
 	send(m, "tab")
 	lines = screen(m)
-	has(t, lines, "fleet host check [HOST]")
+	has(t, lines, "fleetmgr host check [HOST]")
 	lacks(t, lines, "╭ Commands")
 	send(m, "tab")
 	has(t, screen(m), "╭ Commands")
@@ -316,11 +316,11 @@ func TestMenuHighlightBar(t *testing.T) {
 	if l := bar(m); !strings.Contains(l, "48;5;252") {
 		t.Errorf("light bar missing: %q", l)
 	}
-	// FLEET_THEME wins over the answer.
+	// FLEETMGR_THEME wins over the answer.
 	m = newTest(80, 25, Look{Theme: "dark"})
 	m.Update(tea.BackgroundColorMsg{Color: lightColour{}})
 	if l := bar(m); !strings.Contains(l, "48;5;238") {
-		t.Errorf("FLEET_THEME ignored: %q", l)
+		t.Errorf("FLEETMGR_THEME ignored: %q", l)
 	}
 }
 
@@ -346,7 +346,7 @@ func TestMenuHidesAndShowsTheDocs(t *testing.T) {
 	send(m, "d")
 	lines := screen(m)
 	has(t, lines, long)
-	lacks(t, lines, "fleet host check [HOST]")
+	lacks(t, lines, "fleetmgr host check [HOST]")
 	has(t, lines, "d show docs")
 	lacks(t, lines, "tab docs")
 	if !m.prefs.DocsHidden {
@@ -357,7 +357,7 @@ func TestMenuHidesAndShowsTheDocs(t *testing.T) {
 		t.Error("tab moved into hidden docs")
 	}
 	send(m, "d")
-	has(t, screen(m), "fleet host check [HOST]")
+	has(t, screen(m), "fleetmgr host check [HOST]")
 }
 
 // < and > narrow and widen the commands panel, within what leaves the docs

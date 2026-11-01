@@ -1,4 +1,4 @@
-// Package flows holds fleet's commands, one file each. A flow is a
+// Package flows holds fleetmgr's commands, one file each. A flow is a
 // declaration: its inputs and its steps. To add one, write it in a new file
 // and list it in Menu, or in All if it stays off the menu.
 package flows
@@ -17,7 +17,7 @@ var Groups = engine.Groups{
 	"secret":      "Secrets of your own, which your hosts hand only to you",
 }
 
-// Menu is what `fleet` offers when run alone, the everyday work first: a
+// Menu is what `fleetmgr` offers when run alone, the everyday work first: a
 // host, then this machine, then the secrets repository one change at a time.
 var Menu = []engine.Section{
 	{Name: "Hosts", Flows: []*engine.Flow{HostCheck, HostSync, HostSecret, HostEnroll, SupportKeyRotate, InventoryPin, InventoryImport, HostAdopt, InventoryPublish}},
@@ -31,7 +31,7 @@ var Menu = []engine.Section{
 // Every command that takes a checkout or a repository starts by bringing the
 // tool's clone up to date when it was given a name (cloneSync, repo.go), and
 // every command that reads a checkout then compares its keys with the ones
-// you trust (signersCheck, trust.go); fleet trust signers is that comparison
+// you trust (signersCheck, trust.go); fleetmgr trust signers is that comparison
 // itself.
 func init() {
 	for _, f := range All() {

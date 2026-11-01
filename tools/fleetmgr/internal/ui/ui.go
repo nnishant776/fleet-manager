@@ -1,4 +1,4 @@
-// Package ui is the one place that decides how fleet looks: a header per
+// Package ui is the one place that decides how fleetmgr looks: a header per
 // command, numbered steps with a line saying why, the exact command dimmed,
 // its output indented, and a ✓ or ✗. Colour is used sparingly and drops away
 // by itself when the output is not a terminal or NO_COLOR is set.
@@ -111,7 +111,7 @@ func (u *UI) println(s string) {
 	_, _ = lipgloss.Fprintln(u.out, s)
 }
 
-// Header starts a command: "fleet · <title>". On a terminal it is a bar across
+// Header starts a command: "fleetmgr · <title>". On a terminal it is a bar across
 // the width with the tags (such as "dry run") on the right; otherwise the tags
 // are left out.
 func (u *UI) Header(title string, tags ...string) {
@@ -119,12 +119,12 @@ func (u *UI) Header(title string, tags ...string) {
 	u.started = u.now()
 	u.steps, u.open = nil, false
 	if !u.fancy {
-		u.println(u.title.Render("fleet · " + title))
+		u.println(u.title.Render("fleetmgr · " + title))
 		u.println("")
 		return
 	}
 	w := u.termWidth()
-	left := " fleet · " + title
+	left := " fleetmgr · " + title
 	right := ""
 	if len(tags) > 0 {
 		right = strings.Join(tags, " · ") + " "

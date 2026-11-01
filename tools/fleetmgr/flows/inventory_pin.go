@@ -23,7 +23,7 @@ var InventoryPin = &engine.Flow{
 	Title: "Pin a newer fleet-manager in the inventory",
 	Short: "Pin fleet-manager's newest trusted commit, or a given one, in the inventory, check every host, commit and push",
 	Long: "An inventory builds its hosts from fleet-manager, at the commit its flake.lock pins.\n" +
-		"This moves that pin. fleet brings its clone of fleet-manager up to date, which only\n" +
+		"This moves that pin. fleetmgr brings its clone of fleet-manager up to date, which only\n" +
 		"takes a commit signed by a key you trust, and pins main's newest commit, or the one\n" +
 		"you give with --to. Every commit the pin moves over must be signed by a key you trust\n" +
 		"too, not only the newest. It shows the commits, and asks before it pins an older one.\n" +
@@ -31,8 +31,8 @@ var InventoryPin = &engine.Flow{
 		"fleet-manager breaks is found now, not on the host. If all of them evaluate,\n" +
 		"it commits flake.lock, signed, and pushes it once you approve. The hosts take the new\n" +
 		"fleet-manager when you publish the inventory after that.",
-	Example: "  fleet inventory pin --flake inventory\n" +
-		"  fleet inventory pin --to 3f2a9c1 --flake inventory",
+	Example: "  fleetmgr inventory pin --flake inventory\n" +
+		"  fleetmgr inventory pin --to 3f2a9c1 --flake inventory",
 	Inputs: []engine.Input{
 		fleetmgr.FlakeInput,
 		{Name: "to", Prompt: "Commit to pin", Help: "A fleet-manager commit or branch to pin; its newest main by default", Optional: true},
@@ -81,8 +81,8 @@ var InventoryPin = &engine.Flow{
 			Title: "Next",
 			Why:   "The pin is on main only. Each host fetches its own branch, so it gets the new fleet-manager once you publish.",
 			Do: engine.Show("Hosts fetch their own branches, not main: publish them now, and each host takes the new fleet-manager at its next sync:\n" +
-				"  fleet inventory publish --flake {{.flake_given}}\n" +
-				"Publish and sync the hosts at once: fleet inventory publish --flake {{.flake_given}} --sync, or one host: fleet host sync <host> --flake {{.flake_given}}"),
+				"  fleetmgr inventory publish --flake {{.flake_given}}\n" +
+				"Publish and sync the hosts at once: fleetmgr inventory publish --flake {{.flake_given}} --sync, or one host: fleetmgr host sync <host> --flake {{.flake_given}}"),
 		}),
 	},
 }
@@ -234,14 +234,14 @@ func chooseNewPin(x *engine.Ctx) error {
 		}
 	}
 	if name == "" {
-		return errors.New("fleet repo add first: run it with no address and it adds fleet-manager")
+		return errors.New("fleetmgr repo add first: run it with no address and it adds fleet-manager")
 	}
 	clone, err := fleetmgr.ClonePathOfID(id)
 	if err != nil {
 		return err
 	}
 	if !fileExists(clone) {
-		return fmt.Errorf("the clone of %s is not in %s: run fleet repo add again", name, clone)
+		return fmt.Errorf("the clone of %s is not in %s: run fleetmgr repo add again", name, clone)
 	}
 	x.Values["fm_clone"] = clone
 	x.UI.OK(name + " is the tool's clone in " + clone)

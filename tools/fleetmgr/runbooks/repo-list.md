@@ -1,17 +1,17 @@
-<!-- Written by `fleet docs` from tools/fleetmgr/flows; edit the flows, not this. -->
+<!-- Written by `fleetmgr docs` from tools/fleetmgr/flows; edit the flows, not this. -->
 
-# fleet repo list
+# fleetmgr repo list
 
 List the names of the tools' clones, and the commits you trust in each.
 
-Each name that fleet repo add made, with its repository, address and clone, the
+Each name that fleetmgr repo add made, with its repository, address and clone, the
 commit the clone stands at, and the commit you trust for each branch. Repositories
 that have trusted commits or a copy of their keys but no name are listed apart.
 
 ```
-fleet repo list [flags]
+fleetmgr repo list [flags]
 
-fleet repo list
+fleetmgr repo list
 ```
 
 Every command also takes `--dry-run` (show every step and command; look, but

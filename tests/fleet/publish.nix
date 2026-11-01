@@ -1,4 +1,4 @@
-# Runs `fleet inventory publish` on a scratch inventory with real git and
+# Runs `fleetmgr inventory publish` on a scratch inventory with real git and
 # signing. A stub `nix` answers what publish asks of the flake: its layout
 # and each host's accounts. The checks:
 # - each host's branch holds flake.nix, flake.lock, fleet/, its own folder,
@@ -10,7 +10,7 @@
 # - a commit someone else pushed to a branch, unsigned, is not built on, and
 #   an unsigned main is not published.
 # Run it with `nix build .#checks.x86_64-linux.inventory-publish`.
-{ pkgs, fleet }:
+{ pkgs, fleetmgr }:
 pkgs.runCommand "inventory-publish" {
   nativeBuildInputs = with pkgs; [ git openssh gnutar coreutils diffutils ];
 } ''
@@ -55,9 +55,9 @@ pkgs.runCommand "inventory-publish" {
     git commit -q -m inventory
     git push -q origin main
   )
-  ${fleet}/bin/fleet trust signers --flake inv --yes > trust.out 2>&1 || { cat trust.out; exit 1; }
+  ${fleetmgr}/bin/fleetmgr trust signers --flake inv --yes > trust.out 2>&1 || { cat trust.out; exit 1; }
 
-  publish() { ${fleet}/bin/fleet inventory publish --flake inv --yes --no-check "$@"; }
+  publish() { ${fleetmgr}/bin/fleetmgr inventory publish --flake inv --yes --no-check "$@"; }
   files() { git -C origin.git ls-tree -r --name-only "$1"; }
   rev() { git -C origin.git rev-parse "$1"; }
 

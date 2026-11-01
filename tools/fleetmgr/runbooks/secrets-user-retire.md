@@ -1,6 +1,6 @@
-<!-- Written by `fleet docs` from tools/fleetmgr/flows; edit the flows, not this. -->
+<!-- Written by `fleetmgr docs` from tools/fleetmgr/flows; edit the flows, not this. -->
 
-# fleet secrets user-retire
+# fleetmgr secrets user-retire
 
 Take a user off the hosts that list them and delete their branch.
 
@@ -10,16 +10,16 @@ and shows what is still to do: deleting it on the forge. Take the user's account
 inventory first.
 
 ```
-fleet secrets user-retire [USER] [flags]
+fleetmgr secrets user-retire [USER] [flags]
 
-fleet secrets user-retire alice
+fleetmgr secrets user-retire alice
 ```
 
 ## Flags
 
 | Flag | |
 |---|---|
-| `--repo` | Your clone of the secrets repository, left on main, or the name of a repository (fleet repo list), which means the tool's own clone of it; defaults to FLEET_SECRETS_REPO, then this directory |
+| `--repo` | Your clone of the secrets repository, left on main, or the name of a repository (fleetmgr repo list), which means the tool's own clone of it; defaults to FLEETMGR_SECRETS_REPO, then this directory |
 | `--recovery` | Your passphrase-encrypted age identity (age -p). Empty: sops uses SOPS_AGE_KEY_FILE or SOPS_AGE_KEY |
 | `--user` | The user's name: lowercase letters, digits and '-' |
 
@@ -76,4 +76,4 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
    > 2. Rotate what the user could decrypt: their password and SSH keys on the hosts they were listed on,
    > and revoke their public keys on the forge now.
 
-It needs `git`, `yq`, `sops`, `age` on the PATH; `fleet doctor` says where to get them.
+It needs `git`, `yq`, `sops`, `age` on the PATH; `fleetmgr doctor` says where to get them.

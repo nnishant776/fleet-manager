@@ -65,7 +65,7 @@ var SecretsHostEnroll = &engine.Flow{
 	Title:   "Admit a host from its enrollment file",
 	Short:   "Admit a new host from its enrollment file",
 	Long:    "Creates the host's branch, host/<host>, with its empty encrypted file, encrypted to the host and\nyour recovery recipient, and the enrollment file as a record; commits, and shows the deploy key to\nregister. A host that has its branch with this identity already is left as it is. Push the branch after.",
-	Example: "  fleet secrets host-enroll laptop1 --from laptop1.enroll\n  ssh support@laptop1 sudo cat /var/lib/fleet/laptop1.enroll | fleet secrets host-enroll laptop1 --from -",
+	Example: "  fleetmgr secrets host-enroll laptop1 --from laptop1.enroll\n  ssh support@laptop1 sudo cat /var/lib/fleet/laptop1.enroll | fleetmgr secrets host-enroll laptop1 --from -",
 	Args:    []string{"host"},
 	Inputs:  secretsInputs(secrets.HostName("Which host?"), secrets.FromInput),
 	Needs:   []string{"git", "yq", "sops", "age"},
@@ -89,7 +89,7 @@ var SecretsHostRekey = &engine.Flow{
 	Title:   "Re-key a host in the secrets repository",
 	Short:   "Point a known host at a new identity",
 	Long:    "For a host reinstalled with a new identity: replaces its old recipient by the new one in every\nfile of its branch, host/<host>, replaces its enrollment record, commits, and shows the new deploy\nkey. Push the branch after.",
-	Example: "  fleet secrets host-rekey laptop1 --from laptop1.enroll",
+	Example: "  fleetmgr secrets host-rekey laptop1 --from laptop1.enroll",
 	Args:    []string{"host"},
 	Inputs:  secretsInputs(knownHost(), secrets.FromInput),
 	Needs:   []string{"git", "yq", "sops", "age"},
@@ -131,7 +131,7 @@ var SecretsHostRetire = &engine.Flow{
 	Title:   "Retire a host from the secrets repository",
 	Short:   "Remove a host and its files",
 	Long:    "Deletes the host's branch, host/<host>, in your clone after showing what it held, and lists what\nis still to do: deleting it on the forge, and the host's deploy key. Makes no commit.",
-	Example: "  fleet secrets host-retire laptop1",
+	Example: "  fleetmgr secrets host-retire laptop1",
 	Args:    []string{"host"},
 	Inputs:  []engine.Input{secrets.RepoInput, knownHost()},
 	Needs:   []string{"git"},
@@ -191,8 +191,8 @@ var SecretsUserPassword = &engine.Flow{
 	Path:    []string{"secrets", "user-password"},
 	Title:   "Set a user's password on a host",
 	Short:   "Set the user's password on that host",
-	Long:    "Hashes the password (yescrypt) and stores the hash in users/<user>/<host>.yaml on the host's\nbranch, host/<host>, encrypted to that host and your recovery recipient. Hosts apply it at every\nactivation. For a user the host's file lists (fleet secrets user-enroll) it works on the user's branch,\nuser/<user>, instead, and a new file is encrypted to the user too. Push the branch after.\n--hash-stdin reads a hash that exists already (as /etc/shadow has it: $y$…, $6$…) from standard input and\nstores it as it is, instead of hashing a password; the person keeps the password they have.",
-	Example: "  fleet secrets user-password alice laptop1\n  printf %s \"$pw\" | fleet secrets user-password alice laptop1 --password-stdin --yes\n  printf %s \"$hash\" | fleet secrets user-password alice laptop1 --hash-stdin --yes",
+	Long:    "Hashes the password (yescrypt) and stores the hash in users/<user>/<host>.yaml on the host's\nbranch, host/<host>, encrypted to that host and your recovery recipient. Hosts apply it at every\nactivation. For a user the host's file lists (fleetmgr secrets user-enroll) it works on the user's branch,\nuser/<user>, instead, and a new file is encrypted to the user too. Push the branch after.\n--hash-stdin reads a hash that exists already (as /etc/shadow has it: $y$…, $6$…) from standard input and\nstores it as it is, instead of hashing a password; the person keeps the password they have.",
+	Example: "  fleetmgr secrets user-password alice laptop1\n  printf %s \"$pw\" | fleetmgr secrets user-password alice laptop1 --password-stdin --yes\n  printf %s \"$hash\" | fleetmgr secrets user-password alice laptop1 --hash-stdin --yes",
 	Args:    []string{"user", "host"},
 	Inputs: []engine.Input{secrets.RepoInput, secrets.RecoveryInput, secrets.UserName(), knownHost(),
 		// Not asked for: only --hash-stdin gives it. It comes before the
@@ -239,8 +239,8 @@ var SecretsUserKey = &engine.Flow{
 	Path:    []string{"secrets", "user-key"},
 	Title:   "Generate a user's SSH key on a host",
 	Short:   "Generate the user's SSH key on that host",
-	Long:    "Generates an ed25519 key in a memory-only directory, stores both halves in\nusers/<user>/<host>.yaml on the host's branch, host/<host>, shreds the plaintext, commits, and shows\nthe public key. For a user the host's file lists (fleet secrets user-enroll) it works on the user's branch,\nuser/<user>, instead. Push the branch after.",
-	Example: "  fleet secrets user-key alice laptop1",
+	Long:    "Generates an ed25519 key in a memory-only directory, stores both halves in\nusers/<user>/<host>.yaml on the host's branch, host/<host>, shreds the plaintext, commits, and shows\nthe public key. For a user the host's file lists (fleetmgr secrets user-enroll) it works on the user's branch,\nuser/<user>, instead. Push the branch after.",
+	Example: "  fleetmgr secrets user-key alice laptop1",
 	Args:    []string{"user", "host"},
 	Inputs:  []engine.Input{secrets.RepoInput, secrets.RecoveryInput, secrets.UserName(), knownHost()},
 	Needs:   []string{"git", "yq", "sops", "age", "ssh-keygen"},
@@ -282,7 +282,7 @@ func generateUserKey(x *engine.Ctx) error {
 	if st, err := os.Stat(base); err != nil || !st.IsDir() || writable(base) != nil {
 		base = "/dev/shm"
 	}
-	dir, err := os.MkdirTemp(base, "fleet-key-")
+	dir, err := os.MkdirTemp(base, "fleetmgr-key-")
 	if err != nil {
 		return err
 	}
@@ -317,7 +317,7 @@ func generateUserKey(x *engine.Ctx) error {
 }
 
 func writable(dir string) error {
-	f, err := os.CreateTemp(dir, ".fleet-probe-")
+	f, err := os.CreateTemp(dir, ".fleetmgr-probe-")
 	if err != nil {
 		return err
 	}

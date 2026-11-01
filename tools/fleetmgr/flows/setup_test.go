@@ -317,7 +317,7 @@ func TestSupportKeyRotationOnAHostWithKeysFromSecrets(t *testing.T) {
 		switch {
 		case s.Name == "nix" && strings.Contains(args, "conf.fleet.support.keysFromSecrets"):
 			return engine.Result{Stdout: "true\n"}, nil
-		case s.Name == "fleet":
+		case s.Name == "fleetmgr":
 			for i, a := range s.Args {
 				if strings.HasSuffix(a, "-authorized-keys") {
 					b, _ := os.ReadFile(s.Args[i+1])
@@ -347,10 +347,10 @@ func TestSupportKeyRotationOnAHostWithKeysFromSecrets(t *testing.T) {
 	cmds := strings.Join(fake.Commands(), "\n")
 	pos := 0
 	for _, want := range []string{
-		"fleet secrets user-keys support pi --add-authorized-keys",
+		"fleetmgr secrets user-keys support pi --add-authorized-keys",
 		"-i " + oldKey + " support@pi 'sudo -n systemctl start config-auto-update'",
 		"-i " + newKey + " support@pi 'sudo -n id -u'",
-		"fleet secrets user-keys support pi --remove-authorized-keys",
+		"fleetmgr secrets user-keys support pi --remove-authorized-keys",
 		"-i " + newKey + " support@pi 'sudo -n systemctl start config-auto-update'",
 		"-i " + oldKey + " support@pi true",
 	} {

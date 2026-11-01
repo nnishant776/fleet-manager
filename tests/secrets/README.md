@@ -39,7 +39,7 @@ the URLs in `harness.nix` use that address. The scratch host's deploy key is
 
 `nix build .#checks.x86_64-linux.secrets-sync` runs a NixOS VM test
 (`vm-test.nix`): a `forge` node serves signed bare repositories over sshd and a
-`fleet` node built from the scratch host has to bootstrap, snapshot, activate
+`fleetmgr` node built from the scratch host has to bootstrap, snapshot, activate
 and refuse an unsigned commit on its branch and an older commit served again. It
 also fetches its configuration from a private repository with its own
 configuration key (an SSH `conf.fleet.repo.url`), refusing what is not signed,
@@ -50,7 +50,7 @@ with `fleet.support.keysFromSecrets` and its key in `users/support/<host>.yaml`,
 and `ops`, a privileged account, unlocks sudo with a key from `sudo_keys` through a
 forwarded agent, as `tests/users/ssh-key-sudo.nix` does for `sudoSshKeys`. A key in
 alice's `~/.ssh/authorized_keys` does not log in. A check
-with a file that lacks `authorized_keys` is refused, and `fleet secrets user-keys`
+with a file that lacks `authorized_keys` is refused, and `fleetmgr secrets user-keys`
 is run on the forge: a line that is not a key stops it, and keys it stores reach
 the host's snapshot.
 
@@ -64,30 +64,30 @@ recipient, a password that is not a hash and a branch forced back to an older
 commit each keep his previous file and are named in `user-problems` (and in the
 notice every account gets), while the host's own updates and alice, who is not
 listed, go on; that a good commit clears the problem; and that a sync with
-nothing new makes no new snapshot. Dave then changes his own files with `fleet
+nothing new makes no new snapshot. Dave then changes his own files with `fleetmgr
 user`, from a directory and home of his own with only his identity and signing
 key: his password, a secret, a login key, each signed by his key; a branch whose
 newest commit no trusted key signed is not built on. The host takes it all, and
 once it runs a generation with `secrets.own` for dave, `fleet-user-secret token`
 prints his secret to him alone, and the login key he added logs in as him.
 
-Erin is enrolled with `fleet secrets user-enroll` and retired with
+Erin is enrolled with `fleetmgr secrets user-enroll` and retired with
 `user-retire`, and the host's sync reads what those commands leave: her file from
 her branch, signed by her own key.
 
 The maintainer's tools keep the commit they trusted last on each branch (see
 the README, Signing commits for a fleet). The test has the forge serve
 `host/scratch-secrets` again at an older signed commit, as someone who can push
-could, while the clone knows the branch only as origin has it: `fleet host
+could, while the clone knows the branch only as origin has it: `fleetmgr host
 secret` refuses, names the record, and changes and pushes nothing. With the
 record removed, it goes on; the test then puts the branch back and removes the
 record again. The forge's clones use `file://` addresses, which is what names
 the records.
 
 The forge also plays the
-maintainer: `fleet host secret` works in a worktree of `host/scratch-secrets` in
+maintainer: `fleetmgr host secret` works in a worktree of `host/scratch-secrets` in
 a clone that stays on `main`, with the recovery recipient cached the way
-`fleet setup` leaves it. It needs KVM and takes a few minutes; the CI
+`fleetmgr setup` leaves it. It needs KVM and takes a few minutes; the CI
 workflow does not run it.
 
 ## Evaluation check

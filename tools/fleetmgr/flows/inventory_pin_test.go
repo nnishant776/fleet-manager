@@ -258,7 +258,7 @@ func TestInventoryPinMovesToNewerMain(t *testing.T) {
 	if r := trustedOf(t, invAddress, "main"); r != pinDone {
 		t.Errorf("the trusted main is %q, want the pushed %s", r, pinDone)
 	}
-	if !strings.Contains(o, "fleet inventory publish --flake "+e.flake) {
+	if !strings.Contains(o, "fleetmgr inventory publish --flake "+e.flake) {
 		t.Errorf("did not say what to run next:\n%s", o)
 	}
 	if ran(fake, "git -C "+e.flake+" checkout -- flake.lock") {
@@ -274,7 +274,7 @@ func TestInventoryPinTheNameIsGivenToPublish(t *testing.T) {
 	if err := engine.RunWith(x, InventoryPin, map[string]string{"flake": e.flake}); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
-	if !strings.Contains(out.String(), "fleet inventory publish --flake inventory") {
+	if !strings.Contains(out.String(), "fleetmgr inventory publish --flake inventory") {
 		t.Errorf("did not name the inventory:\n%s", out)
 	}
 }
@@ -397,7 +397,7 @@ func TestInventoryPinAGoneApartPinIsAsked(t *testing.T) {
 func TestInventoryPinNeedsFleetManagersName(t *testing.T) {
 	e := newPinEnv(t, fleetmgr.UpstreamURL)
 	err, fake, out := e.run(map[string]string{}, true)
-	if err == nil || !strings.Contains(out, "fleet repo add first") {
+	if err == nil || !strings.Contains(out, "fleetmgr repo add first") {
 		t.Fatalf("went ahead, or without saying why: %v\n%s", err, out)
 	}
 	changedNothing(t, fake)
@@ -609,7 +609,7 @@ func TestVerifyFleetManagerPinFromTheRecordWhenThereIsNoBase(t *testing.T) {
 
 func TestVerifyFleetManagerPinNeedsARecordWhenThereIsNoBase(t *testing.T) {
 	err, _ := newFMFake().verify(t, "", fmPin, "")
-	if err == nil || !strings.Contains(err.Error(), "no trusted commit for fleet-manager's main yet: run fleet repo sync fleet-manager, or fleet repo add, first") {
+	if err == nil || !strings.Contains(err.Error(), "no trusted commit for fleet-manager's main yet: run fleetmgr repo sync fleet-manager, or fleetmgr repo add, first") {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -701,7 +701,7 @@ func TestVerifyFleetManagerPinNeedsYourKeys(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	x, _, _ := newFakeCtx(f.respond)
 	err := verifyFleetManagerPin(x, fmPin, "")
-	if err == nil || !strings.Contains(err.Error(), "you trust no keys for fleet-manager yet: run fleet repo add (with no address it adds fleet-manager)") {
+	if err == nil || !strings.Contains(err.Error(), "you trust no keys for fleet-manager yet: run fleetmgr repo add (with no address it adds fleet-manager)") {
 		t.Errorf("err = %v", err)
 	}
 }

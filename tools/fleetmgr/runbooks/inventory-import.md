@@ -1,6 +1,6 @@
-<!-- Written by `fleet docs` from tools/fleetmgr/flows; edit the flows, not this. -->
+<!-- Written by `fleetmgr docs` from tools/fleetmgr/flows; edit the flows, not this. -->
 
-# fleet inventory import
+# fleetmgr inventory import
 
 Copy a host's definition from fleet-manager into the inventory, adjusted, check it, commit, push and publish its branch.
 
@@ -19,24 +19,24 @@ set conf.fleet.repo.ref, which the inventory sets to the host's own branch. A fi
 reads something outside the host's folder stops the move, naming it, since the inventory
 would not have it.
 
-fleet shows each change, then checks the host in the inventory: it fetches the inventory's
+fleetmgr shows each change, then checks the host in the inventory: it fetches the inventory's
 address, has its branch, its signers file is the inventory's, and every host still
 evaluates. If any of that fails, the copy is taken out again. Then it commits, signed,
 pushes to main once you approve, and publishes the host's branch. The machine itself
 still runs from fleet-manager: the last step lists the commands that finish the move.
 
 ```
-fleet inventory import [HOST] [flags]
+fleetmgr inventory import [HOST] [flags]
 
-fleet inventory import nas1 --flake inventory
-fleet inventory import nas1 --from ~/Projects/fleet-manager --flake inventory --address git@example.com:org/inventory.git
+fleetmgr inventory import nas1 --flake inventory
+fleetmgr inventory import nas1 --from ~/Projects/fleet-manager --flake inventory --address git@example.com:org/inventory.git
 ```
 
 ## Flags
 
 | Flag | |
 |---|---|
-| `--flake` | A checkout or a flake reference, or the name of a repository (fleet repo list), which means the tool's own clone of it; defaults to this directory's flake, then /etc/nixos |
+| `--flake` | A checkout or a flake reference, or the name of a repository (fleetmgr repo list), which means the tool's own clone of it; defaults to this directory's flake, then /etc/nixos |
 | `--host` | A host of fleet-manager (hosts/\<name>) |
 | `--from` | A fleet-manager checkout, or a repository name; the tools' own clone of fleet-manager by default |
 | `--address` | The address hosts fetch the inventory from; by default the one the inventory's other hosts use |
@@ -69,4 +69,4 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 11. **Next.** The inventory has the host now, but the machine still runs from fleet-manager. These finish the move.
 
-It needs `git`, `nix`, `tar` on the PATH; `fleet doctor` says where to get them.
+It needs `git`, `nix`, `tar` on the PATH; `fleetmgr doctor` says where to get them.

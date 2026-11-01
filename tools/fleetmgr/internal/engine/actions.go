@@ -315,7 +315,7 @@ func (s show) run(x *Ctx) error {
 	return nil
 }
 
-// Wait asks the person to do something outside fleet, such as a click on a
+// Wait asks the person to do something outside fleetmgr, such as a click on a
 // web page, and continues when they confirm. With --yes it does not wait.
 func Wait(question string) Action { return wait(question) }
 

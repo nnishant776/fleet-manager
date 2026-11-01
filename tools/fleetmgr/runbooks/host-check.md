@@ -1,6 +1,6 @@
-<!-- Written by `fleet docs` from tools/fleetmgr/flows; edit the flows, not this. -->
+<!-- Written by `fleetmgr docs` from tools/fleetmgr/flows; edit the flows, not this. -->
 
-# fleet host check
+# fleetmgr host check
 
 Check a host: configuration, sync, secrets and health, without changing anything.
 
@@ -10,17 +10,17 @@ everyone to see, what its secrets snapshot holds, and whether any unit failed.
 It changes nothing, so it never asks.
 
 ```
-fleet host check [HOST] [flags]
+fleetmgr host check [HOST] [flags]
 
-fleet host check pi1
-fleet host check pi-gw --address 192.168.0.9
+fleetmgr host check pi1
+fleetmgr host check pi-gw --address 192.168.0.9
 ```
 
 ## Flags
 
 | Flag | |
 |---|---|
-| `--flake` | A checkout or a flake reference, or the name of a repository (fleet repo list), which means the tool's own clone of it; defaults to this directory's flake, then /etc/nixos |
+| `--flake` | A checkout or a flake reference, or the name of a repository (fleetmgr repo list), which means the tool's own clone of it; defaults to this directory's flake, then /etc/nixos |
 | `--host` | A host of the configuration (hosts/\<name>) |
 | `--address` | A name or IP address for SSH; defaults to the host's name |
 | `--user` | The account to log in as; support by default, which has sudo without a password, so nothing needs forwarding |
@@ -68,4 +68,4 @@ if any found a problem.
    $ ssh -o ForwardAgent=no -o BatchMode=yes -o ConnectTimeout=10 USER@ADDRESS 'systemctl is-system-running || true; systemctl --failed --no-legend --plain | cut -d'\'' '\'' -f1'
    ```
 
-It needs `ssh`, `nix` on the PATH; `fleet doctor` says where to get them.
+It needs `ssh`, `nix` on the PATH; `fleetmgr doctor` says where to get them.

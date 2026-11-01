@@ -154,7 +154,7 @@ func runSignersCheck(t *testing.T, dir string) string {
 func TestCommandsWarnWhenTheCheckoutsKeysDiffer(t *testing.T) {
 	dir := trustCheckout(t, signersLine("me@test", keyMine))
 	if out := runSignersCheck(t, dir); !strings.Contains(out, "You trust no keys for github.com/example-org/inventory yet") ||
-		!strings.Contains(out, "fleet trust signers --flake "+dir) {
+		!strings.Contains(out, "fleetmgr trust signers --flake "+dir) {
 		t.Errorf("no note without a copy:\n%s", out)
 	}
 	if err, out := runTrust(t, dir, trustRepo(dir, true)); err != nil {
@@ -166,7 +166,7 @@ func TestCommandsWarnWhenTheCheckoutsKeysDiffer(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(dir, "fleet", "allowed_signers"), []byte(signersLine("me@test", keyMine)+signersLine("attacker", keyOther)), 0o644)
 	out := runSignersCheck(t, dir)
 	for _, want := range []string{"differ from the ones you trust", "+ attacker ssh-ed25519",
-		"update the repository's trust: fleet trust signers --flake " + dir} {
+		"update the repository's trust: fleetmgr trust signers --flake " + dir} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the warning lacks %q:\n%s", want, out)
 		}
@@ -183,13 +183,13 @@ func TestEveryCommandWithAFlakeComparesKeysFirst(t *testing.T) {
 			continue
 		}
 		if f.Steps[0].Title != cloneSync.Title {
-			t.Errorf("fleet %s starts with %q", name, f.Steps[0].Title)
+			t.Errorf("fleetmgr %s starts with %q", name, f.Steps[0].Title)
 		}
 		if f == TrustSigners || !hasInput(f, "flake") {
 			continue
 		}
 		if f.Steps[1].Title != signersCheck.Title {
-			t.Errorf("fleet %s then has %q", name, f.Steps[1].Title)
+			t.Errorf("fleetmgr %s then has %q", name, f.Steps[1].Title)
 		}
 	}
 }

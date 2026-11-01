@@ -1,6 +1,6 @@
 # 7. Signing commits and trusting them
 
-<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->
+<!-- book:top — written by `fleetmgr docs` from SUMMARY.md and the headings; do not edit -->
 [← 6. Networking](networking.md) · [Contents](README.md) · [8. Secrets →](secrets.md)
 <!-- /book:top -->
 
@@ -60,29 +60,29 @@ every checkout, not at the checkout's `fleet/allowed_signers`. A pushed commit
 could add a key to that file and be signed with it; after a `git pull`, the
 checkout's file would vouch for the very commit that changed it. Hosts are not
 fooled this way, because they check against the file of the system they
-already run. The `fleet` tool keeps one copy per repository, in
+already run. The `fleetmgr` tool keeps one copy per repository, in
 `$XDG_STATE_HOME/fleet/repos/<host>/<owner>/<repo>/` (`~/.local/state` by
 default):
 
-- `fleet trust signers --flake <checkout>` shows the checkout's keys with their
+- `fleetmgr trust signers --flake <checkout>` shows the checkout's keys with their
   fingerprints, marks yours, and keeps them once you approve. Later, it takes
   a change only through a commit signed by a key already in your copy, and
   shows the keys added and removed first. It also points the checkout's git
   (`gpg.ssh.allowedSignersFile`) at the copy, so that `git verify-commit` there
   checks against it too.
-- `fleet setup` makes the copy and points git there, for the configuration
+- `fleetmgr setup` makes the copy and points git there, for the configuration
   checkout and the secrets checkout alike.
 - Every command that reads a checkout starts by comparing its keys with your
   copy, and warns when they differ. If you expected the change, update the
-  repository's trust with `fleet trust signers`.
-- `fleet install prep` and `fleet host enroll` check commits against your
+  repository's trust with `fleetmgr trust signers`.
+- `fleetmgr install prep` and `fleetmgr host enroll` check commits against your
   copies. The secrets tools refuse to run while git checks against a file
   inside a checkout.
 
 ## Your own copy of the trusted commits
 
 A signed commit is not always a new
-one: someone who can push can serve an old signed commit again. `fleet inventory
+one: someone who can push can serve an old signed commit again. `fleetmgr inventory
 publish` would then cut every host's branch from it as a new commit signed by
 you, which the hosts accept, so your signature would hide the rollback. Hosts
 refuse an older commit with their own records; your machine keeps the same, one
@@ -99,20 +99,20 @@ line, a full commit hash, and is readable by you only.
 - A tip that passes moves the record to it. After a tool pushes a commit of its
   own, the record moves to what it pushed. A commit that was not pushed moves
   nothing.
-- A fleet-manager commit that is pinned (the one `fleet install prep` takes
+- A fleet-manager commit that is pinned (the one `fleetmgr install prep` takes
   the installer from, or in an inventory's `flake.lock`) must be on the
   trusted line of fleet-manager's `main`: the recorded commit, one before it,
   or one after it, which moves the record. The pin and every commit it brings
   over the previous pin (or else over the recorded commit) must each be signed
   by a key you trust: a signed commit on top does not vouch for unsigned ones
   under it.
-- `fleet install prep`, `fleet inventory publish` (`main` and each host's
-  branch), `fleet host enroll`, the commands that change a host's or user's
-  files in the secrets repository (`fleet host secret`, `fleet secrets …`) and
-  `fleet user …` check and record. So does the shell `fleet-secrets`, in the
+- `fleetmgr install prep`, `fleetmgr inventory publish` (`main` and each host's
+  branch), `fleetmgr host enroll`, the commands that change a host's or user's
+  files in the secrets repository (`fleetmgr host secret`, `fleetmgr secrets …`) and
+  `fleetmgr user …` check and record. So does the shell `fleet-secrets`, in the
   same files. `host-retire` and `user-retire` remove the branch's record.
 - If the history was rewritten on purpose, a repository that has a name
-  (`fleet repo add`) is reviewed and accepted with `fleet repo sync <name>
+  (`fleetmgr repo add`) is reviewed and accepted with `fleetmgr repo sync <name>
   --accept-rewrite <branch>`, described below. For a checkout without a name,
   remove the record file the message names and run the command again: the tip
   you see is then trusted afresh.
@@ -125,31 +125,31 @@ line, a full commit hash, and is readable by you only.
 ## The tools' own clones
 
 Checking a checkout you work in is not the same as
-checking what the tools read, because you may have edited it. `fleet repo add
+checking what the tools read, because you may have edited it. `fleetmgr repo add
 <address>` keeps a clone of a repository just for the tools, under
 `$XDG_DATA_HOME/fleet/repos/<host>/<owner>/<repo>` (`~/.local/share` by
 default), and gives it a name. You never edit it by hand. `--flake <name>` and `--repo
 <name>` then mean that clone, and every command that is given a name first
 fetches it, takes `main`'s newest commit only if a key you trust signed it and
 it follows the commit you trusted last, and leaves the clone there. A path
-still works as before, and is not fetched. `fleet repo list` shows the names,
+still works as before, and is not fetched. `fleetmgr repo list` shows the names,
 and the commits you trust.
 
-Run `fleet repo add` three times. Each time it says which repository it adds
+Run `fleetmgr repo add` three times. Each time it says which repository it adds
 next: fleet-manager first, whose address it knows, then your inventory, then
 your secrets repository, and asks for the address of the one it needs. You can
 also give each address yourself, in the same order:
 
 ```
-fleet repo add git@github.com:example-org/fleet-manager.git
-fleet repo add git@github.com:example-org/inventory.git
-fleet repo add git@github.com:example-org/secrets.git --signers-from inventory
+fleetmgr repo add git@github.com:example-org/fleet-manager.git
+fleetmgr repo add git@github.com:example-org/inventory.git
+fleetmgr repo add git@github.com:example-org/secrets.git --signers-from inventory
 ```
 
 Each clone is named after the last part of its address, unless you give
 `--name`. The secrets repository has no `fleet/allowed_signers`, so its
 commits are checked against your inventory's keys, as the hosts check them.
-When `fleet repo add` asks for the secrets repository itself, it takes the
+When `fleetmgr repo add` asks for the secrets repository itself, it takes the
 inventory's name. With an address you give, `--signers-from` names the
 inventory (or fleet-manager, if its own hosts use the secrets), and on a
 terminal you are asked if you leave it out. Edit in a checkout of your own, as
@@ -160,7 +160,7 @@ it.
 
 ## Reviewing new commits
 
-`fleet repo sync [NAME...]` is how the commits you trust move forward. It
+`fleetmgr repo sync [NAME...]` is how the commits you trust move forward. It
 fetches the clone of each repository you name (every one by default), and for
 `main`, each host's branch and each user's branch it lists the new commits
 since the ones you trusted: date, author, subject, and the key that signed
@@ -176,7 +176,7 @@ branch must be signed by a key you trust, not only the newest, because a signed
 commit on top does not vouch for the ones under it. If one is not, the
 repository is refused; at a terminal, but not with `--yes`, you can accept
 them by typing the branch's name. If the history was rewritten on purpose and
-you know why, `fleet repo sync <name> --accept-rewrite <branch>` shows the commits
+you know why, `fleetmgr repo sync <name> --accept-rewrite <branch>` shows the commits
 that were dropped and the new ones, and takes the branch once you type its
 name; this needs a terminal, even with `--yes`. A user's branch is signed by
 the user's own key, which only the encrypted files name, so when it is not

@@ -1,6 +1,6 @@
 package fleetmgr
 
-// The keys the maintainer trusts, phase 1 of fleet trust: a copy of each
+// The keys the maintainer trusts, phase 1 of fleetmgr trust: a copy of each
 // repository's fleet/allowed_signers, kept outside every checkout, which the
 // tools check commits against. A checkout's own file cannot be the judge: a
 // pushed commit that adds a key, signed with that key, would approve itself

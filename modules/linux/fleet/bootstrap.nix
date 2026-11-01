@@ -70,7 +70,7 @@ let
       git -C "$tmp/checkout" remote set-url --push origin no_push
 
       # The checkout belongs to the fleet, so whatever is there without one
-      # goes; fleet host enroll warns about it before the switch.
+      # goes; fleetmgr host enroll warns about it before the switch.
       if [ -d "$repo" ] && [ ! -L "$repo" ] && [ -n "$(ls -A "$repo")" ]; then
         echo "fleet-bootstrap: replacing $repo, which holds no checkout"
       fi

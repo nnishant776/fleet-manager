@@ -1,6 +1,6 @@
-<!-- Written by `fleet docs` from tools/fleetmgr/flows; edit the flows, not this. -->
+<!-- Written by `fleetmgr docs` from tools/fleetmgr/flows; edit the flows, not this. -->
 
-# fleet user password
+# fleetmgr user password
 
 Set your password on hosts, on your own branch.
 
@@ -10,18 +10,18 @@ and pushes the branch. Hosts apply the password at their next sync. The branch's
 by your key or by a key in your copy of the configuration repository's signers before the change builds on it.
 
 ```
-fleet user password [HOST]... [flags]
+fleetmgr user password [HOST]... [flags]
 
-fleet user password laptop1 nas
-fleet user password --all-hosts
-printf %s "$pw" | fleet user password laptop1 --password-stdin --yes
+fleetmgr user password laptop1 nas
+fleetmgr user password --all-hosts
+printf %s "$pw" | fleetmgr user password laptop1 --password-stdin --yes
 ```
 
 ## Flags
 
 | Flag | |
 |---|---|
-| `--repo` | Your clone of the secrets repository, left on main, or the name of a repository (fleet repo list), which means the tool's own clone of it; defaults to FLEET_SECRETS_REPO, then this directory |
+| `--repo` | Your clone of the secrets repository, left on main, or the name of a repository (fleetmgr repo list), which means the tool's own clone of it; defaults to FLEETMGR_SECRETS_REPO, then this directory |
 | `--user` | The user's name: lowercase letters, digits and '-'; your login name by default |
 | `--password-stdin` | read the password from standard input, instead of being asked. Hidden as you type |
 | `--host` | A host whose file of yours is changed; may be given more than once. Or use --all-hosts; may be given more than once |
@@ -29,7 +29,7 @@ printf %s "$pw" | fleet user password laptop1 --password-stdin --yes
 | `--identity` | Your passphrase-encrypted age identity (age -p); ~/.fleet/user.age by default. Empty: sops uses SOPS_AGE_KEY_FILE or SOPS_AGE_KEY |
 | `--signing-key` | The SSH private key that signs your commits to your branch; ~/.ssh/fleet_user_signing_key by default |
 | `--enroll` | Where your enrollment file is, or goes; ~/.fleet/\<user>.enroll by default |
-| `--flake` | A checkout of the configuration repository, whose origin names your copy of its signers (fleet trust signers); defaults to this directory's flake, then /etc/nixos. Not needed with --signers |
+| `--flake` | A checkout of the configuration repository, whose origin names your copy of its signers (fleetmgr trust signers); defaults to this directory's flake, then /etc/nixos. Not needed with --signers |
 | `--signers` | An allowed_signers file to check your branch's newest commit against, besides your own key; by default your copy of the configuration repository's |
 
 Every command also takes `--dry-run` (show every step and command; look, but
@@ -64,7 +64,7 @@ A value that is neither given nor has a default is asked for on a terminal.
 
 7. **Check who signed its newest commit.** You build on it, so it must be signed by your own key or by a key in your copy of the configuration repository's signers (the maintainers'): a pushed commit by anyone else is not to be built on.
 
-8. **Choose the hosts.** The hosts named, each of which must have a file of yours on your branch (the maintainer's fleet secrets user-enroll makes them), or all of them with --all-hosts.
+8. **Choose the hosts.** The hosts named, each of which must have a file of yours on your branch (the maintainer's fleetmgr secrets user-enroll makes them), or all of them with --all-hosts.
 
 9. **Unlock your identity.** Decrypted into this run's memory only, for the sops commands below. age asks for its passphrase.
 
@@ -90,4 +90,4 @@ A value that is neither given nor has a default is asked for on a terminal.
    $ cd REPO && git push origin BRANCH
    ```
 
-It needs `git`, `sops`, `age`, `ssh-keygen`, `mkpasswd` on the PATH; `fleet doctor` says where to get them.
+It needs `git`, `sops`, `age`, `ssh-keygen`, `mkpasswd` on the PATH; `fleetmgr doctor` says where to get them.

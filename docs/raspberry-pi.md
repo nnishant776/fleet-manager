@@ -1,6 +1,6 @@
 # 3. Building a Raspberry Pi image
 
-<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->
+<!-- book:top — written by `fleetmgr docs` from SUMMARY.md and the headings; do not edit -->
 [← 2. Installing a machine](installing.md) · [Contents](README.md) · [4. Roles and machine types →](roles.md)
 <!-- /book:top -->
 

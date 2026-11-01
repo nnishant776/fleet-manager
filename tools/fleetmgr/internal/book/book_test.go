@@ -263,7 +263,7 @@ func TestPagesAndSummaryMustAgree(t *testing.T) {
 	for _, p := range b.Warnings {
 		got = append(got, strings.TrimPrefix(p.String(), dir+"/"))
 	}
-	// The index has no file yet either, but fleet docs writes it.
+	// The index has no file yet either, but fleetmgr docs writes it.
 	want := []string{"SUMMARY.md:17: words.md does not exist", "stray.md:1: not in SUMMARY.md"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("warnings %v, want %v", got, want)

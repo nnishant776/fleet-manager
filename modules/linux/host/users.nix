@@ -12,20 +12,20 @@
         message = "users.users.${username}.openssh.authorizedKeys is set on a host with secrets;"
           + " login keys come only from the account's file in the secrets repository"
           + " (conf.users.accounts.<name>.secrets.authorizedKeys, set with"
-          + " `fleet secrets user-keys <name> <host>`).";
+          + " `fleetmgr secrets user-keys <name> <host>`).";
       }) config.users.users)
       ++ lib.concatLists (lib.mapAttrsToList (username: user: [
         {
           assertion = user.sshKeys == [ ];
           message = "conf.users.accounts.${username} lists sshKeys on a host with secrets;"
             + " the keys go in the account's file in the secrets repository, with"
-            + " secrets.authorizedKeys, set with `fleet secrets user-keys ${username} <host>`.";
+            + " secrets.authorizedKeys, set with `fleetmgr secrets user-keys ${username} <host>`.";
         }
         {
           assertion = user.sudoSshKeys == [ ];
           message = "conf.users.accounts.${username} lists sudoSshKeys on a host with secrets;"
             + " the keys go in the account's file in the secrets repository, with"
-            + " secrets.sudoKeys, set with `fleet secrets user-keys ${username} <host>`.";
+            + " secrets.sudoKeys, set with `fleetmgr secrets user-keys ${username} <host>`.";
         }
       ]) config.conf.users.accounts));
 

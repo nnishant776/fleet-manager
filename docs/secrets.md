@@ -1,6 +1,6 @@
 # 8. Secrets
 
-<!-- book:top — written by `fleet docs` from SUMMARY.md and the headings; do not edit -->
+<!-- book:top — written by `fleetmgr docs` from SUMMARY.md and the headings; do not edit -->
 [← 7. Signing commits and trusting them](signing-and-trust.md) · [Contents](README.md) · [9. A private fleet →](private-fleet.md)
 <!-- /book:top -->
 
@@ -41,7 +41,7 @@ only a README and the repository's tooling; no host reads it.
 main
   README.md
   .gitignore
-  .githooks/pre-commit        the commit check that fleet setup installs a reviewed copy of
+  .githooks/pre-commit        the commit check that fleetmgr setup installs a reviewed copy of
 
 host/laptop1                  the only branch laptop1 fetches
   hosts/laptop1.yaml          secrets of laptop1, readable by laptop1 + maintainer
@@ -68,15 +68,15 @@ of the users its own file lists.
 
 | File | Key | Read when | Written by |
 |---|---|---|---|
-| `users/<u>/<h>.yaml` | `password` | `accounts.<u>.secrets.password` (default `true`) | `fleet secrets user-password` |
-| | `ssh_key`, `ssh_key_pub` | `accounts.<u>.secrets.sshKey = true` | `fleet secrets user-key` |
-| | `authorized_keys` | `accounts.<u>.secrets.authorizedKeys = true`; for `support`, `conf.fleet.support.keysFromSecrets = true` | `fleet secrets user-keys`, or `fleet user keys` on a user's own branch |
+| `users/<u>/<h>.yaml` | `password` | `accounts.<u>.secrets.password` (default `true`) | `fleetmgr secrets user-password` |
+| | `ssh_key`, `ssh_key_pub` | `accounts.<u>.secrets.sshKey = true` | `fleetmgr secrets user-key` |
+| | `authorized_keys` | `accounts.<u>.secrets.authorizedKeys = true`; for `support`, `conf.fleet.support.keysFromSecrets = true` | `fleetmgr secrets user-keys`, or `fleetmgr user keys` on a user's own branch |
 | | `sudo_keys` | `accounts.<u>.secrets.sudoKeys = true` (privileged accounts only) | the same |
-| | `secrets.<name>` | `accounts.<u>.secrets.own = true`, read with `fleet-user-secret <name>` | `fleet user secret` |
-| `hosts/<h>.yaml` | `support_password` | `conf.fleet.support.consolePassword = true` | `fleet host secret`, or `sops` by hand |
-| | any `<name>` | a module declares `sops.secrets.<name>` | `fleet host secret`, or `sops` by hand |
-| | `users` | reserved: the users whose branch the host reads (each with `signing_key` and `age_recipient`) | `fleet secrets user-enroll`, `user-retire` |
-| `enroll` | | not read by the host; a record of the identity the branch was made for | `fleet secrets host-enroll`; on `user/<u>`, `fleet secrets user-enroll` |
+| | `secrets.<name>` | `accounts.<u>.secrets.own = true`, read with `fleet-user-secret <name>` | `fleetmgr user secret` |
+| `hosts/<h>.yaml` | `support_password` | `conf.fleet.support.consolePassword = true` | `fleetmgr host secret`, or `sops` by hand |
+| | any `<name>` | a module declares `sops.secrets.<name>` | `fleetmgr host secret`, or `sops` by hand |
+| | `users` | reserved: the users whose branch the host reads (each with `signing_key` and `age_recipient`) | `fleetmgr secrets user-enroll`, `user-retire` |
+| `enroll` | | not read by the host; a record of the identity the branch was made for | `fleetmgr secrets host-enroll`; on `user/<u>`, `fleetmgr secrets user-enroll` |
 
 `authorized_keys` and `sudo_keys` hold public keys, one per line. On a host
 with secrets they are the only place its login and sudo keys can be: keys in the
@@ -89,8 +89,8 @@ decrypt it in its own sops metadata: the host's age recipient and the
 maintainer's recovery recipient, and nobody else. A new file for a host is
 encrypted to the same two recipients as `hosts/<host>.yaml`, so a file is
 readable by exactly one host plus the maintainer's recovery key. The recovery
-recipient is read from `recovery.pub` in the `fleet` folder of
-`$XDG_STATE_HOME` (`~/.local/state` when it is unset), which `fleet setup`
+recipient is read from `recovery.pub` in the `fleetmgr` folder of
+`$XDG_STATE_HOME` (`~/.local/state` when it is unset), which `fleetmgr setup`
 writes once, asking for the recovery identity's passphrase. A host file holds
 whatever that machine needs; `support_password` is a reserved name. No key of
 the host's own is stored there: the host makes its keys itself, and they never
@@ -123,9 +123,9 @@ value, and only the maintainer changes it. A commit on a user's branch is
 accepted when it is signed by that user's key or by a key in the signers
 file. A user who is not listed has their files on the host's branch, as alice
 does here. A user with a branch of their own changes their files themselves,
-without the maintainer: they run `fleet user init` once, which makes their age
+without the maintainer: they run `fleetmgr user init` once, which makes their age
 identity, an SSH signing key and the enrollment file to give the maintainer,
-and after that `fleet user password`, `fleet user keys` and `fleet user secret`
+and after that `fleetmgr user password`, `fleetmgr user keys` and `fleetmgr user secret`
 change their files on their own branch, sign the commit with their own key and
 push it.
 
@@ -134,9 +134,9 @@ push it.
 | Key | Lives | Can |
 |---|---|---|
 | Maintainer **recovery identity** (age) | `~/.fleet/recovery.age`, passphrase-encrypted, plus an offline copy | decrypt and re-encrypt every file |
-| Maintainer **recovery recipient** (its public half) | `recovery.pub` in the `fleet` folder of `${XDG_STATE_HOME:-~/.local/state}`, written by `fleet setup` | nothing but be encrypted to; lets the tools encrypt without the passphrase |
+| Maintainer **recovery recipient** (its public half) | `recovery.pub` in the `fleetmgr` folder of `${XDG_STATE_HOME:-~/.local/state}`, written by `fleetmgr setup` | nothing but be encrypted to; lets the tools encrypt without the passphrase |
 | Maintainer **signing key** (SSH) | the maintainer's machine, ideally a hardware key | sign commits; hosts accept only commits signed by a key in the `allowed_signers` their configuration comes with |
-| User **age identity** | `~/.fleet/user.age`, passphrase-encrypted, on the user's machine; made by `fleet user init` | decrypt that user's files, on their branch, for every host they have an account on |
+| User **age identity** | `~/.fleet/user.age`, passphrase-encrypted, on the user's machine; made by `fleetmgr user init` | decrypt that user's files, on their branch, for every host they have an account on |
 | User **signing key** (SSH) | `~/.ssh/fleet_user_signing_key`, on the user's machine | sign commits to the user's own branch; a host accepts them because its file lists the key |
 | Host **age key** | `/var/lib/fleet/age.key`, on the host only | decrypt that host's files |
 | Host **secrets deploy key** (SSH) | `/var/lib/fleet/secrets_deploy_key`, on the host only | *read* the secrets repository (registered read-only) |
@@ -176,7 +176,7 @@ them, because their files are encrypted to other hosts.
 ## On the host
 
 Each host has an identity of three keys, all root-only files in
-`conf.secrets.statePath`, which is its own volume (`fleet`), so a rebuild or a
+`conf.secrets.statePath`, which is its own volume (`fleetmgr`), so a rebuild or a
 manual reinstall that keeps the volume leaves it alone: an age key (`age.key`) that decrypts, an SSH secrets
 deploy key (`secrets_deploy_key`) that only fetches ciphertext, and an SSH
 configuration deploy key (`config_deploy_key`) that fetches a private
@@ -193,7 +193,7 @@ the one accepted last (`accepted/user-<name>`), and holds a file for this host
 encrypted to exactly the user, this host and the recovery recipient, with a
 `password`, if any, that is a password hash. A user whose branch fails a check
 keeps the file the host had, and the others carry on; the problem is listed at
-every login, in `fleet-sync-status` and in `fleet host check`, until a good
+every login, in `fleet-sync-status` and in `fleetmgr host check`, until a good
 commit fixes it. The files go into a snapshot in `<statePath>/secrets`, with a
 `manifest` saying which commit each file came from, named after the manifest,
 so a sync that brings nothing new changes nothing; sops-nix decrypts the
@@ -266,7 +266,7 @@ How to set one is under
 ## Rules
 
 1. **Never commit plaintext.** Files under `hosts/` and `users/` are created by
-   `fleet` or edited with `sops`, which re-encrypts on save. The pre-commit
+   `fleetmgr` or edited with `sops`, which re-encrypts on save. The pre-commit
    hook enforces this. Don't bypass it with `--no-verify`.
 2. **Sign every commit** on a host branch with a key in the configuration's
    `allowed_signers`. A host verifies the commit at the tip of its branch and
@@ -282,9 +282,9 @@ How to set one is under
    temporary worktree of the branch and leave the clone on `main`. For a
    manual edit, use `git worktree add` yourself and remove it afterwards.
 4. **One change per commit.** The commands commit their own change.
-5. **Push the branch after every change.** `fleet host enroll`,
-   `fleet host secret`, `fleet secrets user-keys`, `user-enroll` and
-   `user-retire` push for you. The other `fleet secrets` commands do not: they
+5. **Push the branch after every change.** `fleetmgr host enroll`,
+   `fleetmgr host secret`, `fleetmgr secrets user-keys`, `user-enroll` and
+   `user-retire` push for you. The other `fleetmgr secrets` commands do not: they
    say so, and you run `git push origin host/<h>` (or `user/<u>`). Hosts pick it
    up on their next sync; nothing is pushed to them.
 6. **Keys live in the secrets repository, not in the configuration.** On a host
@@ -303,25 +303,25 @@ branch, commits there, and removes the worktree, and it refuses to build on a
 branch whose newest commit no trusted key signed. `host-enroll` makes the
 branch, `host-rekey` replaces the host's recipient in every file on it, and
 `host-retire` deletes it. None of them pushes; push the branch afterwards with
-`git push origin host/laptop1` (`fleet host enroll`, `fleet host secret`, `fleet secrets user-keys`, `user-enroll` and
+`git push origin host/laptop1` (`fleetmgr host enroll`, `fleetmgr host secret`, `fleetmgr secrets user-keys`, `user-enroll` and
 `user-retire` push for themselves). For a user the host's file lists,
-`user-password` and `user-key` (and `fleet secrets user-keys`) work on the user's
+`user-password` and `user-key` (and `fleetmgr secrets user-keys`) work on the user's
 branch instead, and `host-rekey` replaces the host's recipient in the user's
 files there too. Two more, in the
-Go tool only: `fleet secrets user-enroll <name> --from <name>.enroll` gives a
-user a branch of their own, and `fleet secrets user-retire <name>` takes the
-user off every host's list. A user with a branch of their own uses `fleet user`
+Go tool only: `fleetmgr secrets user-enroll <name> --from <name>.enroll` gives a
+user a branch of their own, and `fleetmgr secrets user-retire <name>` takes the
+user off every host's list. A user with a branch of their own uses `fleetmgr user`
 instead, in their own clone of the secrets repository, with their own identity
-(`~/.fleet/user.age`, asked for its passphrase) and signing key: `fleet user
-init`, `fleet user password [HOST…|--all-hosts]`, `fleet user keys` (the same
-flags as `fleet secrets user-keys`), and `fleet user secret set|unset NAME`.
+(`~/.fleet/user.age`, asked for its passphrase) and signing key: `fleetmgr user
+init`, `fleetmgr user password [HOST…|--all-hosts]`, `fleetmgr user keys` (the same
+flags as `fleetmgr secrets user-keys`), and `fleetmgr user secret set|unset NAME`.
 Each fetches the branch, refuses to build on a newest commit that neither their
 own key nor a key in their copy of the configuration repository's signers
-(`fleet trust signers`, or `--signers FILE`) signed, makes one signed commit with
+(`fleetmgr trust signers`, or `--signers FILE`) signed, makes one signed commit with
 their key (their git configuration is not touched) and pushes the branch; a
 change that changes nothing makes no commit. The commands that encrypt need your recovery
-recipient in the cache `fleet setup` fills, and stop with "run fleet setup"
-without it. `fleet setup` also installs, in the secrets
+recipient in the cache `fleetmgr setup` fills, and stop with "run fleetmgr setup"
+without it. `fleetmgr setup` also installs, in the secrets
 clone, a copy of the repository's pre-commit hook, which refuses a file under
 `hosts/` or `users/` that is not ciphertext. `fleet-secrets-sync` (`init`, `sync` and `check`, which the sync and the
 installer run) and `fleet-identity` are installed on opted-in hosts;
@@ -332,10 +332,10 @@ test without a hosting service, `nix run .#secrets-harness` stands in for the
 secrets repository and the configuration upstream; see
 [`tests/secrets/README.md`](../tests/secrets/README.md).
 
-`fleet secrets …`, the Go port, does the same as `fleet-secrets`, the shell
+`fleetmgr secrets …`, the Go port, does the same as `fleet-secrets`, the shell
 tool, for `host-enroll`, `host-rekey`, `host-retire`, `user-password` and
 `user-key`. `user-keys`, `user-enroll` and `user-retire` exist only in the Go
-port. The runbooks use `fleet secrets`.
+port. The runbooks use `fleetmgr secrets`.
 
 <!-- book:bottom -->
 ---

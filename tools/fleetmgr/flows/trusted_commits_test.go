@@ -288,7 +288,7 @@ func TestPrepNeedsATrustedCommitOfFleetManagerToCheckThePinFrom(t *testing.T) {
 		t.Fatal(err)
 	}
 	err, _, out := runPrep(t, flake, prepRepo(invAddress, ""))
-	if err == nil || !strings.Contains(flat(out), "run fleet repo sync fleet-manager, or fleet repo add, first") {
+	if err == nil || !strings.Contains(flat(out), "run fleetmgr repo sync fleet-manager, or fleetmgr repo add, first") {
 		t.Fatalf("went ahead, or without saying why: %v\n%s", err, out)
 	}
 }

@@ -1,9 +1,9 @@
-# Test of `fleet host enroll` on a running host that has a checkout in
+# Test of `fleetmgr host enroll` on a running host that has a checkout in
 # /etc/nixos but no secrets identity yet: the case where the first-boot clone
 # never runs, so the identity has to be made by hand. A `forge` node serves a
 # fresh, signed secrets repository over SSH and also plays the maintainer's
 # machine; `newhost` is built from tests/fleet/enroll-host. The checks:
-# - fleet logs in as admin through a one-key agent, creates the identity,
+# - fleetmgr logs in as admin through a one-key agent, creates the identity,
 #   copies the enrollment file and checks it, enrolls the host with a signed
 #   commit, pushes, and registers the deploy key;
 # - the host can then fetch, verify and decrypt its secrets with that key;
@@ -36,7 +36,7 @@ let
         -c user.name=maintainer -c user.email=maintainer@test "$@"
     }
 
-    # What fleet setup caches for the maintainer's tools.
+    # What fleetmgr setup caches for the maintainer's tools.
     age-keygen -y "$out/recovery.key" > "$out/recovery.pub"
 
     # A secrets repository as fleet-secrets starts: main holds a README, and
@@ -64,7 +64,7 @@ pkgs.testers.runNixOSTest {
   nodes.forge = { pkgs, ... }: {
     services.openssh.enable = true;
     users.users.git.isNormalUser = true;
-    environment.systemPackages = [ pkgs.git self.packages.${pkgs.stdenv.hostPlatform.system}.fleet ];
+    environment.systemPackages = [ pkgs.git self.packages.${pkgs.stdenv.hostPlatform.system}.fleetmgr ];
 
     systemd.services.forge-repos = {
       description = "Serve the fixture secrets repository, with deploy keys registered in a file";
@@ -138,7 +138,7 @@ pkgs.testers.runNixOSTest {
     newhost.fail("test -e /var/lib/fleet/age.key")
 
     # The forge as the maintainer's machine: keys, the recovery recipient as
-    # fleet setup caches it, a signing clone, the host's key known.
+    # fleetmgr setup caches it, a signing clone, the host's key known.
     forge.succeed(
         "install -o git -m 600 ${fixtures}/recovery.key ${fixtures}/signing ${fixtures}/admin /home/git/",
         "ssh-keyscan -t ed25519 newhost >> /home/git/.ssh/known_hosts 2>/dev/null",
@@ -157,15 +157,15 @@ pkgs.testers.runNixOSTest {
         # Bounded and printed, so that a step that hangs shows where.
         status, out = forge.execute(
             "cd /home/git && timeout 180 su git -c 'SOPS_AGE_KEY_FILE=/home/git/recovery.key"
-            " fleet host enroll newhost --flake /var/empty --key /home/git/admin"
+            " fleetmgr host enroll newhost --flake /var/empty --key /home/git/admin"
             " --repo /home/git/w --recovery \"\" --sync=false --yes"
             " --register-with \"cat >> /home/git/.ssh/authorized_keys\"' 2>&1"
         )
         print(out)
-        assert status == 0, f"fleet host enroll exited {status}"
+        assert status == 0, f"fleetmgr host enroll exited {status}"
         return out
 
-    with subtest("fleet enrolls a running host without an identity"):
+    with subtest("fleetmgr enrolls a running host without an identity"):
         out = enroll()
         for want in ["has no identity yet", "created under /var/lib/fleet", "checksum",
                      "committed: host-enroll: newhost", "stopped the one-key agent"]:
