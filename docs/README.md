@@ -150,6 +150,7 @@ written from the command itself.
   - [Runbooks](fleetmgr.md#runbooks)
   - [On the installer](fleetmgr.md#on-the-installer)
   - [fleetmgr and fleetmgr-secrets](fleetmgr.md#fleetmgr-and-fleetmgr-secrets)
+  - [The old name](fleetmgr.md#the-old-name)
 - [11. Secrets runbooks](secrets-runbooks.md)
   - [Maintainer: one-time setup](secrets-runbooks.md#maintainer-one-time-setup)
   - [Onboarding a machine](secrets-runbooks.md#onboarding-a-machine)

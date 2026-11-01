@@ -23,6 +23,7 @@ In this chapter:
 - [Runbooks](#runbooks)
 - [On the installer](#on-the-installer)
 - [fleetmgr and fleetmgr-secrets](#fleetmgr-and-fleetmgr-secrets)
+- [The old name](#the-old-name)
 <!-- /book:sections -->
 
 ## Installing it
@@ -88,6 +89,37 @@ configuration sets `fleet.support.keysFromSecrets`, `fleetmgr support-key rotate
 changes support's keys there instead of asking you to edit the configuration; and
 `fleetmgr host enroll` checks, before it switches the host, that its branch holds every
 secret the configuration declares, reading the sops files without decrypting them.
+
+## The old name
+
+Until November 2026 the tool was called `fleet`, and its shell twin
+`fleet-secrets`. The programs on hosts were `fleet-sync-now`,
+`fleet-secrets-sync` and the rest. It was renamed because nixpkgs already has
+`fleet` and `fleetctl`, the server and admin tool of FleetDM, a
+device-management product that a fleet like this one might also run.
+
+Every command is the same with the new name: `fleet host check` is now
+`fleetmgr host check`. To move over, remove the old install and install the new
+one:
+
+```bash
+nix profile remove fleet
+nix profile install /etc/nixos#fleetmgr
+```
+
+Also rename any `FLEET_*` variable you set, such as `FLEET_THEME` or
+`FLEET_SECRETS_REPO`, to `FLEETMGR_*`.
+
+Some things did not change. The tool's state stays in `~/.local/state/fleet` and
+`~/.local/share/fleet`, so your trusted keys, trusted commits and the tools' own
+clones carry over. So does the `gpg.ssh.allowedSignersFile` setting in your
+checkouts, which points there. On hosts, `/var/lib/fleet` and
+`/var/lib/fleet-sync` stay too. The configuration still says `conf.fleet`, since
+it is about the fleet, not the tool.
+
+A host gets the new program names when its inventory pins a fleet-manager commit
+that has them; until then it still has the old ones. Move the pin before you
+enroll a new host with `fleetmgr host enroll`.
 
 <!-- book:bottom -->
 ---
