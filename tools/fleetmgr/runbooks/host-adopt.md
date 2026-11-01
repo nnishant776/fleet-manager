@@ -13,7 +13,9 @@ a rule, or its password, asked for once and held in memory. It reads the machine
 timezone and locale, the release it was installed with, its hardware configuration, its /etc/nixos, and the
 people's accounts. Then it writes the host's folder in the inventory: its own configuration copied as it is
 (--copy-config), imported by a default.nix that adds what the fleet needs, or a minimal skeleton
-(--skeleton); the machine's /etc/nixos goes into previous/ either way. It checks that the host evaluates,
+(--skeleton); either way, what of the machine's /etc/nixos is its own goes into previous/, with previous.md
+saying what the rest was: a checkout of fleet-manager keeps only the host's folder and its local changes,
+and a file that looks like a secret is left out. It checks that the host evaluates,
 and if it does not, says why and leaves the folder for you to change, so that a second run goes on from it.
 Then it commits, pushes, and publishes the host's branch.
 
@@ -56,11 +58,13 @@ fleetmgr host adopt laptop1 --from ann.enroll --flake inventory --repo secrets
 | `--host-key` | SHA256:…, as ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub prints it on the host's console; only needed when this machine does not know the host's key yet and cannot ask |
 | `--admin-password-stdin` | read the admin-password from standard input, instead of being asked. Only needed when the admin account's sudo asks for its password; asked for then, or read from --admin-password-stdin. It is kept in memory only, and passed to sudo on the host on stdin |
 | `--copy-config` | Start the host's folder from the machine's own /etc/nixos, unchanged in previous/, which a default.nix imports |
-| `--skeleton` | Start the host's folder from a minimal default.nix and the machine's hardware-configuration.nix; its /etc/nixos is kept in previous/, for reference |
+| `--skeleton` | Start the host's folder from a minimal default.nix and the machine's hardware-configuration.nix; what of its /etc/nixos is its own is kept in previous/, for reference |
 | `--role` | conf.role: developer, embedded, gaming, minimal, server, workstation; guessed from the machine when not given |
 | `--machine-type` | conf.machineType: laptop, desktop, headless, vm; guessed from the machine when not given |
 | `--grub-device` | For a machine that boots GRUB with BIOS; by default the disk that holds /boot, or /, by its /dev/disk/by-id name |
 | `--secrets-address` | conf.secrets.repo.url for the host; by default the one the inventory's hosts share |
+| `--state-version` | For a skeleton: the NixOS release it was installed with, such as 24.11; read from the configuration it was built from when not given |
+| `--keep-previous` | Keep its /etc/nixos in previous/ even when that is more than 50 files or 1 MiB |
 | `--support-keys` | SSH public keys, one per line, that log in to the support account on the host once it runs the fleet's configuration; needed unless host/\<host> of the secrets repository holds them already |
 | `--trial-minutes` | After the switch, fleetmgr must log in to the new system as support within this time, or the host goes back to the system it ran before; 5 by default |
 | `--switch-to` | A flake reference; by default the commit of the inventory fleetmgr install prep would install |
@@ -127,7 +131,7 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
 
 17. **Read HOST.** What its folder is written from: the platform, how it boots, its network, timezone and locale, the release it was installed with, its hardware configuration, its /etc/nixos, and the people's accounts, with their password hashes (kept in memory only, never shown) and login keys.
 
-18. **Choose how HOST's folder starts.** Its own configuration, copied as it is, keeps everything it does; a skeleton keeps only what fleetmgr read, and the fleet's roles do the rest. Either way its /etc/nixos goes into previous/.
+18. **Choose how HOST's folder starts.** Its own configuration, copied as it is, keeps everything it does; a skeleton keeps only what fleetmgr read, and the fleet's roles do the rest. Either way what of its /etc/nixos is its own goes into previous/, and previous.md says what the rest was.
 
 19. **Write HOST's folder into the inventory.** Each file is shown first. If a later step fails, the folder stays, for you to look at or change; run this again to go on from it.
 

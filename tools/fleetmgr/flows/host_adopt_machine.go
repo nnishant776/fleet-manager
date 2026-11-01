@@ -76,7 +76,7 @@ var machineInputs = []engine.Input{
 	{Name: "copy-config", Prompt: "Copy its configuration as it is?", Bool: true, Skip: onlyFor("machine"),
 		Help: "Start the host's folder from the machine's own /etc/nixos, unchanged in previous/, which a default.nix imports"},
 	{Name: "skeleton", Prompt: "Start from a skeleton?", Bool: true, Skip: onlyFor("machine"),
-		Help: "Start the host's folder from a minimal default.nix and the machine's hardware-configuration.nix; its /etc/nixos is kept in previous/, for reference"},
+		Help: "Start the host's folder from a minimal default.nix and the machine's hardware-configuration.nix; what of its /etc/nixos is its own is kept in previous/, for reference"},
 	{Name: "role", Prompt: "Its role", Optional: true, Skip: onlyFor("machine"), Pattern: `^(` + strings.Join(adoptRoles, "|") + `)$`,
 		Help: "conf.role: " + strings.Join(adoptRoles, ", ") + "; guessed from the machine when not given"},
 	{Name: "machine-type", Prompt: "Its machine type", Optional: true, Skip: onlyFor("machine"), Pattern: `^(` + strings.Join(adoptMachineTypes, "|") + `)$`,
@@ -85,6 +85,10 @@ var machineInputs = []engine.Input{
 		Help: "For a machine that boots GRUB with BIOS; by default the disk that holds /boot, or /, by its /dev/disk/by-id name"},
 	{Name: "secrets-address", Prompt: "The secrets repository's address", Optional: true, Skip: onlyFor("machine"),
 		Help: "conf.secrets.repo.url for the host; by default the one the inventory's hosts share"},
+	{Name: "state-version", Prompt: "Its system.stateVersion", Optional: true, Skip: onlyFor("machine"), Pattern: `^[0-9]{2}\.[0-9]{2}$`,
+		Help: "For a skeleton: the NixOS release it was installed with, such as 24.11; read from the configuration it was built from when not given"},
+	{Name: "keep-previous", Prompt: "Keep a large /etc/nixos whole in previous/?", Bool: true, Skip: onlyFor("machine"),
+		Help: "Keep its /etc/nixos in previous/ even when that is more than 50 files or 1 MiB"},
 }
 
 func withSkip(in engine.Input, skip func(*engine.Ctx) bool) engine.Input {
@@ -125,7 +129,7 @@ var machineSteps = []engine.Step{
 	{
 		Title: "Choose how {{.host}}'s folder starts",
 		Why: "Its own configuration, copied as it is, keeps everything it does; a skeleton keeps only what fleetmgr read, and the fleet's roles do the rest. " +
-			"Either way its /etc/nixos goes into previous/.",
+			"Either way what of its /etc/nixos is its own goes into previous/, and previous.md says what the rest was.",
 		When: adoptWrites,
 		Do:   engine.Func(chooseAdoptStart),
 	},
@@ -255,7 +259,14 @@ else echo loader=; fi
 systemctl is-active --quiet NetworkManager && echo backend=networkmanager || echo backend=networkd
 echo "timezone=$(timedatectl show -p Timezone --value 2>/dev/null)"
 echo "locale=$(sed -n 's/^LANG=//p' /etc/locale.conf 2>/dev/null | tr -d '"' | head -1)"
-echo "release=$(sudo -n grep -rhoE 'system\.stateVersion *= *"[0-9]+\.[0-9]+"' /etc/nixos 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+')"
+echo "hostname=$(hostname)"
+echo "org_revision=$(head -n 1 /etc/org/revision 2>/dev/null)"
+first=$(ls -1d /nix/var/nix/profiles/system-*-link 2>/dev/null | sed -n 's|.*/system-\([0-9]*\)-link$|\1|p' | sort -n | head -n 1)
+if [ -n "$first" ]; then
+  echo "gen_first=$first"
+  echo "gen_first_release=$(cut -d. -f1,2 /nix/var/nix/profiles/system-$first-link/nixos-version 2>/dev/null)"
+  echo "gen_first_date=$(stat -c %y /nix/var/nix/profiles/system-$first-link 2>/dev/null | cut -d' ' -f1)"
+fi
 systemctl is-active --quiet display-manager && echo graphical=true || echo graphical=false
 echo "virt=$(systemd-detect-virt 2>/dev/null || true)"
 echo "chassis=$(hostnamectl chassis 2>/dev/null || true)"
@@ -341,8 +352,19 @@ func readMachine(x *engine.Ctx) error {
 		f.Locale = "en_US.UTF-8"
 		x.UI.Note("Its locale could not be read; en_US.UTF-8 is written, which you can change.")
 	}
-	if f.StateVersion = facts["release"]; !adoptRelease.MatchString(f.StateVersion) {
-		f.StateVersion = ""
+	if h := facts["hostname"]; adoptHostname.MatchString(h) {
+		f.Hostname = h
+	}
+	if r := facts["org_revision"]; fullHash.MatchString(r) {
+		f.OrgRevision = r
+	}
+	if f.GenFirst = atoiOr(facts["gen_first"]); f.GenFirst > 0 {
+		if r := facts["gen_first_release"]; adoptRelease.MatchString(r) {
+			f.GenFirstRelease = r
+		}
+		if d := facts["gen_first_date"]; adoptDate.MatchString(d) {
+			f.GenFirstDate = d
+		}
 	}
 	f.Role, f.MachineType = guessRole(facts), guessMachineType(facts)
 	x.Values["adopt_etc"] = facts["etc"]
@@ -394,21 +416,22 @@ func readMachine(x *engine.Ctx) error {
 		return fmt.Errorf("nixos-generate-config --show-hardware-config on %s: %w", host, err)
 	}
 	f.HardwareConfig = hw.Stdout
-	f.Previous = map[string][]byte{}
-	if facts["etc"] != "none" {
-		tarball, err := fleetmgr.OnAdmin("sudo -n tar -h -C /etc/nixos --exclude=./.git --exclude=./result -cf - .").ReadOnly().Quiet().
-			OK("read its /etc/nixos").Run(x)
-		if err != nil {
-			return fmt.Errorf("reading %s's /etc/nixos: %w", host, err)
-		}
-		if f.Previous, err = untarFiles([]byte(tarball.Stdout)); err != nil {
-			return fmt.Errorf("%s's /etc/nixos: %w", host, err)
-		}
+	if err := fleetManagerHostAt(x, &f); err != nil {
+		return err
+	}
+	if err := readPrevious(x, &f, facts["etc"]); err != nil {
+		return err
 	}
 	adoptMachine = f
 
 	x.UI.OK(fmt.Sprintf("a NixOS %s machine, booting with %s, %s; network by %s", f.Platform, strings.ToUpper(f.Boot), f.Loader, f.Backend))
-	x.UI.OK("timezone " + f.Timezone + ", locale " + f.Locale + ", installed with " + f.StateVersion)
+	x.UI.OK("timezone " + f.Timezone + ", locale " + f.Locale)
+	if f.OrgFleetHost != "" {
+		x.UI.OK("it runs fleet-manager's " + f.OrgFleetHost + " at " + f.OrgRevision[:12])
+	}
+	if g := generationNote(f); g != "" {
+		x.UI.OK(g)
+	}
 	for _, a := range f.Accounts {
 		what := "an ordinary account"
 		if a.Privileged {
@@ -535,7 +558,7 @@ func chooseAdoptStart(x *engine.Ctx) error {
 		choice = "skeleton"
 	case etc != "configuration":
 		x.UI.Note(map[string]string{"flake": "Its /etc/nixos is a flake, whose inputs are not the inventory's, so it cannot be copied as it is",
-			"none": "Its /etc/nixos holds nothing to build from"}[etc] + ": the folder starts from a skeleton, with /etc/nixos kept in previous/ for reference.")
+			"none": "Its /etc/nixos holds nothing to build from"}[etc] + ": the folder starts from a skeleton, with what of /etc/nixos is its own kept in previous/ for reference.")
 		choice = "skeleton"
 	case !x.UI.Interactive():
 		return errors.New("give --copy-config, to copy its configuration as it is, or --skeleton, to start from a minimal one")
@@ -551,6 +574,9 @@ func chooseAdoptStart(x *engine.Ctx) error {
 	}
 	x.Values["adopt_start"] = choice
 	if choice == "skeleton" {
+		if err := settleStateVersion(x, &adoptMachine, etc); err != nil {
+			return err
+		}
 		if err := skeletonReady(x.Value("host"), adoptMachine); err != nil {
 			return err
 		}
@@ -634,7 +660,11 @@ func writeAdoptFolder(x *engine.Ctx) error {
 	x.UI.Text("default.nix, as fleetmgr writes it:\n\n" + string(files["default.nix"]))
 	var listed []string
 	for _, p := range sortedPaths(files) {
-		if p != "default.nix" {
+		switch p {
+		case "default.nix":
+		case "previous.md":
+			listed = append(listed, fmt.Sprintf("  %s (%d bytes, written by fleetmgr: what its /etc/nixos was)", p, len(files[p])))
+		default:
 			listed = append(listed, fmt.Sprintf("  %s (%d bytes, from the machine)", p, len(files[p])))
 		}
 	}
@@ -696,7 +726,7 @@ func commitAdopted(x *engine.Ctx) error {
 	x.Values["imp_subject"] = "feat(hosts): " + x.Value("host") + ", adopted from the machine as it ran"
 	x.Values["imp_body"] = map[string]string{
 		"copy":     "Its own configuration is in previous/, unchanged, imported by default.nix, which adds what the fleet needs.",
-		"skeleton": "From a skeleton written by fleetmgr host adopt, with its hardware configuration; its /etc/nixos is kept in previous/.",
+		"skeleton": "From a skeleton written by fleetmgr host adopt, with its hardware configuration; what of its /etc/nixos was its own is in previous/.",
 		"":         "Written by fleetmgr host adopt.",
 	}[x.Value("adopt_start")] + " It fetches " + x.Value("imp_address") + "."
 	if _, err := engine.Cmd("git", "-C", "{{.flake}}", "commit", "-q", "-m", "{{.imp_subject}}", "-m", "{{.imp_body}}", "--", "{{.imp_paths}}").
@@ -728,7 +758,7 @@ func showAdoptMachineNext(x *engine.Ctx) error {
 	}
 	x.UI.Text(host + " is a fleet host now. It runs host/" + host + " of the inventory, its secrets come from the secrets repository, " +
 		"and its accounts kept their passwords and keys, which change through the secrets from now on: passwd on the machine no longer sticks.\n" +
-		"What its old configuration did is in " + x.Value("imp_paths") + "/previous/ in the inventory, for reference. Check it at any time with:\n" +
+		"What its old configuration did is in " + x.Value("imp_paths") + "/previous/ and previous.md in the inventory, for reference. Check it at any time with:\n" +
 		"  fleetmgr host check " + host + " --flake " + flake)
 	return nil
 }
@@ -760,7 +790,7 @@ func skeletonReady(host string, f machineFacts) error {
 	case f.Loader == "grub" && f.Boot == "bios" && f.GrubDevice == "":
 		return fmt.Errorf("could not tell which disk GRUB is installed to on %s: give it with --grub-device", host)
 	case f.StateVersion == "":
-		return fmt.Errorf("could not read system.stateVersion from %s's /etc/nixos: give the skeleton one by hand, or copy its configuration with --copy-config, which keeps its own", host)
+		return fmt.Errorf("no system.stateVersion for %s's skeleton: give it with --state-version, or copy its configuration with --copy-config, which keeps its own", host)
 	}
 	return nil
 }

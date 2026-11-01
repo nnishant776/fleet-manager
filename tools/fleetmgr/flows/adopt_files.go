@@ -23,15 +23,29 @@ type machineFacts struct {
 	Timezone     string
 	Locale       string
 	StateVersion string
-	Role         string
-	MachineType  string
-	Accounts     []machineAccount
+	// StateVersionFrom says where StateVersion came from, for its comment.
+	StateVersionFrom string
+	Role             string
+	MachineType      string
+	Accounts         []machineAccount
 	// HardwareConfig is nixos-generate-config's hardware configuration, as
 	// the machine printed it.
 	HardwareConfig string
-	// Previous holds the files of the machine's /etc/nixos, by their path in
-	// it, kept in previous/.
-	Previous map[string][]byte
+	// Previous holds the files of the machine's /etc/nixos that are the
+	// host's own, by their path in it, kept in previous/; PreviousNote is
+	// previous.md beside it, what the rest was (adopt_previous.go).
+	Previous     map[string][]byte
+	PreviousNote string
+
+	// What the machine says it was built from.
+	Hostname        string // its hostname, the host it was built as
+	OrgRevision     string // /etc/org/revision: the commit of the flake it runs
+	OrgFleetHost    string // fleet-manager's host of that name at OrgRevision, when there is one
+	OrgStateVersion string // that host's system.stateVersion, evaluated
+	// Its oldest system generation: its number, NixOS release and date.
+	GenFirst        int
+	GenFirstRelease string
+	GenFirstDate    string
 }
 
 // machineAccount is a person's account on the machine.
@@ -114,10 +128,18 @@ func header(f machineFacts, how string) string {
 // hardware-configuration.nix.
 func skeletonDefault(f machineFacts, s fleetSettings) string {
 	var b strings.Builder
-	b.WriteString(header(f, "Its own /etc/nixos is kept in previous/, for\n# reference only: nothing imports it."))
+	kept := "Its own /etc/nixos is kept in previous/, for\n# reference only: nothing imports it."
+	if f.PreviousNote != "" {
+		kept = "What its /etc/nixos held is in previous.md and\n# previous/, for reference only: nothing imports them."
+	}
+	b.WriteString(header(f, kept))
 	b.WriteString("{ ... }:\n{\n")
 	b.WriteString("  nixpkgs.hostPlatform = " + nixString(f.Platform) + ";\n")
-	b.WriteString("  # The release it was installed with, which some services' data depends on.\n")
+	b.WriteString("  # The release it was installed with, which some services' data depends on")
+	if f.StateVersionFrom != "" {
+		b.WriteString(":\n  # " + f.StateVersionFrom)
+	}
+	b.WriteString(".\n")
 	b.WriteString("  system.stateVersion = " + nixString(f.StateVersion) + ";\n")
 	if f.Loader == "grub" && f.Boot == "bios" {
 		b.WriteString("  boot.loader.grub.device = " + nixString(f.GrubDevice) + ";\n")
@@ -214,6 +236,9 @@ func adoptFiles(f machineFacts, s fleetSettings, copy bool) (map[string][]byte, 
 			return nil, fmt.Errorf("/etc/nixos holds %q, which is not a path inside it", p)
 		}
 		files["previous/"+clean] = data
+	}
+	if f.PreviousNote != "" {
+		files["previous.md"] = []byte(f.PreviousNote)
 	}
 	if copy {
 		if _, ok := f.Previous["configuration.nix"]; !ok {

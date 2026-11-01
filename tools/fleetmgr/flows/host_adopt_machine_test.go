@@ -60,7 +60,7 @@ func tarOf(t *testing.T, files map[string]string) string {
 func machine(t *testing.T, facts map[string]string) func(engine.Spec) (engine.Result, error) {
 	base := map[string]string{
 		"arch": "x86_64", "nixos": "true", "boot": "uefi", "loader": "systemd-boot", "backend": "networkmanager",
-		"timezone": "Europe/Berlin", "locale": "en_US.UTF-8", "release": "24.11", "graphical": "true", "virt": "none",
+		"timezone": "Europe/Berlin", "locale": "en_US.UTF-8", "hostname": "laptop3", "graphical": "true", "virt": "none",
 		"chassis": "laptop", "etc": "configuration",
 	}
 	for k, v := range facts {
@@ -77,6 +77,10 @@ func machine(t *testing.T, facts map[string]string) func(engine.Spec) (engine.Re
 	return func(s engine.Spec) (engine.Result, error) {
 		script := s.Args[len(s.Args)-1]
 		switch {
+		case strings.Contains(script, "safe.directory=/etc/nixos"):
+			return engine.Result{}, nil
+		case strings.Contains(script, "nix-instantiate"):
+			return engine.Result{Stdout: "\"24.11\""}, nil
 		case strings.Contains(script, "machineFactsScript"), strings.Contains(script, "echo \"arch=$(uname -m)\""):
 			return engine.Result{Stdout: out.String()}, nil
 		case strings.Contains(script, "getent shadow alice"):
@@ -112,7 +116,7 @@ func TestReadingAMachineTakesWhatItsFolderIsWrittenFrom(t *testing.T) {
 	}
 	f := adoptMachine
 	if f.Platform != "x86_64-linux" || f.Boot != "uefi" || f.Loader != "systemd-boot" || f.Backend != "networkmanager" ||
-		f.StateVersion != "24.11" || f.Role != "workstation" || f.MachineType != "laptop" {
+		f.Hostname != "laptop3" || f.Role != "workstation" || f.MachineType != "laptop" {
 		t.Fatalf("read %+v", f)
 	}
 	if len(f.Accounts) != 2 {
@@ -158,11 +162,21 @@ func TestGrubWithBiosNeedsItsDiskForASkeleton(t *testing.T) {
 }
 
 func TestAMachineWhoseFactsCannotBeTrustedIsNotWrittenFromThem(t *testing.T) {
-	if _, err := readFrom(t, machine(t, map[string]string{"release": `24.11"; evil = "x`})); err != nil {
-		t.Fatal(err)
-	}
-	if err := skeletonReady("laptop3", adoptMachine); adoptMachine.StateVersion != "" || err == nil || !strings.Contains(err.Error(), "stateVersion") {
-		t.Fatalf("took the release %q (%v)", adoptMachine.StateVersion, err)
+	for _, c := range []struct {
+		facts map[string]string
+		got   func(machineFacts) string
+		name  string
+	}{
+		{map[string]string{"hostname": "laptop3; rm -rf /"}, func(f machineFacts) string { return f.Hostname }, "hostname"},
+		{map[string]string{"gen_first": "1", "gen_first_release": `24.11"; evil = "x`}, func(f machineFacts) string { return f.GenFirstRelease }, "gen_first_release"},
+		{map[string]string{"org_revision": "not-a-hash"}, func(f machineFacts) string { return f.OrgRevision }, "org_revision"},
+	} {
+		if _, err := readFrom(t, machine(t, c.facts)); err != nil {
+			t.Fatal(err)
+		}
+		if got := c.got(adoptMachine); got != "" {
+			t.Errorf("took the %s %q", c.name, got)
+		}
 	}
 	if _, err := readFrom(t, machine(t, map[string]string{"timezone": `Europe/Berlin"; x = "`})); err != nil {
 		t.Fatal(err)
