@@ -194,3 +194,11 @@ func TestTheBiosSkeletonIsTheGoldenOne(t *testing.T) {
 	}
 	checkGolden(t, "server1", files)
 }
+
+// desk1 is a new host: the disk layout on, no hardware-configuration.nix.
+func TestTheNewHostIsTheGoldenOne(t *testing.T) {
+	f := goldenFacts("desk1", nil)
+	f.StateVersion, f.Role, f.MachineType = "26.05", "developer", "desktop"
+	doc := newHostDefault(f, newHostDisk{Device: "/dev/nvme0n1", Encrypt: true}, goldenSettings)
+	checkGolden(t, "desk1", map[string][]byte{"default.nix": []byte(doc)})
+}

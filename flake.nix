@@ -185,7 +185,7 @@
           hosts = ./tools/fleetmgr/flows/testdata/adopt/config/hosts;
           drv = h: builtins.unsafeDiscardStringContext (mk { hostName = h; hostDir = hosts + "/${h}"; }).config.system.build.toplevel.drvPath;
         in
-        nixpkgs.legacyPackages.x86_64-linux.writeText "adopt-golden" (drv "laptop1" + "\n" + drv "laptop2" + "\n" + drv "server1" + "\n");
+        nixpkgs.legacyPackages.x86_64-linux.writeText "adopt-golden" (drv "laptop1" + "\n" + drv "laptop2" + "\n" + drv "server1" + "\n" + drv "desk1" + "\n");
       # fleetmgr host adopt takes in a NixOS machine the inventory does not have.
       fleet-adopt-machine = import ./tests/fleet/adopt-machine.nix {
         inherit self inputs;
