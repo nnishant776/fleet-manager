@@ -188,7 +188,7 @@
         nixpkgs.legacyPackages.x86_64-linux.writeText "adopt-golden" (drv "laptop1" + "\n" + drv "laptop2" + "\n" + drv "server1" + "\n");
       # fleetmgr host adopt takes in a NixOS machine the inventory does not have.
       fleet-adopt-machine = import ./tests/fleet/adopt-machine.nix {
-        inherit self;
+        inherit self inputs;
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
       };
       # mkHost's system.stateVersion is a default, which a host's own wins over.
