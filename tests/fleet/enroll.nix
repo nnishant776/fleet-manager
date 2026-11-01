@@ -11,7 +11,13 @@
 # - the script enroll runs after a host's first switch makes /etc/nixos the
 #   configuration's checkout, whether it held a checkout of something else or
 #   plain files, with a stub in place of the first-boot clone, fails clearly
-#   when the clone fails, and deletes nothing on a host without the unit.
+#   when the clone fails, and deletes nothing on a host without the unit;
+# - the switch of a host moving from another repository is a trial, after
+#   its secrets are fetched: a new system that stops sshd is not confirmed,
+#   and the host goes back by itself; one that lets support in is confirmed
+#   and made the boot default. The VM cannot evaluate a real configuration,
+#   so a stand-in flake describes newhost's as the steps read it, and its
+#   systems re-activate the real one, which puts the fetched secrets in place.
 # Run it with `nix build .#checks.x86_64-linux.fleet-enroll`.
 { pkgs, inputs, self }:
 let
@@ -54,6 +60,43 @@ let
   '';
 
   secretsUrl = "ssh://git@forge/var/lib/forge/secrets.git";
+
+  # newhost's configuration as the steps of a switch read it, with a system
+  # that the switch builds: a directory, ./system, the same on every node.
+  standInFlake = pkgs.writeText "flake.nix" ''
+    {
+      outputs = _: {
+        nixosConfigurations.newhost.config = {
+          conf.fleet.repo.url = "ssh://git@forge/var/lib/forge/config.git";
+          conf.fleet.signing.allowedSignersFile = ./allowed_signers;
+          conf.secrets.repo.url = "${secretsUrl}";
+          conf.secrets.repo.ref = "host/newhost";
+          conf.secrets.statePath = "/var/lib/fleet";
+          conf.hardware.disk.enable = false;
+          fileSystems = { };
+          boot.loader.systemd-boot.enable = false;
+          boot.loader.grub.enable = false;
+          boot.loader.grub.efiSupport = false;
+          sops.secrets = { };
+          system.build.toplevel = ./system;
+        };
+      };
+    }
+  '';
+  # A stand-in system's activation: the real system's again (whose path the
+  # test puts in /srv/real-system), then what the case does, then it points
+  # /run/current-system at itself. boot changes nothing.
+  standInSwitch = name: action: pkgs.writeScript "switch-to-configuration-${name}" ''
+    #!/bin/sh
+    c=${pkgs.coreutils}/bin
+    here=$("$c/dirname" "$("$c/dirname" "$("$c/readlink" -f "$0")")")
+    case "$1" in test|switch) ;; *) exit 0 ;; esac
+    "$("$c/cat" /srv/real-system)/bin/switch-to-configuration" test || exit
+    ${action}
+    "$c/ln" -sfn "$here" /run/current-system
+  '';
+  goodSwitch = standInSwitch "good" "";
+  badSwitch = standInSwitch "bad" "${pkgs.systemd}/bin/systemctl stop sshd.service";
 in
 pkgs.testers.runNixOSTest {
   name = "fleet-enroll";
@@ -63,6 +106,8 @@ pkgs.testers.runNixOSTest {
 
   nodes.forge = { pkgs, ... }: {
     services.openssh.enable = true;
+    # As on a maintainer's machine: fleetmgr evaluates flakes with plain nix.
+    nix.settings.experimental-features = [ "nix-command" "flakes" ];
     users.users.git.isNormalUser = true;
     environment.systemPackages = [ pkgs.git self.packages.${pkgs.stdenv.hostPlatform.system}.fleetmgr ];
 
@@ -87,6 +132,9 @@ pkgs.testers.runNixOSTest {
     imports = hostNode.modules ++ [{
       boot.loader.systemd-boot.enable = lib.mkForce false;
       boot.loader.grub.enable = lib.mkForce false;
+      # The trial switch activates the running system again to go back,
+      # which tests leave out by default.
+      system.switch.enable = true;
 
       # The host has secrets, so the keys of admin and support belong in their
       # files on the host's branch. That branch does not exist until enroll
@@ -268,5 +316,70 @@ pkgs.testers.runNixOSTest {
         status, out = newhost.execute(f"NO_UNIT=1 {env} sh ${remakeScript} {url} true /tmp/etc-nixos /tmp/fleet-sync 2>&1")
         assert status != 0 and "left as it is" in out, out
         newhost.succeed("test -e /tmp/etc-nixos/mine.nix")
+
+    # The switch of a host that moves here from another repository.
+    real = newhost.succeed("readlink -f /run/current-system").strip()
+    # A test VM boots from the store, with no system profile yet.
+    profile = newhost.succeed("readlink /nix/var/nix/profiles/system || true").strip()
+    for node in (forge, newhost):
+        node.succeed(
+            "readlink -f /run/current-system > /srv/real-system",
+            "for c in good bad; do mkdir -p /srv/$c/system/bin"
+            " && echo '{\"nodes\":{\"root\":{}},\"root\":\"root\",\"version\":7}' > /srv/$c/flake.lock && cp ${standInFlake} /srv/$c/flake.nix && cp ${fixtures}/allowed_signers /srv/$c/; done",
+            "install -m 0755 ${goodSwitch} /srv/good/system/bin/switch-to-configuration",
+            "install -m 0755 ${badSwitch} /srv/bad/system/bin/switch-to-configuration",
+            # The rest of the real system, so that the test driver still finds
+            # its tools under /run/current-system/sw.
+            "for c in good bad; do for f in \"$(cat /srv/real-system)\"/*; do"
+            " [ \"''${f##*/}\" = bin ] || ln -s \"$f\" /srv/$c/system/; done; done",
+        )
+    newhost.succeed("git -C /etc/nixos remote add origin https://example.org/old.git")
+    # The keys the new system's accounts take from the secrets, and support's
+    # private key, with which fleetmgr logs in to confirm the new system.
+    forge.succeed(
+        "install -o git -m 644 ${fixtures}/admin.pub ${fixtures}/support.pub /home/git/",
+        "install -o git -m 600 ${fixtures}/support /home/git/.ssh/id_ed25519",
+        "cd /home/git && su git -c 'SOPS_AGE_KEY_FILE=/home/git/recovery.key fleetmgr secrets user-keys admin newhost"
+        " --authorized-keys /home/git/admin.pub --sudo-keys /home/git/admin.pub --repo /home/git/w --recovery \"\" --yes'",
+        "cd /home/git && su git -c 'SOPS_AGE_KEY_FILE=/home/git/recovery.key fleetmgr secrets user-keys support newhost"
+        " --authorized-keys /home/git/support.pub --repo /home/git/w --recovery \"\" --yes'",
+    )
+
+    def switch_to(flake):
+        status, out = forge.execute(
+            "cd /home/git && timeout 600 su git -c 'SOPS_AGE_KEY_FILE=/home/git/recovery.key"
+            f" fleetmgr host enroll newhost --flake {flake} --switch-to {flake} --trial-minutes 1 --key /home/git/admin"
+            " --repo /home/git/w --recovery \"\" --sync=false --yes"
+            " --register-with \"cat >> /home/git/.ssh/authorized_keys\"' 2>&1"
+        )
+        print(out)
+        return status, out
+
+    with subtest("a trial switch to a system that cuts off SSH is not confirmed, and goes back by itself"):
+        status, out = switch_to("/srv/bad")
+        assert status != 0, "a system support cannot reach was taken"
+        for want in ["fetched, verified and decrypted", "armed: unless the new system is confirmed"]:
+            assert want in out, f"output lacks {want!r}"
+        assert "gone back already" in out or "goes back to the system it ran before by itself" in out, out
+        assert "the new system is the boot default" not in out
+        newhost.wait_until_succeeds(f"test \"$(readlink -f /run/current-system)\" = {real}", timeout=180)
+        newhost.wait_for_unit("sshd.service")
+        newhost.fail("systemctl is-active fleetmgr-trial-rollback.timer")
+        assert newhost.succeed("readlink /nix/var/nix/profiles/system || true").strip() == profile, "the boot default moved"
+
+    with subtest("a trial switch to a system support reaches is confirmed and made the boot default"):
+        status, out = switch_to("/srv/good")
+        for want in ["stopped the timer: the new system stays", "the new system is the boot default"]:
+            assert want in out, f"output lacks {want!r}"
+        # This host has no first-boot clone to make /etc/nixos the checkout
+        # with, so the step after that stops, as it should here.
+        assert status != 0 and "stopped at step" in out and "Make /etc/nixos the configuration" in out, out
+        new = newhost.succeed("readlink -f /run/current-system").strip()
+        assert new != real and new.startswith("/nix/store/"), new
+        assert newhost.succeed("readlink -f /nix/var/nix/profiles/system").strip() == new
+        newhost.fail("systemctl is-active fleetmgr-trial-rollback.timer")
+        # It stays past the trial's minute.
+        newhost.sleep(75)
+        assert newhost.succeed("readlink -f /run/current-system").strip() == new
   '';
 }
