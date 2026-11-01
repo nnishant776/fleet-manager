@@ -19,6 +19,50 @@ if [ ! -x "$new/bin/switch-to-configuration" ]; then
   exit 2
 fi
 
+# logind stops a user's systemd ten seconds after their last session ends,
+# and fleetmgr's own logins to the host end just before this runs. An
+# activation that reaches a user's systemd while it stops, or just after,
+# fails though nothing is wrong with the system: switch-to-configuration
+# cannot reload that user's units ("Failed to get runtime directory", "Failed
+# to get GID"). So, as the sync does (modules/linux/fleet/sync.nix), an
+# activation first waits for those to stop; and one that fails is tried once
+# more after waiting again, before it counts and the host goes back.
+pinned() { # pinned UID: whether a session keeps the user's systemd running
+  for s in $(loginctl show-user "$1" -p Sessions --value 2>/dev/null); do
+    case "$(loginctl show-session "$s" -p Class --value 2>/dev/null)" in
+      manager | manager-early | background-light | none | "") ;;
+      *) return 0 ;;
+    esac
+  done
+  return 1
+}
+stopping() { # the users whose systemd is stopping or about to
+  loginctl list-users --no-legend 2>/dev/null | while read -r uid name _; do
+    systemctl is-active --quiet "user@$uid.service" || continue
+    [ "$(loginctl show-user "$uid" -p Linger --value 2>/dev/null)" = no ] || continue
+    pinned "$uid" && continue
+    echo "$name"
+  done
+  systemctl list-units --plain --no-legend --state=deactivating 'user@*.service' | cut -d' ' -f1
+}
+settle() { # wait, for two minutes at most, until none is
+  waited=0
+  while users=$(stopping | tr '\n' ' ') && [ -n "$users" ]; do
+    if [ "$waited" -ge 120 ]; then
+      echo "activating while the systemd of ${users% } still stops"
+      return 0
+    fi
+    [ "$waited" -gt 0 ] || echo "waiting for the systemd of ${users% } to stop, after the last session ended"
+    sleep 2
+    waited=$((waited + 2))
+  done
+}
+activate() { # activate UNIT SYSTEM: SYSTEM's switch-to-configuration test, as UNIT
+  settle
+  systemctl reset-failed "$1" 2>/dev/null || true
+  systemd-run --quiet --wait --collect --unit="$1" --setenv=PATH="$path" "$2/bin/switch-to-configuration" test
+}
+
 systemctl stop fleetmgr-trial-rollback.timer 2>/dev/null || true
 systemctl reset-failed fleetmgr-trial-rollback.timer fleetmgr-trial-rollback.service \
   fleetmgr-trial-switch.service fleetmgr-trial-back.service 2>/dev/null || true
@@ -29,14 +73,18 @@ systemd-run --quiet --unit=fleetmgr-trial-rollback --on-active="${minutes}min" \
 echo "armed: unless the new system is confirmed, $(hostname) goes back to $old at $(date -d "now + $minutes min" +%H:%M:%S)"
 
 s=0
-systemd-run --quiet --wait --collect --unit=fleetmgr-trial-switch --setenv=PATH="$path" \
-  "$new/bin/switch-to-configuration" test || s=$?
+activate fleetmgr-trial-switch "$new" || s=$?
+if [ "$s" -ne 0 ]; then
+  journalctl -u fleetmgr-trial-switch -o cat -n 15 --no-pager || true
+  echo "the activation failed (code $s); a user's systemd may have stopped under it: activating once more" >&2
+  s=0
+  activate fleetmgr-trial-switch "$new" || s=$?
+fi
 journalctl -u fleetmgr-trial-switch -o cat -n 15 --no-pager || true
 if [ "$s" -ne 0 ]; then
   echo "the activation failed (code $s): going back to $old now" >&2
   systemctl stop fleetmgr-trial-rollback.timer || true
-  systemd-run --quiet --wait --collect --unit=fleetmgr-trial-back --setenv=PATH="$path" \
-    "$old/bin/switch-to-configuration" test || true
+  activate fleetmgr-trial-back "$old" || true
   exit 3
 fi
 echo "activated $new for a trial"
