@@ -218,6 +218,8 @@
       inherit mkFleet;
       # GitHub's pinned SSH host keys (lib/forge-host-keys.nix), as text.
       forgeHostKeys = { inherit (import ./lib/forge-host-keys.nix) text algorithms; };
+      # The system.stateVersion a host gets when its folder sets none (lib/state-version.nix).
+      defaultStateVersion = import ./lib/state-version.nix;
     };
   };
 }

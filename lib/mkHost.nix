@@ -50,7 +50,7 @@ let
       {
         # A default: a machine brought in with its own configuration keeps
         # the stateVersion it was installed with.
-        system.stateVersion = lib.mkDefault "26.05";
+        system.stateVersion = lib.mkDefault (import ./state-version.nix);
         conf.platform = "nixos";
       }
       ../modules/linux
