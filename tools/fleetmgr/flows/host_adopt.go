@@ -37,6 +37,13 @@ var HostAdopt = &engine.Flow{
 		"and if it does not, says why and leaves the folder for you to change, so that a second run goes on from it.\n" +
 		"Then it commits, pushes, and publishes the host's branch.\n" +
 		"\n" +
+		"Then the machine is brought under the fleet, as fleetmgr host enroll brings a host: its identity, its\n" +
+		"branch of the secrets repository, its keys registered. The passwords and login keys of the accounts its\n" +
+		"configuration takes from the secrets are stored there as the machine has them, so that everyone keeps\n" +
+		"theirs, with support's from --support-keys. After the checks of a switch, and a list of the services that\n" +
+		"would stop, it switches for a trial (--trial-minutes): unless support logs in to the new system, the\n" +
+		"machine goes back by itself. Then /etc/nixos becomes the fleet's checkout, and the host syncs.\n" +
+		"\n" +
 		"A personal machine (conf.fleet.personal) lets its owner make their own account at the first boot, and\n" +
 		"keeps that account out of the configuration. This starts bringing it in. fleetmgr logs in to the host as\n" +
 		"support and reads who the owner is (/var/lib/fleet/owner), their full name and home, their password hash\n" +
@@ -62,6 +69,7 @@ var HostAdopt = &engine.Flow{
 				Default: func(*engine.Ctx) (string, error) { return "support", nil }},
 		},
 		machineInputs,
+		machineSwitchInputs,
 		[]engine.Input{
 			secrets.RepoInput, secrets.RecoveryInput,
 			{Name: "from", Prompt: "Owner's enrollment file", Optional: true, Skip: onlyFor("owner"),
@@ -70,7 +78,8 @@ var HostAdopt = &engine.Flow{
 	),
 	Needs:   []string{"git", "nix", "tar", "ssh", "ssh-agent", "ssh-add", "ssh-keyscan", "sops", "age", "ssh-keygen"},
 	Cleanup: fleetmgr.StopAgent,
-	Steps:   joinSteps(forCase("owner", ownerAdoptSteps), forCase("machine", machineSteps)),
+	Steps: joinSteps(forCase("owner", ownerAdoptSteps),
+		forCase("machine", joinSteps(machineSteps, machineSwitchSteps, []engine.Step{machineNextStep}))),
 }
 
 // ownerAdoptSteps are the steps of the owner case.

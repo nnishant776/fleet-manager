@@ -165,11 +165,13 @@ var machineSteps = []engine.Step{
 		},
 		Do: engine.Func(publishImport),
 	},
-	{
-		Title: "Next",
-		Why:   "The inventory has the host now. The machine still runs its own configuration.",
-		Do:    engine.Func(showAdoptMachineNext),
-	},
+}
+
+// machineNextStep ends the machine case.
+var machineNextStep = engine.Step{
+	Title: "Next",
+	Why:   "What {{.host}} is now, and what is left to you.",
+	Do:    engine.Func(showAdoptMachineNext),
 }
 
 // adoptWrites is whether this run writes the host's folder: not when the
@@ -711,15 +713,23 @@ func commitAdopted(x *engine.Ctx) error {
 
 func showAdoptMachineNext(x *engine.Ctx) error {
 	x.Kept("adopt folder", "")
+	x.Kept("adopt secrets", "")
 	host, flake := x.Value("host"), x.Value("flake_given")
 	if flake == "" {
 		flake = x.Value("flake")
 	}
-	x.UI.Text(host + "'s folder is in the inventory, and its branch is published. The machine still runs its own configuration; " +
-		"its accounts' password hashes and login keys were read, but not stored anywhere.\n" +
-		"To bring it under the fleet, store them and support's keys in the secrets, then enroll it:\n" +
-		"  fleetmgr secrets user-password <user> " + host + " / fleetmgr secrets user-keys <user> " + host + "\n" +
-		"  fleetmgr host enroll " + host + " --flake " + flake + " --admin " + x.Value("admin"))
+	if x.Value("switched") != "true" {
+		if ok, _ := needsSwitch(x); !ok {
+			x.UI.Text(host + " runs the fleet's configuration from the inventory already: there is nothing left to adopt.")
+			return nil
+		}
+		x.UI.Text(host + " was not switched: run this again to go on from where it stopped.")
+		return nil
+	}
+	x.UI.Text(host + " is a fleet host now. It runs host/" + host + " of the inventory, its secrets come from the secrets repository, " +
+		"and its accounts kept their passwords and keys, which change through the secrets from now on: passwd on the machine no longer sticks.\n" +
+		"What its old configuration did is in " + x.Value("imp_paths") + "/previous/ in the inventory, for reference. Check it at any time with:\n" +
+		"  fleetmgr host check " + host + " --flake " + flake)
 	return nil
 }
 
