@@ -59,11 +59,11 @@ func enrollHost(identity, enrolled, tamper bool) func(engine.Spec) (engine.Resul
 				return engine.Result{}, nil // host/pi exists
 			}
 			return engine.Result{Code: 1}, errors.New("exited with code 1")
-		case s.Name == "yq":
+		case s.Name == "git" && strings.Contains(strings.Join(s.Args, " "), "show refs/heads/host/pi:hosts/pi.yaml"):
 			if enrolled {
-				return engine.Result{Stdout: "age1testrecipient\n"}, nil
+				return engine.Result{Stdout: sopsFile("pi", nil, "age1testrecipient")}, nil
 			}
-			return engine.Result{Stdout: "\n"}, nil
+			return engine.Result{Stdout: sopsFile("pi", nil, "age1recoveryrecipient")}, nil
 		case s.Name == "git" && strings.Contains(strings.Join(s.Args, " "), "rev-list"):
 			if enrolled {
 				return engine.Result{Stdout: "0\n"}, nil
@@ -461,8 +461,8 @@ func TestEnrollSkipsWhatIsDone(t *testing.T) {
 func TestEnrollRefusesAHostEnrolledWithAnotherIdentity(t *testing.T) {
 	base := enrollHost(true, true, false)
 	err, fake, out := runEnroll(t, func(s engine.Spec) (engine.Result, error) {
-		if s.Name == "yq" { // the recipients of host/pi's file: not the one the host has now
-			return engine.Result{Stdout: "age1otherrecipient\nage1recoveryrecipient\n"}, nil
+		if s.Name == "git" && strings.Contains(strings.Join(s.Args, " "), "show refs/heads/host/pi:hosts/pi.yaml") { // the recipients of host/pi's file: not the one the host has now
+			return engine.Result{Stdout: sopsFile("pi", nil, "age1otherrecipient", "age1recoveryrecipient")}, nil
 		}
 		return base(s)
 	})

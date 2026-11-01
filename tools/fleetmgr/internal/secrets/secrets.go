@@ -223,11 +223,11 @@ func Recipients(x *engine.Ctx, ref, host string) ([]string, error) {
 		return nil, fmt.Errorf("%s has no hosts/%s.yaml", ref, host)
 	}
 	x.Values["host_file"] = doc.Stdout
-	res, err := engine.Cmd("yq", ".sops.age[].recipient").StdinFrom("host_file").StdinNote("the host's file").RunQuiet(x)
+	all, err := RecipientsIn(doc.Stdout)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("hosts/%s.yaml on %s: %w", host, ref, err)
 	}
-	return strings.Fields(res.Stdout), nil
+	return all, nil
 }
 
 // HostRecipient is the host's own recipient on a ref: the one in the sops
@@ -424,44 +424,31 @@ func ReadEnrollment() engine.Step {
 				return err
 			}
 			x.Values["enrollment"] = string(doc)
-			field := map[string]string{}
-			// Files written before the keys were renamed say deploy_pubkey.
-			for _, f := range [][2]string{
-				{"version", ".version"}, {"host", ".host"}, {"age_recipient", ".age_recipient"},
-				{"secrets_deploy_pubkey", ".secrets_deploy_pubkey // .deploy_pubkey"},
-			} {
-				res, err := engine.Cmd("yq", f[1]).StdinFrom("enrollment").StdinNote("the enrollment file").RunQuiet(x)
-				if err != nil {
-					return err
-				}
-				field[f[0]] = strings.TrimSpace(res.Stdout)
+			e, err := ParseEnrollment(string(doc))
+			if err != nil {
+				return err
 			}
-			if field["version"] != "1" {
-				return fmt.Errorf("unsupported enrollment file version '%s'", field["version"])
+			if e.Version != "1" {
+				return fmt.Errorf("unsupported enrollment file version '%s'", e.Version)
 			}
-			if field["host"] != x.Value("host") {
-				return fmt.Errorf("enrollment file is for host '%s', not '%s'", field["host"], x.Value("host"))
+			if e.Host != x.Value("host") {
+				return fmt.Errorf("enrollment file is for host '%s', not '%s'", e.Host, x.Value("host"))
 			}
-			r := field["age_recipient"]
+			r := e.AgeRecipient
 			if !strings.HasPrefix(r, "age1") || len(r) == 4 || strings.IndexFunc(r[4:], func(c rune) bool {
 				return !(c >= '0' && c <= '9' || c >= 'a' && c <= 'z')
 			}) >= 0 {
 				return errors.New("malformed age_recipient in the enrollment file")
 			}
-			if !strings.HasPrefix(field["secrets_deploy_pubkey"], "ssh-ed25519 ") {
+			if !strings.HasPrefix(e.DeployKey, "ssh-ed25519 ") {
 				return errors.New("secrets_deploy_pubkey in the enrollment file is not an ssh-ed25519 key")
 			}
 			// Absent from files written before hosts had a configuration key.
-			res, err := engine.Cmd("yq", `.config_deploy_pubkey // ""`).StdinFrom("enrollment").StdinNote("the enrollment file").RunQuiet(x)
-			if err != nil {
-				return err
-			}
-			configKey := strings.TrimSpace(res.Stdout)
-			if configKey != "" && !strings.HasPrefix(configKey, "ssh-ed25519 ") {
+			if e.ConfigKey != "" && !strings.HasPrefix(e.ConfigKey, "ssh-ed25519 ") {
 				return errors.New("config_deploy_pubkey in the enrollment file is not an ssh-ed25519 key")
 			}
-			x.Values["recipient"], x.Values["deploy_key"], x.Values["config_key"] = r, field["secrets_deploy_pubkey"], configKey
-			x.UI.OK("for " + field["host"] + ", recipient " + r)
+			x.Values["recipient"], x.Values["deploy_key"], x.Values["config_key"] = r, e.DeployKey, e.ConfigKey
+			x.UI.OK("for " + e.Host + ", recipient " + r)
 			return nil
 		}),
 	}

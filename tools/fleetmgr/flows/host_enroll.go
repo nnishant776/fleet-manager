@@ -573,17 +573,11 @@ func copyEnrollment(x *engine.Ctx) error {
 	path := filepath.Join(x.Value("repo"), x.Value("host")+".enroll")
 	x.Values["from"] = path
 	x.Values["enroll_doc"] = doc
-	for _, line := range strings.Split(doc, "\n") {
-		if v, ok := strings.CutPrefix(line, "age_recipient: "); ok {
-			x.Values["recipient"] = v
-		}
-		if v, ok := strings.CutPrefix(strings.TrimPrefix(line, "secrets_"), "deploy_pubkey: "); ok {
-			x.Values["deploy_key"] = v
-		}
-		if v, ok := strings.CutPrefix(line, "config_deploy_pubkey: "); ok {
-			x.Values["config_key"] = v
-		}
+	e, err := secrets.ParseEnrollment(doc)
+	if err != nil {
+		return fmt.Errorf("from the host: %w", err)
 	}
+	x.Values["recipient"], x.Values["deploy_key"], x.Values["config_key"] = e.AgeRecipient, e.DeployKey, e.ConfigKey
 	if x.Options.DryRun {
 		x.UI.Skip("dry run: checksums match (" + remote[:16] + "…), not copied to " + path)
 		return nil

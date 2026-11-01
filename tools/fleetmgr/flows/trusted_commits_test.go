@@ -36,12 +36,11 @@ func TestHostSecretRefusesATipThatDoesNotFollowTheRecord(t *testing.T) {
 	run := func() (error, *engine.Fake, string) {
 		x, fake, out := newFakeCtx(func(s engine.Spec) (engine.Result, error) {
 			args := strings.Join(s.Args, " ")
+			inWorktree(s, "hosts/nas.yaml", sopsFile("nas", nil, "age1hostrecipient", "age1recoveryrecipient"))
 			if res, ok := hostFile(s); ok {
 				return res, nil
 			}
 			switch {
-			case s.Name == "yq" && strings.HasPrefix(args, "-o=json"):
-				return engine.Result{Stdout: `{"sops": {}}`}, nil
 			case s.Name == "git" && strings.HasSuffix(args, "rev-parse --verify -q refs/heads/host/nas^{commit}"):
 				return engine.Result{Stdout: newCommit + "\n"}, nil
 			case notAncestor(s, oldCommit, newCommit):
@@ -91,12 +90,11 @@ func TestHostSecretAdvancesTheRecordToWhatItPushed(t *testing.T) {
 	var atPush string
 	x, fake, out := newFakeCtx(func(s engine.Spec) (engine.Result, error) {
 		args := strings.Join(s.Args, " ")
+		inWorktree(s, "hosts/nas.yaml", sopsFile("nas", nil, "age1hostrecipient", "age1recoveryrecipient"))
 		if res, ok := hostFile(s); ok {
 			return res, nil
 		}
 		switch {
-		case s.Name == "yq" && strings.HasPrefix(args, "-o=json"):
-			return engine.Result{Stdout: `{"sops": {}}`}, nil
 		case s.Name == "git" && strings.HasSuffix(args, "rev-parse --verify -q refs/heads/host/nas^{commit}"):
 			resolved++
 			if resolved == 1 {

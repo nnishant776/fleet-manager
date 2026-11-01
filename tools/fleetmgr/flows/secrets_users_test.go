@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/nnishant776/fleet-manager/tools/fleetmgr/internal/engine"
+	"github.com/nnishant776/fleet-manager/tools/fleetmgr/internal/secrets"
 )
 
 const (
@@ -34,37 +35,13 @@ func userEnrollDoc(user, recipient, key string) string {
 
 func (r *userRepo) respond(s engine.Spec) (engine.Result, error) {
 	args := strings.Join(s.Args, " ")
-	if res, ok := hostFile(s); ok && len(s.Args) == 1 {
-		return res, nil
-	}
 	switch s.Name {
-	case "yq":
-		switch {
-		case strings.HasPrefix(args, ".sops.age"): // the moved file's recipients
-			out := "age1hostrecipient\n" + aliceAge + "\nage1recoveryrecipient\n"
-			if r.badEncrypt {
-				out += "age1stranger\n"
-			}
-			return engine.Result{Stdout: out}, nil
-		case strings.HasPrefix(args, ".users["):
-			// The host's file is on stdin; its first line says which host.
-			host := strings.TrimSpace(strings.SplitN(s.Stdin, "\n", 2)[0])
-			if _, ok := r.listed[host]; ok {
-				return engine.Result{Stdout: "true\n"}, nil
-			}
-			return engine.Result{Stdout: "false\n"}, nil
-		}
-		doc := map[string]string{}
-		for _, line := range strings.Split(s.Stdin, "\n") {
-			if k, v, ok := strings.Cut(line, ": "); ok {
-				doc[k] = v
-			}
-		}
-		return engine.Result{Stdout: doc[strings.TrimPrefix(args, ".")] + "\n"}, nil
 	case "sops":
-		if s.Args[0] == "-d" { // the identity a host's file lists alice with
-			host := strings.TrimSpace(strings.SplitN(s.Stdin, "\n", 2)[0])
-			return engine.Result{Stdout: r.listed[host]}, nil
+		switch {
+		case s.Args[0] == "-d": // the identity a host's file lists alice with
+			return engine.Result{Stdout: r.listed[ownerOf(s.Stdin)]}, nil
+		case s.Args[0] == "rotate" && s.Dir != "":
+			rotateFile(s, r.badEncrypt)
 		}
 		return engine.Result{Stdout: "ENCRYPTED"}, nil
 	case "git":
@@ -96,9 +73,17 @@ func (r *userRepo) respond(s engine.Spec) (engine.Result, error) {
 			return engine.Result{Stdout: r.enroll}, nil
 		case s.Args[0] == "show" && strings.Contains(args, ":hosts/"):
 			host := strings.TrimSuffix(args[strings.Index(args, ":hosts/")+len(":hosts/"):], ".yaml")
-			return engine.Result{Stdout: host + "\nsops: {}\n"}, nil
+			var keys []string
+			if _, ok := r.listed[host]; ok {
+				keys = append(keys, "users/alice")
+			}
+			return engine.Result{Stdout: sopsFile(host, keys, "age1hostrecipient", "age1recoveryrecipient")}, nil
+		case s.Args[0] == "show" && strings.Contains(args, "refs/heads/user/"):
+			// alice's file on her branch: to the host, to her and to the recovery recipient
+			return engine.Result{Stdout: sopsFile("alice", []string{"password"}, "age1hostrecipient", aliceAge, "age1recoveryrecipient")}, nil
 		case s.Args[0] == "show":
-			return engine.Result{Stdout: "ENCRYPTED OLD"}, nil
+			// her file as the host's branch holds it, before she is enrolled: to the host and the recovery recipient
+			return engine.Result{Stdout: sopsFile("alice", []string{"password"}, "age1hostrecipient", "age1recoveryrecipient")}, nil
 		}
 	}
 	return engine.Result{}, nil
@@ -333,7 +318,7 @@ func TestUserRetireOfAUserNoHostListsStillDeletesTheBranch(t *testing.T) {
 
 func TestHostSecretRefusesTheNameUsers(t *testing.T) {
 	for _, name := range []string{"users", "users/alice"} {
-		err, fake, out := runHostSecret(t, name, `{"sops": {}}`)
+		err, fake, out := runHostSecret(t, name, nil)
 		if err == nil || !strings.Contains(errors.Unwrap(err).Error(), `"users" is where the host's file lists the users`) {
 			t.Errorf("%s: got %v\n%s", name, err, out)
 		}
@@ -502,32 +487,10 @@ func TestHostRekeyRotatesTheFilesOfListedUsersOnTheirBranches(t *testing.T) {
 	cacheRecovery(t)
 	forgetTrusted(t)
 	x, fake, out := newFakeCtx(func(s engine.Spec) (engine.Result, error) {
-		args := strings.Join(s.Args, " ")
-		if s.Name == "yq" && strings.HasPrefix(args, "(.users") {
-			return engine.Result{Stdout: "alice\n"}, nil
-		}
-		if s.Name == "yq" && s.Stdin == "ENCRYPTED OLD" {
-			return engine.Result{Stdout: "age1hostrecipient\n" + aliceAge + "\nage1recoveryrecipient\n"}, nil
-		}
 		return r.respond(s)
 	})
 	from := filepath.Join(t.TempDir(), "nas.enroll")
 	_ = os.WriteFile(from, []byte("version: 1\nhost: nas\nage_recipient: age1newhost\nsecrets_deploy_pubkey: ssh-ed25519 AAAA x\n"), 0o644)
-	// yq answers the enrollment's fields from its text.
-	inner := x.Runner.(*engine.Fake).Respond
-	x.Runner.(*engine.Fake).Respond = func(s engine.Spec) (engine.Result, error) {
-		if s.Name == "yq" && strings.HasPrefix(s.Stdin, "version: 1\nhost: nas") {
-			doc := map[string]string{}
-			for _, l := range strings.Split(s.Stdin, "\n") {
-				if k, v, ok := strings.Cut(l, ": "); ok {
-					doc[k] = v
-				}
-			}
-			k := strings.TrimPrefix(strings.Fields(s.Args[0])[0], ".")
-			return engine.Result{Stdout: doc[k] + "\n"}, nil
-		}
-		return inner(s)
-	}
 	err := engine.RunWith(x, SecretsHostRekey, map[string]string{"repo": t.TempDir(), "recovery": "", "host": "nas", "from": from})
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
@@ -537,4 +500,32 @@ func TestHostRekeyRotatesTheFilesOfListedUsersOnTheirBranches(t *testing.T) {
 		"git commit -q -m 'host-rekey: nas'",
 		"git commit -q -m 'host-rekey: nas'",
 	)
+}
+
+// rotateFile is what the fake sops rotate does to the file named last in
+// the directory it runs in: the recipients after --rm-age are taken off it
+// and those after --add-age put on it (stranger, a recipient that should not
+// be there, as well). The file holds a password.
+func rotateFile(s engine.Spec, stranger bool) {
+	path := filepath.Join(s.Dir, s.Args[len(s.Args)-1])
+	old, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	got, err := secrets.RecipientsIn(string(old))
+	if err != nil {
+		return
+	}
+	for i, a := range s.Args {
+		switch {
+		case a == "--rm-age" && i+1 < len(s.Args):
+			got = slices.DeleteFunc(got, func(r string) bool { return r == s.Args[i+1] })
+		case a == "--add-age" && i+1 < len(s.Args):
+			got = append(got, s.Args[i+1])
+		}
+	}
+	if stranger {
+		got = append(got, "age1stranger")
+	}
+	_ = os.WriteFile(path, []byte(sopsFile(ownerOf(string(old)), []string{"password"}, got...)), 0o644)
 }

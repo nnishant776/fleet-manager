@@ -94,7 +94,7 @@ func checkBranchHoldsSecrets(x *engine.Ctx) error {
 		if s.Key == "" {
 			continue
 		}
-		has, err := keyPresent(x, doc, s.Key)
+		has, err := keyPresent(doc, s.Key)
 		if err != nil {
 			return err
 		}
@@ -115,18 +115,12 @@ func checkBranchHoldsSecrets(x *engine.Ctx) error {
 
 // keyPresent says whether a sops file holds the key, a / nesting it as
 // sops-nix does.
-func keyPresent(x *engine.Ctx, doc, key string) (bool, error) {
-	expr := "."
-	for _, part := range strings.Split(key, "/") {
-		q, _ := json.Marshal(part)
-		expr += "[" + string(q) + "]"
-	}
-	x.Values["branch_doc"] = doc
-	res, err := engine.Cmd("yq", expr+" != null").StdinFrom("branch_doc").StdinNote("the file as it is on the branch").RunQuiet(x)
+func keyPresent(doc, key string) (bool, error) {
+	has, err := secrets.HasKey(doc, strings.Split(key, "/")...)
 	if err != nil {
 		return false, fmt.Errorf("could not read the file: %w", err)
 	}
-	return strings.TrimSpace(res.Stdout) == "true", nil
+	return has, nil
 }
 
 // addCommand is the command that stores what is missing: the secret in a

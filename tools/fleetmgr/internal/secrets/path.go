@@ -30,7 +30,7 @@ func SetAt(file, path, value, note string) *engine.Command {
 }
 
 // CheckPlace says why name cannot be stored in a file shaped like doc, or
-// nil if it can. doc is the file as JSON: sops encrypts the values only, so
+// nil if it can. doc is the file's Shape: sops encrypts the values only, so
 // its keys and nesting can be read without decrypting anything. A value
 // is replaced; what is refused would lose secrets or break the file.
 func CheckPlace(doc map[string]any, name string) error {

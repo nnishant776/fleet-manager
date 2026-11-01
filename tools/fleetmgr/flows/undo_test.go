@@ -30,14 +30,8 @@ func TestAdmittingAHostPutsBackWhenTheCommitFails(t *testing.T) {
 	repo := t.TempDir()
 	from := filepath.Join(t.TempDir(), "pi.enroll")
 	_ = os.WriteFile(from, []byte(enrollDoc), 0o644)
-	answers := map[string]string{
-		".version": "1", ".host": "pi",
-		".age_recipient": "age1testrecipient", ".secrets_deploy_pubkey // .deploy_pubkey": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDdBK90 fleet-deploy@pi",
-	}
 	x, fake, out := newFakeCtx(func(s engine.Spec) (engine.Result, error) {
 		switch {
-		case s.Name == "yq" && answers[s.Args[0]] != "":
-			return engine.Result{Stdout: answers[s.Args[0]] + "\n"}, nil
 		case s.Name == "sops":
 			return engine.Result{Stdout: "sops: encrypted\n"}, nil
 		case s.Name == "git" && (strings.Contains(strings.Join(s.Args, " "), "rev-parse --verify") && !strings.HasSuffix(strings.Join(s.Args, " "), "^{commit}")):

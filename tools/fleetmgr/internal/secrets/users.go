@@ -58,11 +58,11 @@ func IsListed(x *engine.Ctx, hostRef, host, user string) (bool, error) {
 		return false, fmt.Errorf("%s has no hosts/%s.yaml", hostRef, host)
 	}
 	x.Values["host_file"] = doc.Stdout
-	res, err := engine.Cmd("yq", `.users["`+user+`"] != null`).StdinFrom("host_file").StdinNote("the host's file").RunQuiet(x)
+	listed, err := HasKey(doc.Stdout, "users", user)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("hosts/%s.yaml on %s: %w", host, hostRef, err)
 	}
-	return strings.TrimSpace(res.Stdout) == "true", nil
+	return listed, nil
 }
 
 // ReadListing is IsListed, and for a user that is listed also the identity the

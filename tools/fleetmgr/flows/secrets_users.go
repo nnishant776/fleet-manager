@@ -161,25 +161,13 @@ func readUserEnrollment(x *engine.Ctx) error {
 		return err
 	}
 	x.Values["enrollment"] = string(doc)
-	field := func(expr string) (string, error) { return yqField(x, "enrollment", expr) }
-	version, err := field(".version")
+	e, err := secrets.ParseEnrollment(string(doc))
 	if err != nil {
 		return err
 	}
-	user, err := field(".user")
-	if err != nil {
-		return err
-	}
-	recipient, err := field(".age_recipient")
-	if err != nil {
-		return err
-	}
-	key, err := field(".signing_key")
-	if err != nil {
-		return err
-	}
-	if version != "1" {
-		return fmt.Errorf("unsupported enrollment file version '%s'", version)
+	user, recipient, key := e.User, e.AgeRecipient, e.SigningKey
+	if e.Version != "1" {
+		return fmt.Errorf("unsupported enrollment file version '%s'", e.Version)
 	}
 	if user != x.Value("user") {
 		return fmt.Errorf("enrollment file is for user '%s', not '%s'", user, x.Value("user"))
@@ -187,7 +175,7 @@ func readUserEnrollment(x *engine.Ctx) error {
 	if !userAgePattern.MatchString(recipient) {
 		return errors.New("malformed age_recipient in the enrollment file")
 	}
-	if key == "" || key == "null" || strings.ContainsAny(key, "\r\n") {
+	if key == "" || strings.ContainsAny(key, "\r\n") {
 		return errors.New("signing_key in the enrollment file is not one SSH public key line")
 	}
 	if _, err := engine.Cmd("ssh-keygen", "-l", "-f", "/dev/stdin").Stdin(key).StdinNote("the key").RunQuiet(x); err != nil {
@@ -196,15 +184,6 @@ func readUserEnrollment(x *engine.Ctx) error {
 	x.Values["user_recipient"], x.Values["signing_key"] = recipient, key
 	x.UI.OK("for " + user + ", recipient " + recipient)
 	return nil
-}
-
-// yqField reads one field of a document kept as the value from.
-func yqField(x *engine.Ctx, from, expr string) (string, error) {
-	res, err := engine.Cmd("yq", expr).StdinFrom(from).StdinNote("the enrollment file").RunQuiet(x)
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(res.Stdout), nil
 }
 
 // lookUpUserBranch finds user/<user>; a branch that holds this very identity
@@ -224,16 +203,11 @@ func lookUpUserBranch(x *engine.Ctx) error {
 	if err != nil {
 		return fmt.Errorf("%s has no enroll file", ref)
 	}
-	x.Values["old_enrollment"] = doc.Stdout
-	recipient, err := yqField(x, "old_enrollment", ".age_recipient")
+	old, err := secrets.ParseEnrollment(doc.Stdout)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s:enroll: %w", ref, err)
 	}
-	key, err := yqField(x, "old_enrollment", ".signing_key")
-	if err != nil {
-		return err
-	}
-	if recipient != x.Value("user_recipient") || key != x.Value("signing_key") {
+	if old.AgeRecipient != x.Value("user_recipient") || old.SigningKey != x.Value("signing_key") {
 		return fmt.Errorf("user '%s' is already enrolled with another identity", user)
 	}
 	x.Values["known"] = "true"
@@ -395,11 +369,14 @@ func moveUserFile(x *engine.Ctx, e userHostPlan, rel string) error {
 	if x.Options.DryRun {
 		return nil
 	}
-	res, err := engine.Cmd("yq", ".sops.age[].recipient", rel).In("{{.work}}").RunQuiet(x)
+	moved, err := os.ReadFile(filepath.Join(x.Value("work"), rel))
 	if err != nil {
 		return err
 	}
-	got := strings.Fields(res.Stdout)
+	got, err := secrets.RecipientsIn(string(moved))
+	if err != nil {
+		return fmt.Errorf("%s: %w", rel, err)
+	}
 	want := []string{e.Recipient, x.Value("user_recipient"), x.Value("recovery_pub")}
 	slices.Sort(got)
 	slices.Sort(want)
@@ -626,11 +603,10 @@ func rekeyListedUsers(x *engine.Ctx) error {
 		return err
 	}
 	x.Values["host_file"] = doc.Stdout
-	res, err := engine.Cmd("yq", `(.users // {}) | keys | .[]`).StdinFrom("host_file").StdinNote("the host's file").RunQuiet(x)
+	users, err := secrets.ListedUsers(doc.Stdout)
 	if err != nil {
-		return err
+		return fmt.Errorf("hosts/%s.yaml on %s: %w", host, ref, err)
 	}
-	users := strings.Fields(res.Stdout)
 	if len(users) == 0 {
 		x.UI.Skip("the host lists no user")
 		return nil
@@ -656,12 +632,11 @@ func rekeyListedUsers(x *engine.Ctx) error {
 		if err != nil {
 			return err
 		}
-		x.Values["user_file"] = recipients.Stdout
-		res, err := engine.Cmd("yq", ".sops.age[].recipient").StdinFrom("user_file").StdinNote("the user's file").RunQuiet(x)
+		has, err := secrets.RecipientsIn(recipients.Stdout)
 		if err != nil {
-			return err
+			return fmt.Errorf("%s on user/%s: %w", rel, u, err)
 		}
-		if slices.Contains(strings.Fields(res.Stdout), x.Value("recipient")) {
+		if slices.Contains(has, x.Value("recipient")) {
 			x.UI.Skip(rel + " on user/" + u + " has the new recipient already")
 			continue
 		}

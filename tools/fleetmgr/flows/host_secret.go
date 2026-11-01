@@ -1,9 +1,10 @@
 package flows
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/nnishant776/fleet-manager/tools/fleetmgr/internal/engine"
@@ -153,17 +154,15 @@ func wantSync(x *engine.Ctx) (bool, string) {
 
 // checkPlace refuses a name that would replace a group of the host's
 // secrets or go under one of its values. sops leaves the keys in clear, so
-// yq reads the file's shape as it is, decrypting nothing.
+// the file's shape reads as it is, decrypting nothing.
 func checkPlace(x *engine.Ctx) error {
-	res, err := engine.Cmd("yq", "-o=json", ".", "hosts/{{.host}}.yaml").In("{{.work}}").RunQuiet(x)
+	file, err := os.ReadFile(filepath.Join(x.Value("work"), "hosts", x.Value("host")+".yaml"))
 	if err != nil {
 		return err
 	}
-	var doc map[string]any
-	if out := strings.TrimSpace(res.Stdout); out != "" && out != "null" {
-		if err := json.Unmarshal([]byte(out), &doc); err != nil {
-			return fmt.Errorf("reading hosts/%s.yaml: %w", x.Value("host"), err)
-		}
+	doc, err := secrets.Shape(string(file))
+	if err != nil {
+		return fmt.Errorf("reading hosts/%s.yaml: %w", x.Value("host"), err)
 	}
 	return secrets.CheckPlace(doc, x.Value("name"))
 }

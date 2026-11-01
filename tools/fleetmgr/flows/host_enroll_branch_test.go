@@ -1,7 +1,6 @@
 package flows
 
 import (
-	"regexp"
 	"strings"
 	"testing"
 
@@ -15,7 +14,7 @@ const declaredSecrets = `{
   "kept": {"sopsFile": "/nix/store/abc-source/kept.yaml", "key": "a"}
 }`
 
-// checkBranch runs the check against a fake of host/pi that holds files, where JSON stands in for the sops files:
+// checkBranch runs the check against a fake of host/pi that holds files, where the files are sops files:
 // the keys are in clear, the values are not read.
 func checkBranch(t *testing.T, files map[string]string) (error, *engine.Fake, string) {
 	t.Helper()
@@ -32,17 +31,6 @@ func checkBranch(t *testing.T, files map[string]string) (error, *engine.Fake, st
 				return engine.Result{Code: 128}, errExit
 			}
 			return engine.Result{Stdout: doc}, nil
-		case s.Name == "yq":
-			parts := regexp.MustCompile(`\["([^"]*)"\]`).FindAllStringSubmatch(args, -1)
-			doc := s.Stdin
-			for _, p := range parts {
-				i := strings.Index(doc, `"`+p[1]+`"`)
-				if i < 0 {
-					return engine.Result{Stdout: "false\n"}, nil
-				}
-				doc = doc[i+len(p[1])+2:]
-			}
-			return engine.Result{Stdout: "true\n"}, nil
 		}
 		return engine.Result{}, nil
 	})
@@ -58,9 +46,9 @@ func (*exitError) Error() string { return "exited with code 128" }
 
 func TestEnrollChecksTheBranchHoldsEverySecretTheConfigurationDeclares(t *testing.T) {
 	err, fake, out := checkBranch(t, map[string]string{
-		"users/alice/pi.yaml":   `{"password": "ENC[…]", "sops": {}}`,
-		"users/support/pi.yaml": `{"authorized_keys": "ENC[…]", "sops": {}}`,
-		"hosts/pi.yaml":         `{"wifi": {"home": "ENC[…]"}, "sops": {}}`,
+		"users/alice/pi.yaml":   sopsFile("pi", []string{"password"}, "age1hostrecipient"),
+		"users/support/pi.yaml": sopsFile("pi", []string{"authorized_keys"}, "age1hostrecipient"),
+		"hosts/pi.yaml":         sopsFile("pi", []string{"wifi/home"}, "age1hostrecipient"),
 	})
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
@@ -77,9 +65,9 @@ func TestEnrollChecksTheBranchHoldsEverySecretTheConfigurationDeclares(t *testin
 
 func TestEnrollStopsForAKeyTheBranchLacksAndSaysWhatAddsIt(t *testing.T) {
 	err, _, out := checkBranch(t, map[string]string{
-		"users/alice/pi.yaml":   `{"password": "ENC[…]", "sops": {}}`,
-		"users/support/pi.yaml": `{"password": "ENC[…]", "sops": {}}`,
-		"hosts/pi.yaml":         `{"wifi": {"other": "ENC[…]"}, "sops": {}}`,
+		"users/alice/pi.yaml":   sopsFile("pi", []string{"password"}, "age1hostrecipient"),
+		"users/support/pi.yaml": sopsFile("pi", []string{"password"}, "age1hostrecipient"),
+		"hosts/pi.yaml":         sopsFile("pi", []string{"wifi/other"}, "age1hostrecipient"),
 	})
 	if err == nil {
 		t.Fatalf("a missing key was not found\n%s", out)
@@ -99,8 +87,8 @@ func TestEnrollStopsForAKeyTheBranchLacksAndSaysWhatAddsIt(t *testing.T) {
 
 func TestEnrollStopsForAFileTheBranchLacks(t *testing.T) {
 	err, _, out := checkBranch(t, map[string]string{
-		"users/alice/pi.yaml": `{"password": "ENC[…]", "sops": {}}`,
-		"hosts/pi.yaml":       `{"wifi": {"home": "ENC[…]"}, "sops": {}}`,
+		"users/alice/pi.yaml": sopsFile("pi", []string{"password"}, "age1hostrecipient"),
+		"hosts/pi.yaml":       sopsFile("pi", []string{"wifi/home"}, "age1hostrecipient"),
 	})
 	if err == nil || !strings.Contains(out, "missing users/support/pi.yaml") {
 		t.Fatalf("got %v\n%s", err, out)

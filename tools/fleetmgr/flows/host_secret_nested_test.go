@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -21,26 +22,44 @@ func cacheRecovery(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(state, "fleet", "recovery.pub"), []byte("age1recoveryrecipient\n"), 0o644)
 }
 
-// hostFile answers yq for the recipients of a host's file on its branch.
-func hostFile(s engine.Spec) (engine.Result, bool) {
-	if s.Name == "yq" && strings.HasPrefix(strings.Join(s.Args, " "), ".sops.age") {
-		return engine.Result{Stdout: "age1hostrecipient\nage1recoveryrecipient\n"}, true
+// hostFile answers git show of a host's file on its branch: a sops file
+// holding keys, encrypted to the host and the recovery recipient.
+func hostFile(s engine.Spec, keys ...string) (engine.Result, bool) {
+	if s.Name != "git" || len(s.Args) == 0 {
+		return engine.Result{}, false
 	}
-	return engine.Result{}, false
+	last := s.Args[len(s.Args)-1]
+	i := strings.Index(last, ":hosts/")
+	if !slices.Contains(s.Args, "show") || i < 0 || !strings.HasSuffix(last, ".yaml") {
+		return engine.Result{}, false
+	}
+	host := strings.TrimSuffix(last[i+len(":hosts/"):], ".yaml")
+	return engine.Result{Stdout: sopsFile(host, keys, "age1hostrecipient", "age1recoveryrecipient")}, true
+}
+
+// inWorktree makes the fake git worktree add leave the file at rel, as the
+// branch holds it, in the directory the worktree is made in.
+func inWorktree(s engine.Spec, rel, content string) {
+	if s.Name != "git" || !strings.Contains(strings.Join(s.Args, " "), "worktree add") {
+		return
+	}
+	for _, a := range s.Args {
+		if filepath.IsAbs(a) && strings.Contains(a, "fleetmgr-secrets-") {
+			_ = os.MkdirAll(filepath.Dir(filepath.Join(a, rel)), 0o755)
+			_ = os.WriteFile(filepath.Join(a, rel), []byte(content), 0o644)
+		}
+	}
 }
 
 // runHostSecret stores value under name for host nas, in a secrets file
-// shaped like doc (its JSON, as yq prints it).
-func runHostSecret(t *testing.T, name, doc string) (error, *engine.Fake, string) {
+// holding keys (a / nests one).
+func runHostSecret(t *testing.T, name string, keys []string) (error, *engine.Fake, string) {
 	t.Helper()
 	cacheRecovery(t)
 	x, fake, out := newFakeCtx(func(s engine.Spec) (engine.Result, error) {
-		args := strings.Join(s.Args, " ")
-		if res, ok := hostFile(s); ok {
+		inWorktree(s, "hosts/nas.yaml", sopsFile("nas", keys, "age1hostrecipient", "age1recoveryrecipient"))
+		if res, ok := hostFile(s, keys...); ok {
 			return res, nil
-		}
-		if s.Name == "yq" && strings.HasPrefix(args, "-o=json") {
-			return engine.Result{Stdout: doc}, nil
 		}
 		return engine.Result{}, nil
 	})
@@ -52,7 +71,7 @@ func runHostSecret(t *testing.T, name, doc string) (error, *engine.Fake, string)
 }
 
 func TestHostSecretNestsOnSlash(t *testing.T) {
-	err, fake, out := runHostSecret(t, "hotspot/wls0", `{"hotspot": {"wls1": "ENC[…]"}, "sops": {}}`)
+	err, fake, out := runHostSecret(t, "hotspot/wls0", []string{"hotspot/wls1"})
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
@@ -76,12 +95,12 @@ func TestHostSecretNestsOnSlash(t *testing.T) {
 }
 
 func TestHostSecretRefusesToReplaceAGroup(t *testing.T) {
-	doc := `{"hotspot": {"wls0": "ENC[…]", "wls1": "ENC[…]"}, "sops": {}}`
+	keys := []string{"hotspot/wls0", "hotspot/wls1"}
 	for name, want := range map[string]string{
 		"hotspot":           "hotspot holds secrets of its own (wls0, wls1)",
 		"hotspot/wls0/more": "hotspot/wls0 holds a value",
 	} {
-		err, fake, out := runHostSecret(t, name, doc)
+		err, fake, out := runHostSecret(t, name, keys)
 		if err == nil || !strings.Contains(errors.Unwrap(err).Error(), want) {
 			t.Errorf("%s: got %v, want %q\n%s", name, err, want, out)
 		}
@@ -99,12 +118,11 @@ func TestHostSecretRemovesTheWorktreeWhenItStops(t *testing.T) {
 	cacheRecovery(t)
 	x, fake, out := newFakeCtx(func(s engine.Spec) (engine.Result, error) {
 		args := strings.Join(s.Args, " ")
+		inWorktree(s, "hosts/nas.yaml", sopsFile("nas", nil, "age1hostrecipient", "age1recoveryrecipient"))
 		if res, ok := hostFile(s); ok {
 			return res, nil
 		}
 		switch {
-		case s.Name == "yq" && strings.HasPrefix(args, "-o=json"):
-			return engine.Result{Stdout: `{"sops": {}}`}, nil
 		case s.Name == "git" && strings.HasPrefix(args, "commit"):
 			return engine.Result{Code: 1, Stderr: "error: gpg failed to sign the data"}, errors.New("exited with code 1")
 		}
