@@ -74,7 +74,7 @@ if git -C "$(dirname "$f")" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
 
 8. **Create users/USER/HOST.yaml.** It does not exist yet; it is created empty and encrypted to HOST, the user too when the user is listed, and your recovery recipient.
 
-9. **Work out the keys to store.** Added and removed keys are applied to the keys stored now, which are read with your recovery identity; a key list that would end up empty is refused, and one that does not change is left alone.
+9. **Work out the keys to store.** Added and removed keys are applied to the keys stored now, and keys that replace them are compared with them; the stored keys are read with your recovery identity. A key list that would end up empty is refused, and one that does not change is left alone.
 
 10. **Store the login keys in users/USER/HOST.yaml.** As the key authorized_keys, which hosts read when accounts.\<user>.secrets.authorizedKeys is on.
 

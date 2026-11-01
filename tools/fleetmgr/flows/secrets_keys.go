@@ -77,14 +77,8 @@ var SecretsUserKeys = &engine.Flow{
 		createUserFile(),
 		{
 			Title: "Work out the keys to store",
-			Why:   "Added and removed keys are applied to the keys stored now, which are read with your recovery identity; a key list that would end up empty is refused, and one that does not change is left alone.",
-			When: func(x *engine.Ctx) (bool, string) {
-				if mergeRequested(x) {
-					return true, ""
-				}
-				return false, "the keys are replaced, not changed"
-			},
-			Do: engine.Func(mergeKeyFiles),
+			Why:   "Added and removed keys are applied to the keys stored now, and keys that replace them are compared with them; the stored keys are read with your recovery identity. A key list that would end up empty is refused, and one that does not change is left alone.",
+			Do:    engine.Func(mergeKeyFiles),
 		},
 		{
 			Title: "Store the login keys in " + userFile(),
@@ -106,15 +100,6 @@ var SecretsUserKeys = &engine.Flow{
 			Do:    secrets.PushWork(),
 		}),
 	},
-}
-
-func mergeRequested(x *engine.Ctx) bool {
-	for _, k := range keyKinds {
-		if x.Value(k.add) != "" || x.Value(k.remove) != "" {
-			return true
-		}
-	}
-	return false
 }
 
 func keysToStore(k keyKind) func(*engine.Ctx) (bool, string) {
@@ -279,9 +264,30 @@ func readKeys(x *engine.Ctx, flag, path string, check bool) ([]string, error) {
 
 // mergeKeyFiles applies the added and removed keys to what the user's file
 // holds now, and keeps the result as the JSON the store steps write; a list
-// that does not change gets none.
+// that does not change gets none, and nor does one that replaces the stored
+// keys with the same keys.
 func mergeKeyFiles(x *engine.Ctx) error {
-	return mergeKinds(x, func(key string) (string, error) { return currentKeys(x, key) })
+	read := func(key string) (string, error) { return currentKeys(x, key) }
+	if err := mergeKinds(x, read); err != nil {
+		return err
+	}
+	if x.Options.DryRun {
+		return nil
+	}
+	for _, k := range keyKinds {
+		if x.Value(k.replace) == "" || x.Values[k.json] == "" {
+			continue
+		}
+		current, err := read(k.key)
+		if err != nil {
+			return err
+		}
+		if current != "" && secrets.JSON(current) == x.Values[k.json] {
+			x.Values[k.json] = ""
+			x.UI.Skip("the " + k.key + " keys stay as they are: the same keys")
+		}
+	}
+	return nil
 }
 
 // mergeKinds is mergeKeyFiles for any file: read gets one key of it.

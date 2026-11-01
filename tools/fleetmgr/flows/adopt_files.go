@@ -77,8 +77,10 @@ func signersFrom(hostsDir string) string {
 	return strings.Repeat("../", depth) + "fleet/allowed_signers"
 }
 
-// accountsBlock is the accounts' declarations, indented for conf.
-func accountsBlock(accounts []machineAccount) string {
+// accountsBlock is the accounts' declarations, indented for conf; fresh is
+// for a host that had no accounts before, so its comments say nothing of what
+// an account had.
+func accountsBlock(accounts []machineAccount, fresh bool) string {
 	var b strings.Builder
 	for _, a := range accounts {
 		b.WriteString("    users.accounts." + nixAttr(a.Name) + " = {\n")
@@ -91,10 +93,17 @@ func accountsBlock(accounts []machineAccount) string {
 			}
 			b.WriteString("      groups = [ " + strings.Join(quoted, " ") + " ];\n")
 		}
-		if a.Password {
+		switch {
+		case a.Password && fresh:
+			b.WriteString("      # The hash of the password set for it, from the secrets.\n")
+			b.WriteString("      secrets.password = true;\n")
+		case a.Password:
 			b.WriteString("      # The hash it had, from the secrets.\n")
 			b.WriteString("      secrets.password = true;\n")
-		} else {
+		case fresh:
+			b.WriteString("      # No password: it stays locked, reached with a key.\n")
+			b.WriteString("      secrets.password = false;\n")
+		default:
 			b.WriteString("      # It had no password: it stays locked, reached with a key.\n")
 			b.WriteString("      secrets.password = false;\n")
 		}
@@ -162,7 +171,7 @@ func skeletonDefault(f machineFacts, s fleetSettings) string {
 	b.WriteString("      loader = " + nixString(f.Loader) + ";\n")
 	b.WriteString("    };\n")
 	b.WriteString("    networking.backend = " + nixString(f.Backend) + ";\n")
-	b.WriteString(accountsBlock(f.Accounts))
+	b.WriteString(accountsBlock(f.Accounts, false))
 	b.WriteString(fleetBlock(s))
 	b.WriteString("  };\n}\n")
 	return b.String()
@@ -190,7 +199,7 @@ func copiedDefault(f machineFacts, s fleetSettings) string {
 	b.WriteString("    hardware.disk.enable = false;\n")
 	b.WriteString("    hardware.boot.loader = null;\n")
 	b.WriteString("    networking.backend = " + nixString(f.Backend) + ";\n")
-	b.WriteString(accountsBlock(f.Accounts))
+	b.WriteString(accountsBlock(f.Accounts, false))
 	b.WriteString(fleetBlock(s))
 	b.WriteString("  };\n")
 	// What a host with secrets refuses, set by the old configuration.
@@ -212,6 +221,55 @@ func copiedDefault(f machineFacts, s fleetSettings) string {
 		}
 		b.WriteString("    };\n")
 	}
+	b.WriteString("  };\n}\n")
+	return b.String()
+}
+
+// newHostDisk is how fleetmgr host new lays out a new host's disk: the
+// primary disk, and whether it is encrypted.
+type newHostDisk struct {
+	Device  string
+	Encrypt bool
+}
+
+// newHostDefault is the default.nix of a host that fleetmgr host new sets up
+// before it is installed: no hardware-configuration.nix beside it, since the
+// installer lays the disk out from conf.hardware.disk and NixOS's default
+// initrd modules cover common hardware.
+func newHostDefault(f machineFacts, d newHostDisk, s fleetSettings) string {
+	var b strings.Builder
+	b.WriteString("# " + f.Host + ", set up by fleetmgr host new before it was installed.\n")
+	b.WriteString("{ ... }:\n{\n")
+	b.WriteString("  nixpkgs.hostPlatform = " + nixString(f.Platform) + ";\n")
+	b.WriteString("  # The release it is installed with, which some services' data depends on;\n")
+	b.WriteString("  # it stays when the fleet moves to a newer one.\n")
+	b.WriteString("  system.stateVersion = " + nixString(f.StateVersion) + ";\n")
+	b.WriteString("\n  conf = {\n")
+	b.WriteString("    host = {\n")
+	b.WriteString("      name = " + nixString(f.Host) + ";\n")
+	b.WriteString("      timezone = " + nixString(f.Timezone) + ";\n")
+	b.WriteString("      locale = " + nixString(f.Locale) + ";\n")
+	b.WriteString("    };\n")
+	b.WriteString("    role = " + nixString(f.Role) + ";\n")
+	b.WriteString("    machineType = " + nixString(f.MachineType) + ";\n")
+	b.WriteString("    # The installer lays the disk out from this: os-install -d can name\n")
+	b.WriteString("    # another disk at install time")
+	if f.Boot == "bios" {
+		b.WriteString(", except that GRUB installs to this one")
+	}
+	b.WriteString(".\n")
+	b.WriteString("    hardware.disk = {\n")
+	b.WriteString("      enable = true;\n")
+	b.WriteString("      device = " + nixString(d.Device) + ";\n")
+	b.WriteString("      encrypt = " + strconv.FormatBool(d.Encrypt) + ";\n")
+	b.WriteString("    };\n")
+	b.WriteString("    hardware.boot = {\n")
+	b.WriteString("      mode = " + nixString(f.Boot) + ";\n")
+	b.WriteString("      loader = " + nixString(f.Loader) + ";\n")
+	b.WriteString("    };\n")
+	b.WriteString("    networking.backend = " + nixString(f.Backend) + ";\n")
+	b.WriteString(accountsBlock(f.Accounts, true))
+	b.WriteString(fleetBlock(s))
 	b.WriteString("  };\n}\n")
 	return b.String()
 }

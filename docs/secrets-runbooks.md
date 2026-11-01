@@ -143,6 +143,9 @@ The complete flow for a new NixOS host, `laptop1`, with one user, `alice`.
 macOS hosts get the sops wiring but no secrets sync yet, and their accounts
 come from MDM.
 
+For a host in a private fleet, `fleetmgr host new <host>` does this whole flow
+in one run: see [Installing a host from it](private-fleet.md#installing-a-host-from-it).
+
 ### 1. Declare the host
 
 In the configuration repository (the inventory, for a private fleet: see [A private fleet](private-fleet.md)):

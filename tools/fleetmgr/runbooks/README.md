@@ -17,6 +17,7 @@ no arguments offers these as a menu.
 | [`fleetmgr inventory pin`](inventory-pin.md) | Pin fleet-manager's newest trusted commit, or a given one, in the inventory, check every host, commit and push |
 | [`fleetmgr inventory import`](inventory-import.md) | Copy a host's definition from fleet-manager into the inventory, adjusted, check it, commit, push and publish its branch |
 | [`fleetmgr host adopt`](host-adopt.md) | Take in a running NixOS machine the inventory does not have, or the owner a personal machine made at its first boot |
+| [`fleetmgr host new`](host-new.md) | Write a new host's folder, publish it, print the install line, and set up its secrets from the enrollment file the installer shows |
 | [`fleetmgr inventory publish`](inventory-publish.md) | Cut each host's own files from main into its branch, host/\<name>, signed, and push them |
 | [`fleetmgr install`](install.md) | Install a host from the configuration onto this machine's disks, from the installer |
 | [`fleetmgr install prep`](install-prep.md) | Check the commits a host's install takes, and print the line to run on the installer |

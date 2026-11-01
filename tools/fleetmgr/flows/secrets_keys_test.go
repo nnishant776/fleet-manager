@@ -223,6 +223,35 @@ func TestUserKeysAddOfAKeyAlreadyThereMakesNoCommit(t *testing.T) {
 	}
 }
 
+// Run again with the keys it stored, as the line a stopped host adopt or host
+// new prints gives them, user-keys changes nothing; other keys replace them.
+func TestUserKeysReplacingWithTheSameKeysMakesNoCommit(t *testing.T) {
+	current := "ssh-ed25519 " + keyOne + " one\n"
+	err, fake, out := runMerge(t, current, map[string]string{"authorized-keys": writeKeys(t, current)})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	for _, c := range fake.Commands() {
+		if strings.HasPrefix(c, "git commit") || strings.HasPrefix(c, "git push") || strings.HasPrefix(c, "sops set") {
+			t.Errorf("ran %s though the keys are the same", c)
+		}
+	}
+	if !strings.Contains(out, "stay as they are: the same keys") {
+		t.Errorf("did not say so:\n%s", out)
+	}
+
+	err, fake, out = runMerge(t, current, map[string]string{"authorized-keys": writeKeys(t, "ssh-ed25519 "+keyNew+" new\n")})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	cmds := strings.Join(fake.Commands(), "\n")
+	for _, want := range []string{"sops set --value-stdin users/support/nas.yaml '[\"authorized_keys\"]'", "git commit -q -m 'user-keys: support on nas'"} {
+		if !strings.Contains(cmds, want) {
+			t.Errorf("other keys: did not run %q:\n%s", want, cmds)
+		}
+	}
+}
+
 func TestUserKeysRemoveToNothingIsRefusedAndAMissingKeyCountsAsEmpty(t *testing.T) {
 	err, fake, out := runMerge(t, "ssh-ed25519 "+keyOne+" one\n", map[string]string{"remove-authorized-keys": writeKeys(t, "ssh-ed25519 "+keyOne+" x\n")})
 	if err == nil || !strings.Contains(out, "lock the account out") {
