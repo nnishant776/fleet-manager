@@ -150,22 +150,28 @@ func SSHTrouble(login string) func(engine.Result) string {
 }
 
 // OnAdmin runs a script on the host as the admin account, forwarding only the
-// one-key agent StartAgent made: admin's sudo checks that key through the
-// forwarded agent. Use it only until the host has support (OnHost).
+// one-key agent StartAgent made: admin's sudo may check that key through the
+// forwarded agent. Where its sudo takes a password instead (AdminSudo), the
+// script starts with sudoPrelude and the password comes first on stdin. Use
+// it only until the host has support (OnHost).
 func OnAdmin(script string) *engine.Command {
 	return engine.Cmd("ssh",
 		"-A",
 		"-o", "BatchMode=yes",
 		"-o", "ConnectTimeout=10",
 		"{{.admin}}@{{.address}}",
-		script,
-	).Env("SSH_AUTH_SOCK={{.agent}}").Explain(SSHTrouble("{{.admin}}"))
+		"{{.admin_prelude}}"+script,
+	).Env("SSH_AUTH_SOCK={{.agent}}").StdinSecretFirst("admin_password", "the sudo password").Explain(SSHTrouble("{{.admin}}"))
 }
 
 // StartAgent starts an ssh-agent holding only the key in the value "key",
 // for an hour at most, and keeps its socket as "agent". Your own agent, with
 // your other keys, is never forwarded. StopAgent stops it.
 func StartAgent(x *engine.Ctx) error {
+	// No sudo password until AdminSudo finds one is needed.
+	if _, ok := x.Values["admin_prelude"]; !ok {
+		x.Values["admin_prelude"], x.Values["admin_password"] = "", ""
+	}
 	dir, err := os.MkdirTemp("", "fleetmgr-agent-")
 	if err != nil {
 		return err
