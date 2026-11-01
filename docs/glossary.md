@@ -20,9 +20,13 @@ In this chapter: [A](#a) · [B](#b) · [C](#c) · [D](#d) · [E](#e) · [F](#f) 
 - **activation**: Switching a machine to a built system. sops-nix decrypts the
   secrets into `/run/secrets` at activation. See
   [On the host](secrets.md#on-the-host).
-- **adoption**: Bringing a personal machine's owner into the fleet: their
-  password and keys go into the secrets, and their account into the host's
-  configuration. See [Personal machines](accounts.md#personal-machines).
+- **adoption**: Bringing what a machine holds into the fleet, with
+  `fleetmgr host adopt`. For a personal machine, its owner: their password and
+  keys go into the secrets, and their account into the host's configuration.
+  See [Personal machines](accounts.md#personal-machines). For a NixOS machine
+  the inventory does not have, the whole machine: its folder, its accounts'
+  secrets, then a trial switch. See
+  [Bringing in a running NixOS machine](private-fleet.md#bringing-in-a-running-nixos-machine).
 - **age**: The encryption tool behind the secrets. Each host, each user with a
   branch of their own, and the maintainer have an age key. See
   [Trust model](secrets.md#trust-model).
@@ -187,6 +191,10 @@ In this chapter: [A](#a) · [B](#b) · [C](#c) · [D](#d) · [E](#e) · [F](#f) 
 - **tools' own clones**: The clones `fleetmgr repo add` keeps for the tools
   alone, fetched and checked before each use. See
   [The tools' own clones](signing-and-trust.md#the-tools-own-clones).
+- **trial switch**: How `fleetmgr host enroll` and `fleetmgr host adopt` switch a
+  host for the first time: a timer brings back the system before, unless
+  `support` logs in to the new one, which only then becomes the boot
+  default. See [Bringing in a running machine](how-it-works.md#bringing-in-a-running-machine).
 - **trusted commit**: On the maintainer's machine, the last commit the tools
   accepted on a branch. It is what the accepted commit is on a host. See
   [Your own copy of the trusted commits](signing-and-trust.md#your-own-copy-of-the-trusted-commits).

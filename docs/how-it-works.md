@@ -253,8 +253,9 @@ flowchart TB
   | `fleetmgr inventory publish --sync` | `support` | the same, for each host whose branch changed |
   | `fleetmgr host secret --from-host` | `support` | reads a secret's current value with `sudo -n cat`; with `--sync`, starts the sync and checks the secret arrived |
   | `fleetmgr support-key rotate` | `support`, with the old key, then the new one | starts the sync with each key, and checks the old key is refused |
-  | `fleetmgr host adopt` | `support` | reads the owner's marker, account, password hash (with sudo) and login keys |
-  | `fleetmgr host enroll` | an administrator account, through a one-key agent | makes the host's identity, copies its enrollment file back, switches with `systemd-run nixos-rebuild switch`, replaces `/etc/nixos` and starts the first-boot clone |
+  | `fleetmgr host adopt`, for a personal machine | `support` | reads the owner's marker, account, password hash (with sudo) and login keys |
+  | `fleetmgr host adopt`, for a machine the inventory does not have | an administrator account, through a one-key agent | reads how the machine is set up, its accounts' password hashes and keys, and its `/etc/nixos`; then does what `host enroll` does |
+  | `fleetmgr host enroll` | an administrator account, through a one-key agent | makes the host's identity, copies its enrollment file back, fetches its secrets, switches for a trial that goes back by itself unless `support` logs in, replaces `/etc/nixos` and starts the first-boot clone |
 
 - **`fleetmgr-sync-now`** lets a privileged account at the machine start the sync
   at once, with no `sudo` and no password.
@@ -281,6 +282,7 @@ flowchart TB
 | Enrollment at install | the installer, then `fleetmgr secrets host-enroll` | the enrollment file, to the maintainer; deploy keys, to the forge | a channel the maintainer trusts | [A new machine](#a-new-machine) |
 | The first boot | `fleetmgr-bootstrap`, on the host | the secrets, then the configuration's checkout | as in the sync | [A new machine](#a-new-machine) |
 | A running machine comes in | `fleetmgr host enroll` | the host's identity; a switch, over SSH | the commit, on the maintainer's machine | [Bringing in a running machine](#bringing-in-a-running-machine) |
+| A machine the inventory does not have | `fleetmgr host adopt` | its folder, to the inventory; its accounts' password hashes and keys, to the secrets; a switch, over SSH | the host's key, compared with its console; the commit, on the maintainer's machine | [Bringing in a running machine](#bringing-in-a-running-machine) |
 | A host moves into the inventory | `fleetmgr inventory import` | the host's folder, from fleet-manager to the inventory | the source commit; the host evaluates | [Bringing in a running machine](#bringing-in-a-running-machine) |
 | A personal machine's owner | the owner, at the first boot | their account, on the machine only | none | [Personal machines and adoption](#personal-machines-and-adoption) |
 | Adoption | `fleetmgr host adopt` | the owner's password hash and keys, to the secrets | as for secrets | [Personal machines and adoption](#personal-machines-and-adoption) |
@@ -514,8 +516,12 @@ The whole install, with a diagram of what moves where, is in
 already running, without a reinstall. It is the one flow that drives a host
 from outside:
 
-1. It logs in as an administrator account, through an SSH agent that holds only
-   one key for an hour, so that sudo by SSH key works.
+1. It records the host's key, if the maintainer's machine does not know it
+   yet, once its fingerprint matches the one on the host's console. It logs
+   in as an administrator account, through an SSH agent that holds only one
+   key for an hour. That account's sudo may take the key, a rule, or its
+   password, which is asked for once, checked with a single try, and kept in
+   memory only.
 2. It chooses and checks, on the maintainer's machine, the commit to switch
    the host to.
 3. It makes the host's identity on the host, from the checked fleet-manager
@@ -526,12 +532,42 @@ from outside:
 5. It checks that the configuration fits the machine as it is, and that the
    host's branch holds every secret the configuration declares.
 6. It warns that `/etc/nixos` will be replaced, and asks.
-7. It switches the host, then replaces `/etc/nixos` with the fleet's checkout,
-   made by the first-boot clone, and removes the old accepted records.
-8. It syncs and checks the host, as `support`.
+7. It has the host fetch its secrets, since the new system takes support's
+   keys from them, and builds the new system on the host.
+8. It switches the host for a trial. A timer is armed first that brings back
+   the system the host runs now after a few minutes (`--trial-minutes`). The
+   new system is then activated, without becoming the boot default. Only
+   when `support` can log in to it is the timer stopped and the new system
+   made the boot default. A configuration that cuts the host off, from its
+   network or its SSH, so undoes itself.
+9. It replaces `/etc/nixos` with the fleet's checkout, made by the first-boot
+   clone, and removes the old accepted records.
+10. It syncs and checks the host, as `support`.
 
 For a host that already runs a fleet configuration from another repository,
 it moves the host to the new one instead.
+
+**A NixOS machine the inventory does not have.** `fleetmgr host adopt` takes in
+a machine that runs NixOS but no fleet configuration. It logs in as an
+administrator account, as `host enroll` does, and reads the machine: how it
+boots, its network, timezone and locale, the release it was installed with,
+its hardware configuration, its `/etc/nixos`, and the people's accounts. Then:
+
+1. It writes the host's folder in the inventory. Either the machine's own
+   configuration is copied as it is (`--copy-config`), and a `default.nix`
+   imports it and adds only what the fleet needs, or the folder starts from a
+   minimal skeleton (`--skeleton`). The machine's `/etc/nixos` goes into
+   `previous/` either way.
+2. It checks that the host evaluates. If it does not, it says why, with a
+   hint for the common errors, and leaves the folder for the maintainer to
+   change; the next run goes on from it.
+3. It commits, pushes and publishes the host's branch.
+4. It stores in the secrets the password hashes and login keys of the
+   accounts the configuration takes from there, as the machine has them, so
+   that everyone keeps theirs, and support's keys.
+5. It lists the services that run now and would stop, and asks.
+6. The rest is `host enroll`'s: the identity, the trial switch, `/etc/nixos`
+   and the first sync.
 
 **A host fleet-manager defines.** `fleetmgr inventory import` copies a host's
 folder and its users' folders from a commit of fleet-manager into the
@@ -551,12 +587,14 @@ and makes the account on the machine. The owner is an administrator by default
 reads its own `~/.ssh/authorized_keys`. Nothing of the owner goes to the
 inventory or the secrets.
 
-**Adoption.** Later, `fleetmgr host adopt` logs in as `support` and reads who the
-owner is. It reads their password hash with sudo, never shows it and passes it
+**Adoption.** Later, `fleetmgr host adopt` brings the owner in. On a personal
+machine of the inventory it logs in as `support` and reads who the owner is. It reads their password hash with sudo, never shows it and passes it
 on standard input only, and reads their `~/.ssh/authorized_keys`. It stores
 the hash and the keys in the secrets, pushes them, and prints the declaration
 to add to the host's folder. The maintainer adds it, removes `personal.enable`,
-publishes and syncs. From then on the host is an ordinary fleet host.
+publishes and syncs. From then on the host is an ordinary fleet host. On a
+machine the inventory does not have, `host adopt` takes in the whole machine
+instead ([Bringing in a running machine](#bringing-in-a-running-machine)).
 
 Both are in
 [Personal machines](accounts.md#personal-machines) in *Accounts and homes*.
@@ -617,10 +655,12 @@ repairs it ([What a NixOS host does at each sync](#what-a-nixos-host-does-at-eac
 
 **How the tools use SSH.** The tools log in as `support`, with no agent
 forwarded and no prompts. So they reach only a host whose key the
-maintainer's machine already knows: the first connection is made by hand,
-comparing the fingerprint. `fleetmgr host enroll`, on a machine that does not run
-a fleet configuration yet, logs in as an administrator account instead, as
-described above.
+maintainer's machine already knows. `fleetmgr host enroll` and `fleetmgr host adopt`,
+on a machine that does not run a fleet configuration yet, log in as an
+administrator account instead, as described above. They fetch a key the
+maintainer's machine does not know, and record it only once its fingerprint
+matches what `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` prints on the
+host's console, compared by the maintainer or given with `--host-key`.
 
 **The commands.** What each command does on the host, and as whom, is in the
 table under [What manages it](#what-manages-it). Rotating support's key is the
@@ -749,8 +789,9 @@ host follows its configuration to another repository.
 `system-switch`, `nixos-rebuild` or `darwin-rebuild` run by hand, build
 whatever flake they are given without checking a signature. On a fleet host
 the next sync builds from its checked checkout again and switches back to it.
-`fleetmgr host enroll` switches a host from outside, from a commit it checked on
-the maintainer's machine.
+`fleetmgr host enroll` and `fleetmgr host adopt` switch a host from outside, from
+a commit checked on the maintainer's machine, and for a trial that goes back
+by itself unless `support` can log in to the new system.
 
 **The sync refuses unsigned configuration, plain `http://` remotes, and a
 checkout it does not own.** `conf.fleet.signing.allowedSignersFile` is required
