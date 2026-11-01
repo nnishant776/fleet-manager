@@ -103,6 +103,11 @@ pkgs.testers.runNixOSTest {
 
   node.specialArgs = hostNode.specialArgs;
   node.pkgsReadOnly = false;
+  # The test network has a fixed address and no DHCP. NetworkManager, which
+  # fleet hosts run, would otherwise try DHCP on it when it sees the interface
+  # before the address, give up after a while and take the interface down: a
+  # slow boot then cut the host off in the middle of the test.
+  defaults.networking.networkmanager.unmanaged = [ "eth1" ];
 
   nodes.forge = { pkgs, ... }: {
     services.openssh.enable = true;
