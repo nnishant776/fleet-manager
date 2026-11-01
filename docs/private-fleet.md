@@ -245,8 +245,16 @@ writes the host's folder:
   A flake in `/etc/nixos` cannot be copied, since its inputs are not the
   inventory's: use the skeleton.
 
-Either way the machine's `/etc/nixos` is kept in `previous/`, and the files
-are shown before they are written. Look at what comes from the machine for
+Either way what of the machine's `/etc/nixos` is the host's own is kept in
+`previous/`: all of a plain `configuration.nix` or of any other flake, but of
+a fleet-manager checkout only the host's folder and its local changes.
+`previous.md` beside it
+says what the rest was, the checkout's origin and commit, or the fleet-manager
+commit the machine ran when its `/etc/nixos` was empty. Files that look like
+secrets are left out. For a skeleton, `system.stateVersion` is read from the
+configuration the machine was built from, and otherwise must be given with
+`--state-version`, since fleetmgr does not guess it. The files are shown
+before they are written. Look at what comes from the machine for
 anything that does not belong in the inventory, such as a password in clear
 text. Then fleetmgr commits, pushes and publishes the host's branch, stores
 the accounts' password hashes and login keys in the secrets as the machine

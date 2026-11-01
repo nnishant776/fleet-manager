@@ -556,8 +556,15 @@ its hardware configuration, its `/etc/nixos`, and the people's accounts. Then:
 1. It writes the host's folder in the inventory. Either the machine's own
    configuration is copied as it is (`--copy-config`), and a `default.nix`
    imports it and adds only what the fleet needs, or the folder starts from a
-   minimal skeleton (`--skeleton`). The machine's `/etc/nixos` goes into
-   `previous/` either way.
+   minimal skeleton (`--skeleton`). What of the machine's `/etc/nixos` is
+   the host's own goes into `previous/`: all of a plain `configuration.nix` or
+   of any other flake, but of a fleet-manager checkout only the host's folder
+   and its local changes. `previous.md` beside
+   it says what the rest was, the checkout's origin and commit, or the
+   fleet-manager commit the machine ran when its `/etc/nixos` was empty. Files
+   that look like secrets are left out. For a skeleton, `system.stateVersion`
+   is read from the configuration the machine was built from, and otherwise
+   must be given with `--state-version`, since fleetmgr does not guess it.
 2. It checks that the host evaluates. If it does not, it says why, with a
    hint for the common errors, and leaves the folder for the maintainer to
    change; the next run goes on from it.
