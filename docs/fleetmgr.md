@@ -60,6 +60,14 @@ repository, and says what stays: commits already pushed, keys it made, a host's
 identity, or a sync still running on the host. Steps that are done are skipped,
 so the same command, run again, goes on from there.
 
+When a run fails, is interrupted or is stopped, it prints the command that goes
+on, with every answer as a flag. It also keeps those answers in
+`~/.local/state/fleet/runs`: never secrets or anything read from standard
+input, and never what it had done, since the steps look again. The next run of
+the same command for the same subject offers them. `--resume` takes them
+without asking, and `--forget` drops them. The menu lists unfinished runs
+first. Kept answers expire after 14 days.
+
 ## Runbooks
 
 Each command has a page in [`tools/fleetmgr/runbooks`](../tools/fleetmgr/runbooks/README.md)
