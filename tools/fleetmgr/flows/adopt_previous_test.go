@@ -20,11 +20,61 @@ func TestWhatOfAnEtcNixosIsTheHostsOwnDependsOnWhatItIs(t *testing.T) {
 	if sel.All || !slices.Equal(sel.Paths, []string{"hosts/generic", "notes.txt"}) {
 		t.Errorf("a fleet-manager checkout: %+v", sel)
 	}
-	if sel := selectPrevious("flake", etcFacts{Git: true}, "generic"); !sel.All {
-		t.Errorf("another flake: %+v", sel)
+	if sel := selectPrevious("flake", etcFacts{Git: true, HostConfig: true}, "generic"); !sel.All {
+		t.Errorf("another flake with the host: %+v", sel)
 	}
 	if sel := selectPrevious("none", etcFacts{}, "generic"); sel.All || len(sel.Paths) != 0 {
 		t.Errorf("nothing: %+v", sel)
+	}
+	// A flake without the machine's host holds nothing of its own, not even
+	// a checkout's local changes: the folder comes from the machine's facts.
+	for name, e := range map[string]etcFacts{
+		"a fleet-manager checkout without the host": {FleetManager: true, Git: true, Changes: []string{"?? notes.txt"}},
+		"another flake without the host":            {Git: true},
+	} {
+		if sel := selectPrevious("flake", e, "generic"); sel.All || len(sel.Paths) != 0 {
+			t.Errorf("%s: %+v", name, sel)
+		}
+	}
+}
+
+func TestAFlakeWithoutTheHostKeepsNothingAndSaysSo(t *testing.T) {
+	facts := "git=true\norigin=https://github.com/example-org/fleet-manager\nhead=" + strings.Repeat("ab", 20) +
+		"\nfleet_manager=true\nchange=?? notes.txt\n"
+	x, fake, _ := newFakeCtx(func(s engine.Spec) (engine.Result, error) {
+		if strings.Contains(strings.Join(s.Args, " "), "safe.directory=/etc/nixos") {
+			return engine.Result{Stdout: facts}, nil
+		}
+		return engine.Result{}, nil
+	})
+	for k, v := range map[string]string{"admin": "alice", "address": "laptop3", "agent": "/tmp/a.sock", "admin_prelude": "", "admin_password": ""} {
+		x.Values[k] = v
+	}
+	f := machineFacts{Host: "laptop3", Hostname: "laptop9"}
+	if err := readPrevious(x, &f, "flake"); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.Previous) != 0 {
+		t.Errorf("kept %v", sortedPaths(f.Previous))
+	}
+	for _, s := range fake.Commands() {
+		if strings.Contains(s, "tar ") {
+			t.Errorf("read files: %s", s)
+		}
+	}
+	for _, want := range []string{"example-org/fleet-manager", "no definition of `laptop9`", "Nothing of it was kept"} {
+		if !strings.Contains(f.PreviousNote, want) {
+			t.Errorf("previous.md lacks %q:\n%s", want, f.PreviousNote)
+		}
+	}
+}
+
+func TestWithoutAHostnameNoHostIsLookedFor(t *testing.T) {
+	if s := etcFactsScript(""); strings.Contains(s, "hosts/") && strings.Contains(s, "host_dir") || strings.Contains(s, "host_config") {
+		t.Errorf("looks for a host with no name:\n%s", s)
+	}
+	if s := etcFactsScript("laptop9"); !strings.Contains(s, "/etc/nixos/hosts/laptop9") || !strings.Contains(s, `cs ? "laptop9"`) {
+		t.Errorf("does not look for laptop9:\n%s", s)
 	}
 }
 

@@ -558,8 +558,10 @@ its hardware configuration, its `/etc/nixos`, and the people's accounts. Then:
    imports it and adds only what the fleet needs, or the folder starts from a
    minimal skeleton (`--skeleton`). What of the machine's `/etc/nixos` is
    the host's own goes into `previous/`: all of a plain `configuration.nix` or
-   of any other flake, but of a fleet-manager checkout only the host's folder
-   and its local changes. `previous.md` beside
+   of a flake that defines the host, but of a fleet-manager checkout only the
+   host's folder and its local changes. A flake without the machine's host
+   gives nothing: the folder is written from what fleetmgr read on the machine.
+   `previous.md` beside
    it says what the rest was, the checkout's origin and commit, or the
    fleet-manager commit the machine ran when its `/etc/nixos` was empty. Files
    that look like secrets are left out. For a skeleton, `system.stateVersion`

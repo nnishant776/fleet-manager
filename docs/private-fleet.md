@@ -246,9 +246,10 @@ writes the host's folder:
   inventory's: use the skeleton.
 
 Either way what of the machine's `/etc/nixos` is the host's own is kept in
-`previous/`: all of a plain `configuration.nix` or of any other flake, but of
-a fleet-manager checkout only the host's folder and its local changes.
-`previous.md` beside it
+`previous/`: all of a plain `configuration.nix` or of a flake that defines the
+host, but of a fleet-manager checkout only the host's folder and its local
+changes. A flake without the machine's host gives nothing: the folder is
+written from what fleetmgr read on the machine. `previous.md` beside it
 says what the rest was, the checkout's origin and commit, or the fleet-manager
 commit the machine ran when its `/etc/nixos` was empty. Files that look like
 secrets are left out. For a skeleton, `system.stateVersion` is read from the

@@ -30,12 +30,26 @@ type etcFacts struct {
 	Changes              []string // git status --porcelain lines
 	FleetManager         bool     // a checkout of fleet-manager: lib/mkHost.nix and hosts/
 	HostDir              bool     // it has hosts/<hostname>
+	HostConfig           bool     // another flake: it has nixosConfigurations.<hostname>
+}
+
+// definesHost says whether the machine's /etc/nixos holds its own host's
+// definition: a configuration.nix always does; a flake only when it has the
+// host by the machine's hostname.
+func definesHost(kind string, e etcFacts) bool {
+	switch kind {
+	case "configuration":
+		return true
+	case "flake":
+		return e.FleetManager && e.HostDir || !e.FleetManager && e.HostConfig
+	}
+	return false
 }
 
 // etcFactsScript prints what etcFacts holds, one key=value a line, for the
 // machine whose hostname is host, checked by the caller.
 func etcFactsScript(host string) string {
-	return `set -u
+	script := `set -u
 g() { sudo -n git -c safe.directory=/etc/nixos -C /etc/nixos "$@"; }
 if sudo -n test -d /etc/nixos/.git; then
   echo git=true
@@ -44,8 +58,17 @@ if sudo -n test -d /etc/nixos/.git; then
   echo "branch=$(g symbolic-ref --short -q HEAD 2>/dev/null)"
   g status --porcelain=v1 --untracked-files=all 2>/dev/null | sed 's/^/change=/'
 fi
-if sudo -n test -e /etc/nixos/lib/mkHost.nix && sudo -n test -d /etc/nixos/hosts; then echo fleet_manager=true; fi
-if sudo -n test -d /etc/nixos/hosts/` + host + `; then echo host_dir=true; fi`
+if sudo -n test -e /etc/nixos/lib/mkHost.nix && sudo -n test -d /etc/nixos/hosts; then echo fleet_manager=true
+`
+	// Without a hostname it read, nothing is found to be the host's own.
+	if host != "" {
+		script += `  if sudo -n test -d /etc/nixos/hosts/` + host + `; then echo host_dir=true; fi
+elif sudo -n test -e /etc/nixos/flake.nix; then
+  sudo -n nix --extra-experimental-features 'nix-command flakes' eval --raw /etc/nixos#nixosConfigurations \
+    --apply 'cs: if cs ? "` + host + `" then "host_config=true" else ""' 2>/dev/null; echo
+`
+	}
+	return script + "fi"
 }
 
 func parseEtcFacts(out string) etcFacts {
@@ -72,6 +95,8 @@ func parseEtcFacts(out string) etcFacts {
 			e.FleetManager = v == "true"
 		case "host_dir":
 			e.HostDir = v == "true"
+		case "host_config":
+			e.HostConfig = v == "true"
 		}
 	}
 	return e
@@ -112,9 +137,11 @@ type previousSelection struct {
 }
 
 // selectPrevious decides what of the machine's /etc/nixos is the host's own.
+// A flake that does not define the machine's host holds nothing of its own:
+// the folder is written from the machine's facts alone.
 func selectPrevious(kind string, e etcFacts, hostname string) previousSelection {
 	switch {
-	case kind == "none":
+	case kind == "none" || !definesHost(kind, e):
 		return previousSelection{}
 	case kind == "flake" && e.FleetManager:
 		var sel previousSelection
@@ -215,6 +242,17 @@ func previousNote(host, hostname string, kind string, e etcFacts, o previousOrig
 	var b strings.Builder
 	b.WriteString("# " + host + "'s /etc/nixos when it was adopted\n\n")
 	switch {
+	case kind == "flake" && !definesHost(kind, e):
+		what := "a flake"
+		if e.Git {
+			what = "a checkout of " + orUnknown(e.Origin) + ", at commit " + orUnknown(e.Head) + branchNote(e.Branch) + ","
+		}
+		name := "its hostname"
+		if hostname != "" {
+			name = "`" + hostname + "`"
+		}
+		fmt.Fprintf(&b, "Its /etc/nixos was %s which has no definition of %s. Nothing of it was kept: the folder is written from what fleetmgr read on the machine.\n", what, name)
+		return b.String()
 	case kind == "none" && o.FleetHost != "":
 		fmt.Fprintf(&b, "Its /etc/nixos was empty. It ran fleet-manager's `nixosConfigurations.%s` at commit %s, as its /etc/org/revision says; those files are in fleet-manager at that commit.\n", o.FleetHost, o.Revision)
 	case kind == "none" && o.Revision != "":
@@ -308,7 +346,7 @@ func readPrevious(x *engine.Ctx, f *machineFacts, kind string) error {
 		}
 	}
 	_, deleted, odd := changedPaths(e.Changes)
-	if e.Git || e.FleetManager || kind == "none" && f.OrgRevision != "" {
+	if e.Git || e.FleetManager || kind == "flake" && !definesHost(kind, e) || kind == "none" && f.OrgRevision != "" {
 		kept := sortedPaths(f.Previous)
 		o := previousOrigin{Revision: f.OrgRevision, FleetHost: f.OrgFleetHost, EtcNixosWas: kind}
 		f.PreviousNote = previousNote(f.Host, f.Hostname, kind, e, o, kept, secrets, odd, deleted)

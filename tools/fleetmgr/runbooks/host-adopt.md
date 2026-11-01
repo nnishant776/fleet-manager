@@ -14,9 +14,10 @@ timezone and locale, the release it was installed with, its hardware configurati
 people's accounts. Then it writes the host's folder in the inventory: its own configuration copied as it is
 (--copy-config), imported by a default.nix that adds what the fleet needs, or a minimal skeleton
 (--skeleton); either way, what of the machine's /etc/nixos is its own goes into previous/, with previous.md
-saying what the rest was: a checkout of fleet-manager keeps only the host's folder and its local changes,
-and a file that looks like a secret is left out. It checks that the host evaluates,
-and if it does not, says why and leaves the folder for you to change, so that a second run goes on from it.
+saying what the rest was: a checkout of fleet-manager keeps only the host's folder and its local changes, a flake
+without the machine's host keeps nothing, and a file that looks like a secret is left out. It checks that the
+host evaluates, and if it does not, says why and leaves the folder for you to change, so that a second run
+goes on from it.
 Then it commits, pushes, and publishes the host's branch.
 
 Then the machine is brought under the fleet, as fleetmgr host enroll brings a host: its identity, its
