@@ -491,11 +491,18 @@ func seeImportReads(x *engine.Ctx) error {
 	return nil
 }
 
-// inventoryAddress is the address hosts fetch the inventory from.
+// inventoryAddress is the address hosts fetch the inventory from: --address,
+// or what inventoryAddressOf finds.
 func inventoryAddress(x *engine.Ctx) (string, error) {
 	if a := x.Value("address"); a != "" {
 		return a, nil
 	}
+	return inventoryAddressOf(x)
+}
+
+// inventoryAddressOf is the address the inventory's hosts fetch it from,
+// or one made from its origin.
+func inventoryAddressOf(x *engine.Ctx) (string, error) {
 	res, err := engine.Cmd("nix", "eval", "--json", "{{.flake}}#nixosConfigurations",
 		"--apply", "cs: builtins.mapAttrs (_: c: c.config.conf.fleet.repo.url) cs").ReadOnly().Quiet().Run(x)
 	switch {

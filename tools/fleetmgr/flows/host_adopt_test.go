@@ -102,6 +102,11 @@ func (a *adoptEnv) respond(s engine.Spec) (engine.Result, error) {
 		return ok("")
 	case "nix":
 		switch {
+		case strings.Contains(args, "config.conf.fleet.personal.enable else null"):
+			if a.personal {
+				return ok("true")
+			}
+			return ok("false")
 		case strings.HasSuffix(args, "conf.fleet.personal"):
 			p := "false"
 			if a.personal {
@@ -176,19 +181,6 @@ func (a *adoptEnv) inventoryUntouched(t *testing.T, fake *engine.Fake) {
 			}
 		}
 	}
-}
-
-func TestHostAdoptRefusesAHostThatIsNotPersonal(t *testing.T) {
-	a := newAdoptEnv(t)
-	a.personal = false
-	err, fake, out := a.run(map[string]string{}, nil)
-	if err == nil || !strings.Contains(out, "laptop1 is not a personal machine: there is nothing to adopt") {
-		t.Fatalf("went ahead, or without saying why: %v\n%s", err, out)
-	}
-	if ran(fake, "ssh") {
-		t.Errorf("reached the host")
-	}
-	a.nothingChanged(t, fake, out)
 }
 
 func TestHostAdoptRefusesAHostNobodyHasSetUp(t *testing.T) {

@@ -14,15 +14,30 @@ import (
 	"github.com/nnishant776/fleet-manager/tools/fleetmgr/internal/secrets"
 )
 
-// HostAdopt brings the owner of a personal machine into the fleet: it reads
-// the owner from the host, stores their password hash and login keys in the
-// secrets, and prints the declaration the maintainer adds to the host's own
-// default.nix. It changes nothing in the inventory.
+// HostAdopt brings what a machine holds under the fleet. For a personal
+// machine of the inventory, that is its owner: it reads the owner from the
+// host, stores their password hash and login keys in the secrets, and prints
+// the declaration the maintainer adds to the host's own default.nix. For a
+// machine the inventory does not have, it is the machine itself
+// (host_adopt_machine.go).
 var HostAdopt = &engine.Flow{
 	Path:  []string{"host", "adopt"},
-	Title: "Adopt a personal machine's owner into the fleet",
-	Short: "Store the password and keys of the owner a personal machine made at its first boot, and print the declaration to add",
-	Long: "A personal machine (conf.fleet.personal) lets its owner make their own account at the first boot, and\n" +
+	Title: "Adopt a machine, or a personal machine's owner, into the fleet",
+	Short: "Take in a running NixOS machine the inventory does not have, or the owner a personal machine made at its first boot",
+	Long: "fleetmgr host adopt takes in what a machine holds. Which case it is follows from the inventory.\n" +
+		"\n" +
+		"A machine the inventory does not have, which runs NixOS but no fleet configuration, is taken in whole.\n" +
+		"fleetmgr records its host key once you have compared the fingerprint with its console, and logs in as an\n" +
+		"admin account (--admin) through an agent that holds one key (--key); that account's sudo may take the key,\n" +
+		"a rule, or its password, asked for once and held in memory. It reads the machine: how it boots, its network,\n" +
+		"timezone and locale, the release it was installed with, its hardware configuration, its /etc/nixos, and the\n" +
+		"people's accounts. Then it writes the host's folder in the inventory: its own configuration copied as it is\n" +
+		"(--copy-config), imported by a default.nix that adds what the fleet needs, or a minimal skeleton\n" +
+		"(--skeleton); the machine's /etc/nixos goes into previous/ either way. It checks that the host evaluates,\n" +
+		"and if it does not, says why and leaves the folder for you to change, so that a second run goes on from it.\n" +
+		"Then it commits, pushes, and publishes the host's branch.\n" +
+		"\n" +
+		"A personal machine (conf.fleet.personal) lets its owner make their own account at the first boot, and\n" +
 		"keeps that account out of the configuration. This starts bringing it in. fleetmgr logs in to the host as\n" +
 		"support and reads who the owner is (/var/lib/fleet/owner), their full name and home, their password hash\n" +
 		"(never shown, and passed on standard input only) and the login keys in their ~/.ssh/authorized_keys.\n" +
@@ -32,66 +47,85 @@ var HostAdopt = &engine.Flow{
 		"It changes nothing in the inventory. It prints the declaration for you to put into the host's own\n" +
 		"default.nix, and the commands that finish: publish with a sync, and check the host. The owner keeps\n" +
 		"their uid, files and password: NixOS keeps an existing account's ids when it becomes declared.",
-	Example: "  fleetmgr host adopt laptop1 --flake inventory --repo secrets\n" +
+	Example: "  fleetmgr host adopt laptop3 --address 192.168.1.20 --admin alice --skeleton --flake inventory --repo secrets\n" +
+		"  fleetmgr host adopt laptop1 --flake inventory --repo secrets\n" +
 		"  fleetmgr host adopt laptop1 --from ann.enroll --flake inventory --repo secrets",
 	Args: []string{"host"},
-	Inputs: append(append(fleetmgr.HostInputs(), secrets.RepoInput, secrets.RecoveryInput),
-		engine.Input{Name: "from", Prompt: "Owner's enrollment file", Optional: true,
-			Help: "The owner's enrollment file (fleetmgr user init), when they will manage their own password and keys later; none: they ask you"}),
-	Needs: []string{"git", "nix", "tar", "ssh", "sops", "age", "ssh-keygen"},
-	Steps: []engine.Step{
-		{
-			Title: "Read how {{.host}} is configured",
-			Why:   "Only a personal machine has an owner to adopt. Whether the owner is an administrator is read from its configuration, and carried over. Nothing is written.",
-			Do:    engine.Func(readAdoptConfig),
+	Inputs: joinInputs(
+		[]engine.Input{
+			fleetmgr.FlakeInput,
+			{Name: "host", Prompt: "Which host?", Pattern: secrets.NamePattern,
+				Help: "A personal machine of the inventory, whose owner is adopted, or the name a machine the inventory does not have yet takes there"},
+			{Name: "address", Prompt: "Address to reach it at", Help: "A name or IP address for SSH; defaults to the host's name",
+				Default: func(x *engine.Ctx) (string, error) { return x.Value("host"), nil }},
+			{Name: "user", Prompt: "Support account", Help: "The account fleetmgr logs in to a fleet host as; support by default, which has sudo without a password, so nothing needs forwarding",
+				Default: func(*engine.Ctx) (string, error) { return "support", nil }},
 		},
-		hostReachStep,
-		{
-			Title: "Read the owner from {{.host}}",
-			Why: "As support, with sudo: who made the account (/var/lib/fleet/owner), what getent says of it, the password hash from the shadow file and the login keys in the owner's home. " +
-				"The hash is kept in memory only, never shown, and passed on standard input.",
-			Do: engine.Func(readOwner),
+		machineInputs,
+		[]engine.Input{
+			secrets.RepoInput, secrets.RecoveryInput,
+			{Name: "from", Prompt: "Owner's enrollment file", Optional: true, Skip: onlyFor("owner"),
+				Help: "The owner's enrollment file (fleetmgr user init), when they will manage their own password and keys later; none: they ask you"},
 		},
-		secrets.Open(true),
-		skipInDryRun(secrets.Unlock()),
-		{
-			Title: "Enroll the owner in the secrets repository",
-			Why: "With their enrollment file the owner gets a branch of their own, user/<owner>, and keeps their password and keys there with fleetmgr user. " +
-				"This is fleetmgr secrets user-enroll, run for the owner and this host.",
-			When: func(x *engine.Ctx) (bool, string) {
-				if x.Value("from") == "" {
-					return false, "no enrollment file was given: the password and keys stay on the host's branch, and the owner asks you to change them"
-				}
-				return true, ""
-			},
-			Do: engine.Func(enrollOwner),
+	),
+	Needs:   []string{"git", "nix", "tar", "ssh", "ssh-agent", "ssh-add", "ssh-keyscan", "sops", "age", "ssh-keygen"},
+	Cleanup: fleetmgr.StopAgent,
+	Steps:   joinSteps(forCase("owner", ownerAdoptSteps), forCase("machine", machineSteps)),
+}
+
+// ownerAdoptSteps are the steps of the owner case.
+var ownerAdoptSteps = []engine.Step{
+	{
+		Title: "Read how {{.host}} is configured",
+		Why:   "Only a personal machine has an owner to adopt. Whether the owner is an administrator is read from its configuration, and carried over. Nothing is written.",
+		Do:    engine.Func(readAdoptConfig),
+	},
+	hostReachStep,
+	{
+		Title: "Read the owner from {{.host}}",
+		Why: "As support, with sudo: who made the account (/var/lib/fleet/owner), what getent says of it, the password hash from the shadow file and the login keys in the owner's home. " +
+			"The hash is kept in memory only, never shown, and passed on standard input.",
+		Do: engine.Func(readOwner),
+	},
+	secrets.Open(true),
+	skipInDryRun(secrets.Unlock()),
+	{
+		Title: "Enroll the owner in the secrets repository",
+		Why: "With their enrollment file the owner gets a branch of their own, user/<owner>, and keeps their password and keys there with fleetmgr user. " +
+			"This is fleetmgr secrets user-enroll, run for the owner and this host.",
+		When: func(x *engine.Ctx) (bool, string) {
+			if x.Value("from") == "" {
+				return false, "no enrollment file was given: the password and keys stay on the host's branch, and the owner asks you to change them"
+			}
+			return true, ""
 		},
-		{
-			Title: "Store the owner's password hash",
-			Why:   "As it is on the host: the owner keeps the password they have. This is fleetmgr secrets user-password --hash-stdin.",
-			Do:    engine.Func(storeOwnerHash),
+		Do: engine.Func(enrollOwner),
+	},
+	{
+		Title: "Store the owner's password hash",
+		Why:   "As it is on the host: the owner keeps the password they have. This is fleetmgr secrets user-password --hash-stdin.",
+		Do:    engine.Func(storeOwnerHash),
+	},
+	{
+		Title: "Store the owner's login keys",
+		Why:   "The keys of their ~/.ssh/authorized_keys, which the configuration will read from the secrets instead. This is fleetmgr secrets user-keys --authorized-keys.",
+		When: func(x *engine.Ctx) (bool, string) {
+			if x.Value("owner_keys") == "" {
+				return false, "the owner has no login keys"
+			}
+			return true, ""
 		},
-		{
-			Title: "Store the owner's login keys",
-			Why:   "The keys of their ~/.ssh/authorized_keys, which the configuration will read from the secrets instead. This is fleetmgr secrets user-keys --authorized-keys.",
-			When: func(x *engine.Ctx) (bool, string) {
-				if x.Value("owner_keys") == "" {
-					return false, "the owner has no login keys"
-				}
-				return true, ""
-			},
-			Do: engine.Func(storeOwnerKeys),
-		},
-		{
-			Title: "Push the secrets",
-			Why:   "{{.host}} fetches them from the forge on its next sync, and accepts the commits only if a key it trusts signed them. What the commands above left unpushed goes now.",
-			Do:    engine.Func(pushOwnerSecrets),
-		},
-		{
-			Title: "Next",
-			Why:   "The declaration to add to the inventory, and the commands that finish.",
-			Do:    engine.Func(showAdoptNext),
-		},
+		Do: engine.Func(storeOwnerKeys),
+	},
+	{
+		Title: "Push the secrets",
+		Why:   "{{.host}} fetches them from the forge on its next sync, and accepts the commits only if a key it trusts signed them. What the commands above left unpushed goes now.",
+		Do:    engine.Func(pushOwnerSecrets),
+	},
+	{
+		Title: "Next",
+		Why:   "The declaration to add to the inventory, and the commands that finish.",
+		Do:    engine.Func(showAdoptNext),
 	},
 }
 
