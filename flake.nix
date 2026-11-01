@@ -175,6 +175,15 @@
         inherit inputs;
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
       };
+      # mkHost's system.stateVersion is a default, which a host's own wins over.
+      mkhost-state-version =
+        let
+          host = (import ./lib/mkHost.nix { inherit inputs; }) { hostName = "checkout"; hostDir = ./tests/fleet/host; };
+          own = host.extendModules { modules = [{ system.stateVersion = "24.11"; }]; };
+        in
+        assert host.config.system.stateVersion == "26.05";
+        assert own.config.system.stateVersion == "24.11";
+        nixpkgs.legacyPackages.x86_64-linux.emptyFile;
     }
     # One `<host>-hotspot-ready` per host that has declared a hotspot but not
     # turned it on, so turning it on stays a one-line change.
