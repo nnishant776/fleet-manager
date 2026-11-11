@@ -59,9 +59,10 @@ func (Exec) Run(ctx context.Context, s Spec) (Result, error) {
 	name := s.Name
 	// A flow runs another fleetmgr command as "fleetmgr", which is how it is
 	// shown and typed; this binary runs it, whether or not it is on the PATH.
-	if name == "fleetmgr" {
-		if self, err := os.Executable(); err == nil {
-			name = self
+	self := name == "fleetmgr"
+	if self {
+		if exe, err := os.Executable(); err == nil {
+			name = exe
 		}
 	}
 	cmd := exec.CommandContext(ctx, name, s.Args...)
@@ -71,8 +72,13 @@ func (Exec) Run(ctx context.Context, s Spec) (Result, error) {
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
 	cmd.WaitDelay = 10 * time.Second
 	cmd.Dir = s.Dir
-	if len(s.Env) > 0 || len(s.Hidden) > 0 {
+	if len(s.Env) > 0 || len(s.Hidden) > 0 || self {
 		cmd.Env = append(append(os.Environ(), s.Env...), s.Hidden...)
+	}
+	if self {
+		// It is part of the flow that runs it, which alone keeps the answers
+		// of an unfinished run and prints the line that goes on.
+		cmd.Env = append(cmd.Env, SubrunEnv+"=1")
 	}
 	var out, errOut bytes.Buffer
 	if s.Interactive {

@@ -93,6 +93,8 @@ type Options struct {
 	Yes     bool // run changes without asking
 	DryRun  bool // show, run nothing
 	Verbose bool // show all output, not only its end
+	Resume  bool // take the answers an earlier, unfinished run kept, without asking
+	Forget  bool // drop the answers an earlier, unfinished run kept
 }
 
 // Ctx is a flow while it runs.
@@ -108,10 +110,15 @@ type Ctx struct {
 	// Hidden is environment some commands get but nobody sees; see
 	// Command.CaptureEnv.
 	Hidden []HiddenEnv
+	// Resumable runs keep an unfinished run's answers and print the line that
+	// goes on (resume.go): a command run from the command line or the menu,
+	// not a test, nor a fleetmgr command a flow runs.
+	Resumable bool
 
-	flags map[string]string // from the command line
-	n     int
-	total int
+	flags   map[string]string // from the command line
+	answers map[string]string // what the person gave, from flags or prompts
+	n       int
+	total   int
 
 	undos   []undo // see undo.go
 	kept    []note
@@ -183,8 +190,10 @@ func Run(c *Ctx, f *Flow) (err error) {
 		c.Values = map[string]string{}
 	}
 	// The summary comes last, after the cleanup and anything put back, and
-	// only for a run that got as far as its steps.
+	// only for a run that got as far as its steps; after it, for a run that
+	// did not finish, the line that goes on.
 	began := false
+	defer func() { c.endRun(f, err) }()
 	defer func() {
 		if began {
 			c.UI.Summary(outcomeOf(err), err)
@@ -214,6 +223,11 @@ func Run(c *Ctx, f *Flow) (err error) {
 		tags = append(tags, "dry run")
 	}
 	c.UI.Header(f.Title, tags...)
+	if c.Resumable {
+		if err := c.offerUnfinished(f); err != nil {
+			return err
+		}
+	}
 	var used [][2]string
 	for _, in := range f.Inputs {
 		if err := resolve(c, in); err != nil {
@@ -343,6 +357,7 @@ func resolve(c *Ctx, in Input) error {
 		}
 		def = d
 	}
+	asked := false
 	if !given {
 		// Only what has no good answer is asked for: a value with a default,
 		// or one that may be empty, is taken as it is, and shown with the
@@ -365,10 +380,14 @@ func resolve(c *Ctx, in Input) error {
 			if err != nil {
 				return err
 			}
+			asked = true
 		}
 	}
 	if err := check(in, value); err != nil {
 		return err
+	}
+	if given || asked {
+		c.answer(in, value)
 	}
 	if in.Resolve != nil {
 		v, err := in.Resolve(c, value)
